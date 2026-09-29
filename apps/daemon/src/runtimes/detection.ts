@@ -855,6 +855,24 @@ function rememberDetectedLiveModels(
   rememberLiveModels(agent.id, agent.models, scope);
 }
 
+/**
+ * 阶段1「禁用官方登录 AMR 入口」中不再对前端可见的 runtime id。
+ *
+ * 这些 runtime 仍然留在 `registry.ts` 里（`getAgentDef('amr')` 等内部调用、
+ * 检测缓存、诊断元数据照常工作，阶段2 才整体摘除），只是被挡在枚举结果之外。
+ */
+const ENUMERATION_EXCLUDED_AGENT_IDS: ReadonlySet<string> = new Set(['amr']);
+
+/**
+ * 判断一个已检测的 runtime 是否还能暴露给前端选择器。
+ *
+ * `detectAgents` 与 `detectAgentsStream` 都必须经过它，两条链路的可见集合
+ * 才不会各说各话；`/api/agents` 因此天然拿不到被排除的 runtime。
+ */
+function isEnumerableAgent(agent: DetectedAgent): boolean {
+  return !ENUMERATION_EXCLUDED_AGENT_IDS.has(agent.id);
+}
+
 export async function detectAgents(
   configuredEnvByAgent: Record<string, Record<string, string>> = {},
 ) {
@@ -869,7 +887,7 @@ export async function detectAgents(
     if (!def) continue;
     rememberDetectedLiveModels(def, configuredEnvForAgent(configuredEnvByAgent, def.id), agent);
   }
-  return results;
+  return results.filter(isEnumerableAgent);
 }
 
 // Streaming variant: yields each agent the moment its probe settles, in
@@ -893,6 +911,7 @@ export async function* detectAgentsStream(
       tagged.filter((_, i) => pending.has(i)),
     );
     pending.delete(index);
+    if (!isEnumerableAgent(agent)) continue;
     yield agent;
   }
 }

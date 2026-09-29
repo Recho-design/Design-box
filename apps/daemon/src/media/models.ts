@@ -85,12 +85,12 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
 ];
 
 export const IMAGE_MODELS: MediaModel[] = [
-  { id: 'vela/gpt-image-2', label: 'gpt-image-2 (Cloud)', hint: 'OpenDesign Cloud · managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'], default: true },
+  { id: 'vela/gpt-image-2', label: 'gpt-image-2 (Cloud)', hint: 'OpenDesign Cloud · managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
   { id: 'vela/nano-banana-2', label: 'nano-banana-2 (Cloud)', hint: 'OpenDesign Cloud · managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
   { id: 'vela/nano-banana-2-lite', label: 'nano-banana-2-lite (Cloud)', hint: 'OpenDesign Cloud · fast managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
   { id: 'vela/seedream-5.0', label: 'seedream-5.0 (Cloud)', hint: 'OpenDesign Cloud · managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
   { id: 'vela/seedream-5.0-pro', label: 'seedream-5.0-pro (Cloud)', hint: 'OpenDesign Cloud · high-quality managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
-  { id: 'gpt-image-2', label: 'gpt-image-2', hint: 'OpenAI · 4K, native multimodal', provider: 'openai', caps: ['t2i', 'i2i', 'inpaint'] },
+  { id: 'gpt-image-2', label: 'gpt-image-2', hint: 'OpenAI · 4K, native multimodal', provider: 'openai', caps: ['t2i', 'i2i', 'inpaint'], default: true },
   { id: 'gpt-image-1.5', label: 'gpt-image-1.5', hint: 'OpenAI · 4× faster than gpt-image-1', provider: 'openai', caps: ['t2i', 'i2i', 'inpaint'] },
   { id: 'gpt-image-1', label: 'gpt-image-1', hint: 'OpenAI · ChatGPT native', provider: 'openai', caps: ['t2i', 'i2i', 'inpaint'] },
   { id: 'gpt-image-1-mini', label: 'gpt-image-1-mini', hint: 'OpenAI · low-cost variant', provider: 'openai', caps: ['t2i', 'i2i'] },
@@ -225,15 +225,53 @@ export const VIDEO_LENGTHS_SEC = [3, 5, 8, 10, 15, 30];
 export const AUDIO_DURATIONS_SEC = [5, 10, 15, 30, 60, 120];
 
 const MEDIA_MODEL_ALIASES: Readonly<Record<string, string>> = {
-  // Product-facing shorthand. Keep the local Google model on its explicit
-  // registry id (`gemini-3.1-flash-image-preview`) so this unqualified name
-  // cannot silently leave the managed Cloud route.
-  'nano-banana': 'vela/nano-banana-2',
-  'nano-banana-2': 'vela/nano-banana-2',
-  'nano-banana-2-lite': 'vela/nano-banana-2-lite',
-  // Preserve existing project metadata while removing the Codex renderer.
-  'codex-gpt-image-2': 'vela/gpt-image-2',
+  // 阶段1 「媒体默认 provider 切离 vela」起，产品简写不再落到 OpenDesign
+  // Cloud：nano-banana 系列改指本地 Google Nano Banana provider（自带
+  // API key），Codex 时代的历史 id 改指 OpenAI BYOK 的同名模型，这样既有
+  // 项目元数据仍能解析，又不会把用户带回云端托管路由。
+  'nano-banana': 'gemini-3.1-flash-image-preview',
+  'nano-banana-2': 'gemini-3.1-flash-image-preview',
+  // `nano-banana-2-lite` 只有 vela 云实现、没有本地等价物，故意不再登记别名：
+  // 它保持原样解析，因而不在注册表里 → 直接不可用，而不是兜底到别的模型。
+  'codex-gpt-image-2': 'gpt-image-2',
 };
+
+/**
+ * 仍在注册表里、但不再作为可选模型暴露给前端的媒体 provider。
+ *
+ * `vela`（OpenDesign Cloud）的解析与渲染此阶段保持不变（阶段2 才摘除整套
+ * 媒体链路），只是从"可选模型列表"这一层拿掉入口。
+ */
+const UNOFFERED_MEDIA_PROVIDER_IDS: ReadonlySet<string> = new Set(['vela']);
+
+/**
+ * 判断某个媒体模型是否仍然可选（出现在模型目录里）。
+ * 只作用于列表这一层，不改变 `findMediaModel` 的解析结果。
+ */
+export function isMediaModelOffered(model: MediaModel): boolean {
+  return !UNOFFERED_MEDIA_PROVIDER_IDS.has(model.provider);
+}
+
+/**
+ * 判断某个媒体 provider 是否仍然可选（出现在模型目录里）。
+ */
+export function isMediaProviderOffered(provider: MediaProvider): boolean {
+  return !UNOFFERED_MEDIA_PROVIDER_IDS.has(provider.id);
+}
+
+/**
+ * 组装某个 surface 的可选模型列表：先按 surface / audioKind 取全集，再剔除
+ * 不再暴露的 provider。
+ *
+ * `/api/media/models` 与媒体生成提示词都经它取列表，保证"选择器里看不到"
+ * 与"提示词里不出现"出自同一条规则。
+ */
+export function offeredModelsForSurface(
+  surface: MediaSurface,
+  audioKind?: AudioKind,
+): MediaModel[] {
+  return modelsForSurface(surface, audioKind).filter(isMediaModelOffered);
+}
 
 export function canonicalMediaModelId(id: string): string {
   return MEDIA_MODEL_ALIASES[id] ?? id;

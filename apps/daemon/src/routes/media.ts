@@ -11,7 +11,11 @@ import type {
 import type { AnalyticsContext } from '../analytics.js';
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
 import { formatMediaTaskDiagnostic } from '../media/diagnostics.js';
-import { findMediaModel } from '../media/models.js';
+import {
+  findMediaModel,
+  isMediaProviderOffered,
+  offeredModelsForSurface,
+} from '../media/models.js';
 import type { ImageGenerationRequestSummary } from '../media/image-generation-retry.js';
 import type { RouteDeps } from '../server-context.js';
 import type {
@@ -233,7 +237,7 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
   const chatArtifactQuota = resolveChatArtifactQuota(process.env);
   const { authorizeToolRequest, optionalToolGrantFromRequest, requestProjectOverride } = ctx.auth;
   const { randomUUID } = ctx.ids;
-  const { MEDIA_PROVIDERS, IMAGE_MODELS, VIDEO_MODELS, AUDIO_MODELS_BY_KIND, MEDIA_ASPECTS, VIDEO_LENGTHS_SEC, AUDIO_DURATIONS_SEC, readMaskedConfig, writeConfig, generateMedia, createMediaTask, persistMediaTask, appendTaskProgress, notifyTaskWaiters, getLiveMediaTask, mediaTaskSnapshot, listMediaTasksByProject, listElevenLabsVoiceOptions } = ctx.media;
+  const { MEDIA_PROVIDERS, MEDIA_ASPECTS, VIDEO_LENGTHS_SEC, AUDIO_DURATIONS_SEC, readMaskedConfig, writeConfig, generateMedia, createMediaTask, persistMediaTask, appendTaskProgress, notifyTaskWaiters, getLiveMediaTask, mediaTaskSnapshot, listMediaTasksByProject, listElevenLabsVoiceOptions } = ctx.media;
   const { readAppConfig, writeAppConfig } = ctx.appConfig;
   const onAppConfigWritten =
     typeof ctx.appConfig.onAppConfigWritten === 'function'
@@ -677,11 +681,17 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     }
   };
   app.get('/api/media/models', (_req, res) => {
+    // 阶段1：不再指向 vela 云的媒体模型/ provider 不进入目录，前端选择器
+    // 与 CLI 帮助因此看不到它们（`offeredModelsForSurface` 是那条唯一规则）。
     res.json({
-      providers: MEDIA_PROVIDERS,
-      image: IMAGE_MODELS,
-      video: VIDEO_MODELS,
-      audio: AUDIO_MODELS_BY_KIND,
+      providers: MEDIA_PROVIDERS.filter(isMediaProviderOffered),
+      image: offeredModelsForSurface('image'),
+      video: offeredModelsForSurface('video'),
+      audio: {
+        music: offeredModelsForSurface('audio', 'music'),
+        speech: offeredModelsForSurface('audio', 'speech'),
+        sfx: offeredModelsForSurface('audio', 'sfx'),
+      },
       aspects: MEDIA_ASPECTS,
       videoLengthsSec: VIDEO_LENGTHS_SEC,
       audioDurationsSec: AUDIO_DURATIONS_SEC,

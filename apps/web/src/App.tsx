@@ -42,10 +42,6 @@ import type {
   OptimisticProjectCreationHandoff,
   ProjectTitleHint,
 } from './components/EntryShell';
-import {
-  HomeAmrBalanceGateDialogs,
-  type HomeAmrBalanceGateBlock,
-} from './components/HomeAmrBalanceGateDialogs';
 import type { IntegrationTab } from './components/IntegrationsView';
 import { MarketplaceView } from './components/MarketplaceView';
 import { PluginDetailView } from './components/PluginDetailView';
@@ -1143,8 +1139,6 @@ function AppInner() {
   // Hard block from the Home pre-run balance gate. Hosted here, not in
   // EntryShell: the gate answers behind the optimistic pending frame, where
   // EntryShell is already unmounted (OPEND-2614).
-  const [homeAmrBalanceGateBlock, setHomeAmrBalanceGateBlock] =
-    useState<HomeAmrBalanceGateBlock | null>(null);
   const [appliedProjectListWitness, setAppliedProjectListWitness] = useState<{
     scopeKey: string;
     generation: number;
@@ -5598,7 +5592,6 @@ function AppInner() {
     appMain = (
       <EntryView
         onBeginProjectCreation={beginOptimisticProjectCreation}
-        onAmrBalanceGateBlockChange={setHomeAmrBalanceGateBlock}
         skills={enabledSkills}
         designTemplates={enabledDesignTemplates}
         designSystems={enabledDS}
@@ -5609,14 +5602,6 @@ function AppInner() {
         defaultDesignSystemId={config.designSystemId}
         agents={agents}
         agentsLoading={agentsLoading}
-        amrLoggedIn={amrLoginStatus?.loggedIn ?? null}
-        amrSessionState={amrLoginStatus?.sessionState}
-        amrAccountPlan={
-          amrLoginStatus?.account?.plan?.trim()
-          || amrLoginStatus?.user?.plan?.trim()
-          || null
-        }
-        amrAccountId={amrLoginStatus?.user?.id ?? amrLoginStatus?.credentialRevision ?? null}
         config={config}
         providerModelsCache={providerModelsCache}
         onProviderModelsCacheChange={setProviderModelsCache}
@@ -5665,7 +5650,6 @@ function AppInner() {
         onOpenSettings={openSettings}
         onCompleteOnboarding={handleCompleteOnboarding}
         onSignedOut={handleActiveCloudSignOut}
-        onAmrLoginStatusChange={handleAmrLoginStatusChange}
         artifactUpgradeSlot={
           amrArtifactUpgradeHomeOffer ? (
             <AmrArtifactUpgradeHomeCard
@@ -5867,11 +5851,6 @@ function AppInner() {
           onDismiss={() => setProjectCreateError(null)}
         />
       ) : null}
-      <HomeAmrBalanceGateDialogs
-        block={homeAmrBalanceGateBlock}
-        metricsConsent={config.telemetry?.metrics === true}
-        installationId={config.installationId}
-      />
       {projectOpenError ? (
         <Toast
           message={projectOpenError}

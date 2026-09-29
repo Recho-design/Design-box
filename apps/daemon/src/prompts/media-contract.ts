@@ -18,22 +18,20 @@
  * That's why we keep it as text-driven shell calls rather than custom
  * tool definitions.
  */
-import {
-  AUDIO_MODELS_BY_KIND,
-  IMAGE_MODELS,
-  VIDEO_MODELS,
-} from '../media/models.js';
+import { offeredModelsForSurface } from '../media/models.js';
 import type { ByokMediaDefaults, MediaExecutionPolicy, MediaSurface } from '@open-design/contracts';
 
 function fmtList(ids: string[]): string {
   return ids.map((id) => `\`${id}\``).join(', ');
 }
 
-const IMAGE_IDS = fmtList(IMAGE_MODELS.map((m) => m.id));
-const VIDEO_IDS = fmtList(VIDEO_MODELS.map((m) => m.id));
-const AUDIO_MUSIC_IDS = fmtList(AUDIO_MODELS_BY_KIND.music.map((m) => m.id));
-const AUDIO_SPEECH_IDS = fmtList(AUDIO_MODELS_BY_KIND.speech.map((m) => m.id));
-const AUDIO_SFX_IDS = fmtList(AUDIO_MODELS_BY_KIND.sfx.map((m) => m.id));
+// 允许清单与 /api/media/models 同源：阶段1 起两边都用 offeredModelsForSurface
+// 组装，被下架的 provider 不会只在一处消失。
+const IMAGE_IDS = fmtList(offeredModelsForSurface('image').map((m) => m.id));
+const VIDEO_IDS = fmtList(offeredModelsForSurface('video').map((m) => m.id));
+const AUDIO_MUSIC_IDS = fmtList(offeredModelsForSurface('audio', 'music').map((m) => m.id));
+const AUDIO_SPEECH_IDS = fmtList(offeredModelsForSurface('audio', 'speech').map((m) => m.id));
+const AUDIO_SFX_IDS = fmtList(offeredModelsForSurface('audio', 'sfx').map((m) => m.id));
 
 export const MEDIA_USER_REPLY_CONTRACT = `
 ### User-facing media completion (load-bearing)

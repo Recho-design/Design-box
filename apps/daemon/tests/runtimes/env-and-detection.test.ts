@@ -9,6 +9,8 @@ import {
 } from './helpers/test-helpers.js';
 import { isCursorAuthFailureText } from '../../src/runtimes/auth.js';
 import { agentCapabilities } from '../../src/runtimes/capabilities.js';
+import { detectAgent } from '../../src/runtimes/detection.js';
+import { amrAgentDef } from '../../src/runtimes/defs/amr.js';
 import { getRememberedLiveModels } from '../../src/runtimes/models.js';
 
 const fsTest = process.platform === 'win32' ? test.skip : test;
@@ -591,12 +593,16 @@ test('detectAgents includes sanitized install and docs metadata from split runti
       const agents = await detectAgents({
         amr: { OPEN_DESIGN_AMR_PROFILE: 'test' },
       });
-      const amr = agents.find((agent) => agent.id === 'amr');
       const qoder = agents.find((agent) => agent.id === 'qoder');
       const deepseek = agents.find((agent) => agent.id === 'deepseek');
       const kimi = agents.find((agent) => agent.id === 'kimi');
 
-      assert.ok(amr);
+      // AMR 已从枚举结果里下架（阶段1 禁用入口），它的运行时元数据仍然由
+      // 单机检测产出，因此这里直接探它而不是从列表里找。
+      const amr = await detectAgent(amrAgentDef, {
+        OPEN_DESIGN_AMR_PROFILE: 'test',
+      });
+      assert.ok(agents.every((agent) => agent.id !== 'amr'));
       assert.equal(amr.available, false);
       assert.equal(amr.installUrl, 'https://open-design.powerformer.net/cloud/dashboard');
       assert.ok(qoder);
@@ -713,6 +719,30 @@ fsTest('detectAgents marks Codex available when nvm exposes a node shim but laun
   }
 });
 
+test('detectAgents hides AMR from the enumeration both surfaces read', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'od-detect-amr-hidden-'));
+  try {
+    return await withEnvSnapshot(
+      ['PATH', 'OD_AGENT_HOME', 'OD_RESOURCE_ROOT', 'VELA_OPENCODE_BIN'],
+      async () => {
+        process.env.PATH = root;
+        process.env.OD_AGENT_HOME = join(root, 'empty-home');
+        delete process.env.OD_RESOURCE_ROOT;
+        delete process.env.VELA_OPENCODE_BIN;
+
+        const agents = await detectAgents();
+        assert.equal(agents.some((agent) => agent.id === 'amr'), false);
+
+        const streamed: string[] = [];
+        for await (const agent of detectAgentsStream()) streamed.push(agent.id);
+        assert.equal(streamed.includes('amr'), false);
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 fsTest('detectAgents keeps packaged built-in AMR unavailable when OpenCode cannot be resolved', async () => {
   const root = mkdtempSync(join(tmpdir(), 'od-detect-amr-built-in-'));
   try {
@@ -730,10 +760,8 @@ fsTest('detectAgents keeps packaged built-in AMR unavailable when OpenCode canno
       process.env.OD_RESOURCE_ROOT = resourceRoot;
       delete process.env.VELA_OPENCODE_BIN;
 
-      const agents = await detectAgents();
-      const amrAgent = agents.find((agent) => agent.id === 'amr');
+      const amrAgent = await detectAgent(amrAgentDef);
 
-      assert.ok(amrAgent);
       assert.equal(amrAgent.available, false);
       assert.equal(amrAgent.path, undefined);
       assert.equal(amrAgent.version, undefined);
@@ -769,10 +797,8 @@ fsTest('detectAgents marks AMR available from packaged built-in Vela with the bu
       process.env.OD_RESOURCE_ROOT = resourceRoot;
       delete process.env.VELA_OPENCODE_BIN;
 
-      const agents = await detectAgents();
-      const amrAgent = agents.find((agent) => agent.id === 'amr');
+      const amrAgent = await detectAgent(amrAgentDef);
 
-      assert.ok(amrAgent);
       assert.equal(amrAgent.available, true);
       assert.equal(amrAgent.path, builtInVela);
       assert.equal(amrAgent.version, 'vela manual-amr');
@@ -807,15 +833,11 @@ exit 0
       delete process.env.OD_RESOURCE_ROOT;
       delete process.env.VELA_OPENCODE_BIN;
 
-      const agents = await detectAgents({
-        amr: {
-          VELA_BIN: fakeVela,
-          VELA_OPENCODE_BIN: fakeOpenCode,
-        },
+      const amrAgent = await detectAgent(amrAgentDef, {
+        VELA_BIN: fakeVela,
+        VELA_OPENCODE_BIN: fakeOpenCode,
       });
-      const amrAgent = agents.find((agent) => agent.id === 'amr');
 
-      assert.ok(amrAgent);
       assert.equal(amrAgent.available, true);
       assert.equal(amrAgent.path, fakeVela);
       assert.equal(amrAgent.version, 'vela custom-live');
@@ -875,16 +897,21 @@ exit 0
       ]);
 
       writeFileSync(modeFile, 'empty');
-      const agents = await detectAgents({
+      // AMR 不再出现在枚举结果里，因此第二次探测直接走单机检测；它仍然读得到
+      // 上一次 detectAgents 刷新过的分作用域缓存。
+      await detectAgents({
         amr: {
           VELA_BIN: fakeVela,
           VELA_OPENCODE_BIN: fakeOpenCode,
           OPEN_DESIGN_AMR_PROFILE: 'prod',
         },
       });
-      const amrAgent = agents.find((agent) => agent.id === 'amr');
+      const amrAgent = await detectAgent(amrAgentDef, {
+        VELA_BIN: fakeVela,
+        VELA_OPENCODE_BIN: fakeOpenCode,
+        OPEN_DESIGN_AMR_PROFILE: 'prod',
+      });
 
-      assert.ok(amrAgent);
       assert.deepEqual(amrAgent.models, [
         { id: 'deepseek-v4-flash', label: 'deepseek-v4-flash' },
       ]);
