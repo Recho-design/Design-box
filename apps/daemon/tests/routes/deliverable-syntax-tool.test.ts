@@ -41,8 +41,7 @@ async function fixture(input: {
         ? { runId: run.id, projectId }
         : null
     ),
-    authorizeProjectToolRequest: async () => true,
-    getProject: () => ({
+        getProject: () => ({
       metadata: { kind: input.kind ?? 'prototype', entryFile: input.entryFile },
     }),
     getRun: () => run,

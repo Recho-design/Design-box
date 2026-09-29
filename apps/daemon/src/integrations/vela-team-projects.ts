@@ -1,5 +1,20 @@
-import type { ProjectSyncState } from '@open-design/contracts';
-import type { ResourceHubPrincipal } from '../collab/resource-principal.js';
+import type { ProjectSyncState, WorkspaceCollabContext } from '@open-design/contracts';
+
+/**
+ * 资源归属主体。
+ *
+ * 原类型定义在已删除的 `collab/resource-principal.ts`：它把登录态里的
+ * 工作区身份转成资源中心的 principal。云协作链路摘除后，本文件只剩
+ * Vela 团队项目目录客户端的类型契约，因此在这里保留最小形状，避免
+ * 交叉引用已删除的模块。
+ */
+export interface ResourceHubPrincipal {
+  memberId: string;
+  teamId: string;
+  role: WorkspaceCollabContext['role'];
+  lifecycleState: WorkspaceCollabContext['lifecycleState'];
+  workspaceType?: WorkspaceCollabContext['workspaceType'];
+}
 
 export type VelaTeamProjectSyncState =
   | 'pending_upload'

@@ -47,13 +47,7 @@ import {
 import { reconcileLibrary, type ReconcileLibraryResult } from '../library-sync.js';
 import { fetchExternalBrandAsset } from '../brands/safe-fetch.js';
 import { ensureProjectSubdir } from '../projects.js';
-import {
-  authorizeCreatedProjectWorkspace,
-  bindCreatedProjectToWorkspace,
-  sendCreatedProjectWorkspaceError,
-} from '../collab/created-project-workspace.js';
-import type { BoundWorkspaceResourceMutationGate } from '../collab/workspace-resource-mutation.js';
-import type { WorkspaceDirectoryFetchResult } from '../collab/vela-workspace-context.js';
+// [COLLEB REMOVED] created-project-workspace, workspace-resource-mutation, vela-workspace-context
 import {
   confirmPairing,
   libraryConnectionStatus,
@@ -64,10 +58,7 @@ import {
 export interface RegisterLibraryRoutesDeps
   extends RouteDeps<
     'db' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'auth'
-  > {
-  fetchProjectCreationWorkspaceDirectory?: () => Promise<WorkspaceDirectoryFetchResult>;
-  enforceWorkspaceProjectMutation?: BoundWorkspaceResourceMutationGate;
-}
+  > {}
 
 const MAX_REMOTE_BYTES = 25 * 1024 * 1024;
 
@@ -182,18 +173,8 @@ export function registerLibraryRoutes(app: Express, ctx: RegisterLibraryRoutesDe
   const { writeProjectFile } = ctx.projectFiles;
   const { insertConversation } = ctx.conversations;
   const { authorizeToolRequest } = ctx.auth;
-  async function enforceProjectWrite(req: Request, res: Response, projectId: string) {
-    if (!ctx.enforceWorkspaceProjectMutation) return true;
-    return ctx.enforceWorkspaceProjectMutation(
-      req,
-      res,
-      sendApiError,
-      getWorkspaceProject,
-      getWorkspaceProjectByProjectId,
-      db,
-      projectId,
-      'writeFiles',
-    );
+  async function enforceProjectWrite(_req: Request, _res: Response, _projectId: string): Promise<boolean> {
+    return true;
   }
 
   // Copy an asset's bytes into a project (under a `library/` subdir) and record
@@ -634,13 +615,7 @@ export function registerLibraryRoutes(app: Express, ctx: RegisterLibraryRoutesDe
     if (asset.kind !== 'html') {
       return sendApiError(res, 400, 'NOT_HTML', 'only html captures can be opened as an editable page');
     }
-    const createWorkspace = await authorizeCreatedProjectWorkspace(
-      req,
-      ctx.fetchProjectCreationWorkspaceDirectory,
-    );
-    if (!createWorkspace.ok) {
-      return sendCreatedProjectWorkspaceError(res, createWorkspace);
-    }
+    // [COLLEB REMOVED] createWorkspace authorization bypassed, running locally
     const bytesPath = resolveAssetBytesPath(asset, PROJECTS_DIR);
     if (!bytesPath) return sendApiError(res, 404, 'NOT_FOUND', 'asset bytes not available');
     try {
@@ -675,12 +650,7 @@ export function registerLibraryRoutes(app: Express, ctx: RegisterLibraryRoutesDe
       // immediately chat into, so it needs the same home workspace every other
       // created project gets; otherwise it can only use the account-scoped
       // local run lane and has no durable Workspace for later mutations.
-      bindCreatedProjectToWorkspace(
-        (input) => ensureWorkspaceProject(db, input),
-        createWorkspace.context,
-        projectId,
-        now,
-      );
+      // [COLLEB REMOVED] bindCreatedProjectToWorkspace bypassed
       // writeProjectFile ensures the project dir; write the capture as the
       // editable entry file. No artifact manifest — a plain HTML file avoids
       // the publication/stub guards (a captured page is arbitrary markup) while

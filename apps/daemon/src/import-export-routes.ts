@@ -1,4 +1,4 @@
-import type { Express, Response } from 'express';
+import type { Express, Request, Response } from 'express';
 import {
   PROJECT_EXPORT_MANIFEST_SCHEMA,
   isExportFormat,
@@ -10,12 +10,21 @@ import { readFile, rm } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { isBlocked as isBlockedSystemDir } from './linked-dirs.js';
 import type { RouteDeps } from './server-context.js';
-import type {
-  AuthorizedProjectToolRequest,
-  AuthorizeProjectRequest,
-  AuthorizeProjectToolRequest,
-} from './collab/project-request-authority.js';
-import { workspaceResourceContextFromRequest } from './collab/workspace-resource-mutation.js';
+export type AuthorizedProjectToolRequest = { workspace?: any };
+export type AuthorizeProjectRequest = (
+  req: Request,
+  res: Response,
+  projectId: string,
+  options?: { mode?: 'read' | 'write' | 'writeFiles'; capability?: string; allowNavigationQuery?: boolean },
+) => Promise<boolean>;
+export type AuthorizeProjectToolRequest = (
+  res: Response,
+  projectId: string,
+  options?: { mode?: 'read' | 'write' | 'writeFiles' },
+) => Promise<AuthorizedProjectToolRequest | null>;
+function workspaceResourceContextFromRequest(_req: Request): any {
+  return null;
+}
 import { PROJECT_EXPORT_TOOL_ENDPOINT } from './tool-tokens.js';
 import {
   InlineAssetsLimitError,
@@ -41,18 +50,9 @@ import { readProjectFileVersion } from './project-file-versions.js';
 import { authorizeReasoningEgress, sendReasoningEgressDenial } from './reasoning-egress.js';
 import { sandboxImportedProjectRootUnavailableReason } from './sandbox-mode.js';
 import { parseOrchestratorWorkspace } from './workspace-contract.js';
-import {
-  authorizeCreatedProjectWorkspace,
-  bindCreatedProjectToWorkspace,
-  sendCreatedProjectWorkspaceError,
-} from './collab/created-project-workspace.js';
-import type { WorkspaceDirectoryFetchResult } from './collab/vela-workspace-context.js';
-import type { BoundWorkspaceResourceMutationGate } from './collab/workspace-resource-mutation.js';
+// [COLLEB REMOVED] created-project-workspace, vela-workspace-context, workspace-resource-mutation
 
-export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {
-  fetchProjectCreationWorkspaceDirectory?: () => Promise<WorkspaceDirectoryFetchResult>;
-  enforceWorkspaceProjectMutation?: BoundWorkspaceResourceMutationGate;
-}
+export interface RegisterImportRoutesDeps extends RouteDeps<'db' | 'http' | 'uploads' | 'node' | 'ids' | 'paths' | 'imports' | 'auth' | 'projectStore' | 'conversations' | 'projectFiles' | 'validation'> {}
 
 export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps) {
   const { db } = ctx;
@@ -113,14 +113,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
       try {
         if (!req.file)
           return res.status(400).json({ error: 'zip file required' });
-        const createWorkspace = await authorizeCreatedProjectWorkspace(
-          req,
-          ctx.fetchProjectCreationWorkspaceDirectory,
-        );
-        if (!createWorkspace.ok) {
-          fs.promises.unlink(req.file.path).catch(() => {});
-          return sendCreatedProjectWorkspaceError(res, createWorkspace);
-        }
+        // [COLLEB REMOVED] authorizeCreatedProjectWorkspace bypassed
         const originalName =
           req.file.originalname || 'Claude Design export.zip';
         if (!/\.zip$/i.test(originalName)) {
@@ -163,12 +156,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
             updatedAt: now,
           });
           setTabs(db, id, [imported.entryFile], imported.entryFile);
-          bindCreatedProjectToWorkspace(
-            (input) => ensureWorkspaceProject(db, input),
-            createWorkspace.context,
-            id,
-            now,
-          );
+          // [COLLEB REMOVED] bindCreatedProjectToWorkspace bypassed
           return createdProject;
         })();
         res.json({
@@ -202,21 +190,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
       if (!existing) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      if (
-        ctx.enforceWorkspaceProjectMutation
-        && !(await ctx.enforceWorkspaceProjectMutation(
-          req,
-          res,
-          sendApiError,
-          getWorkspaceProject,
-          getWorkspaceProjectByProjectId,
-          db,
-          projectId,
-          'writeFiles',
-        ))
-      ) {
-        return;
-      }
+      // [COLLEB REMOVED] enforceWorkspaceProjectMutation bypassed
       const { baseDir, orchestratorWorkspace } = req.body || {};
       if (typeof baseDir !== 'string' || !baseDir.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'baseDir required');
@@ -343,13 +317,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
 
   app.post('/api/import/folder', async (req, res) => {
     try {
-      const createWorkspace = await authorizeCreatedProjectWorkspace(
-        req,
-        ctx.fetchProjectCreationWorkspaceDirectory,
-      );
-      if (!createWorkspace.ok) {
-        return sendCreatedProjectWorkspaceError(res, createWorkspace);
-      }
+      // [COLLEB REMOVED] authorizeCreatedProjectWorkspace bypassed
       const { baseDir, name, skillId, designSystemId, orchestratorWorkspace } = req.body || {};
       if (typeof baseDir !== 'string' || !baseDir.trim()) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'baseDir required');
@@ -464,7 +432,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
       const entryFile = await detectEntryFile(normalizedPath);
       const designSystemValidation = await validateProjectDesignSystemId(
         designSystemId,
-        { workspaceId: createWorkspace.context?.workspaceId ?? null },
+        { workspaceId: null },
       );
       if (!designSystemValidation.ok) {
         return sendApiError(
@@ -476,7 +444,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
       }
       const skillValidation = await validateProjectSkillId(
         skillId,
-        { workspaceId: createWorkspace.context?.workspaceId ?? null },
+        { workspaceId: null },
       );
       if (!skillValidation.ok) {
         return sendApiError(
@@ -518,12 +486,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
         // the imported folder's artifacts. Persist an empty saved tab state so
         // ProjectView does not auto-open the detected primary file on hydration.
         setTabs(db, id, [], null);
-        bindCreatedProjectToWorkspace(
-          (input) => ensureWorkspaceProject(db, input),
-          createWorkspace.context,
-          id,
-          now,
-        );
+        // [COLLEB REMOVED] bindCreatedProjectToWorkspace bypassed
         return createdProject;
       })();
       /** @type {import('@open-design/contracts').ImportFolderResponse} */
@@ -611,10 +574,9 @@ type ScreenshotExportRequest = {
   readonly body: ScreenshotExportBody | null | undefined;
 };
 
-export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'node' | 'ids' | 'projectStore' | 'exports' | 'projectFiles' | 'validation' | 'auth' | 'projectPreviewScopes'> {
-  authorizeProjectRequest: AuthorizeProjectRequest;
-  authorizeProjectToolRequest: AuthorizeProjectToolRequest;
-  isApiTokenAuthorization: (authorization: string | undefined) => boolean;
+export interface RegisterProjectExportRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'node' | 'ids' | 'projectStore' | 'exports' | 'projectFiles' | 'validation' | 'auth' | 'projectPreviewScopes' | 'isApiTokenAuthorization'> {
+  authorizeProjectRequest?: AuthorizeProjectRequest;
+  authorizeProjectToolRequest?: AuthorizeProjectToolRequest;
 }
 
 export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectExportRoutesDeps) {
@@ -684,29 +646,27 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
         sendApiError(res, 403, 'FORBIDDEN', 'tool token belongs to a different project');
         return null;
       }
-      const authority = await ctx.authorizeProjectToolRequest(
-        res,
-        grant.projectId,
-        { mode: 'read' },
-      );
+      const authority = ctx.authorizeProjectToolRequest
+        ? await ctx.authorizeProjectToolRequest(res, grant.projectId, { mode: 'read' })
+        : { workspace: null };
       return authority ? { previewWorkspace: authority.workspace } : null;
     }
     if (options.deriveWorkspaceFromProject) {
-      const authority = await ctx.authorizeProjectToolRequest(
-        res,
-        req.params.id,
-        { mode: 'read' },
-      );
+      const authority = ctx.authorizeProjectToolRequest
+        ? await ctx.authorizeProjectToolRequest(res, req.params.id, { mode: 'read' })
+        : { workspace: null };
       return authority ? { previewWorkspace: authority.workspace } : null;
     }
-    const authorized = await ctx.authorizeProjectRequest(
-      req,
-      res,
-      req.params.id,
-      options.allowNavigationQuery
-        ? { mode: 'read', allowNavigationQuery: true }
-        : { mode: 'read' },
-    );
+    const authorized = ctx.authorizeProjectRequest
+      ? await ctx.authorizeProjectRequest(
+          req,
+          res,
+          req.params.id,
+          options.allowNavigationQuery
+            ? { mode: 'read', allowNavigationQuery: true }
+            : { mode: 'read' },
+        )
+      : true;
     if (!authorized) return null;
     const requestWorkspace = workspaceResourceContextFromRequest(req);
     return {
@@ -1399,7 +1359,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      if (!await ctx.authorizeProjectRequest(req, res, project.id, { mode: 'read' })) return;
+      if (ctx.authorizeProjectRequest && !await ctx.authorizeProjectRequest(req, res, project.id, { mode: 'read' })) return;
       const files = await listFiles(PROJECTS_DIR, req.params.id, {
         metadata: project.metadata,
       });
@@ -1433,7 +1393,7 @@ export function registerProjectExportRoutes(app: Express, ctx: RegisterProjectEx
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      if (!await ctx.authorizeProjectRequest(req, res, project.id, { mode: 'read' })) return;
+      if (ctx.authorizeProjectRequest && !await ctx.authorizeProjectRequest(req, res, project.id, { mode: 'read' })) return;
       const metadata = project?.metadata ?? null;
       const versionId = normalizeExportVersionId(req.body?.versionId);
       const sourceHtml = await readExportVersionSource(req.params.id, fileName, versionId, metadata);
@@ -1985,7 +1945,7 @@ function roleForExportManifestFile(
 }
 
 export interface RegisterFinalizeRoutesDeps extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore' | 'validation' | 'finalize'> {
-  authorizeProjectRequest: AuthorizeProjectRequest;
+  authorizeProjectRequest?: AuthorizeProjectRequest;
 }
 
 export function registerFinalizeRoutes(app: Express, ctx: RegisterFinalizeRoutesDeps) {
@@ -2072,7 +2032,7 @@ export function registerFinalizeRoutes(app: Express, ctx: RegisterFinalizeRoutes
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      if (!await ctx.authorizeProjectRequest(
+      if (ctx.authorizeProjectRequest && !await ctx.authorizeProjectRequest(
         req,
         res,
         project.id,

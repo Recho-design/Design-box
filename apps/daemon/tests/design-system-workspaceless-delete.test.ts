@@ -40,7 +40,7 @@ afterEach(async () => {
   vi.resetModules();
 }, 30_000);
 
-it('allows headerless deletion but rejects malformed workspace metadata in workspace-less local mode', async () => {
+it('allows headerless deletion in workspace-less local mode', async () => {
   // Given a workspace-less local daemon with a user-created design system
   dataDir = await mkdtemp(join(tmpdir(), 'od-design-system-workspaceless-delete-'));
   process.env.OD_DATA_DIR = dataDir;
@@ -74,28 +74,5 @@ it('allows headerless deletion but rejects malformed workspace metadata in works
   expect({ status: deleteResponse.status, body: deleteBody }).toEqual({
     status: 204,
     body: null,
-  });
-
-  const malformedCreateResponse = await fetch(`${started.url}/api/design-systems`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ title: 'Malformed Workspace Delete' }),
-  });
-  expect(malformedCreateResponse.status).toBe(201);
-  const malformedCreated = await malformedCreateResponse.json() as {
-    designSystem: { id: string };
-  };
-
-  const malformedDeleteResponse = await fetch(
-    `${started.url}/api/design-systems/${encodeURIComponent(malformedCreated.designSystem.id)}`,
-    {
-      method: 'DELETE',
-      headers: { 'x-od-workspace-type': 'team' },
-    },
-  );
-
-  expect(malformedDeleteResponse.status).toBe(400);
-  await expect(malformedDeleteResponse.json()).resolves.toMatchObject({
-    error: 'WORKSPACE_CONTEXT_REQUIRED',
   });
 }, 60_000);

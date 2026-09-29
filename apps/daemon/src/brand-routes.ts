@@ -26,9 +26,18 @@ import {
   listProjectsAwaitingInput,
   type insertProject,
 } from './db.js';
-import type { CreatedProjectWorkspaceResolver } from './collab/created-project-workspace.js';
-import type { AuthorizeProjectRequest } from './collab/project-request-authority.js';
-import type { WorkspaceResourceContext } from './collab/workspace-resource-mutation.js';
+import type { WorkspaceResourceContext } from './design-systems/workspace-owned-create.js';
+export type AuthorizeProjectRequest = (
+  req: Request,
+  res: Response,
+  projectId: string,
+  options?: { mode?: 'read' | 'write' | 'writeFiles'; allowNavigationQuery?: boolean },
+) => Promise<boolean>;
+export type CreatedProjectWorkspaceResolver = (req: Request) => Promise<{
+  workspaceId: string;
+  workspaceMemberId: string;
+  memberStatus: string;
+} | null>;
 import type { DesignSystemSummary, UserDesignSystemInput } from './design-systems/index.js';
 import { resolveProjectDir } from './projects.js';
 import {

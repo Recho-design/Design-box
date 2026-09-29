@@ -1,6 +1,13 @@
 import { Counter, Histogram, register } from 'prom-client';
 
-import type { WorkspaceAuthorityCacheMode } from '../collab/workspace-authority-health.js';
+/**
+ * 工作区权威缓存的运行模式。
+ *
+ * 原定义在已删除的 `collab/workspace-authority-health.ts`。权威缓存链路
+ * 已随云协作摘除，本指标模块保留该字面量联合，让历史调用点与测试继续
+ * 编译，同时不再依赖任何已删除模块。
+ */
+export type WorkspaceAuthorityCacheMode = 'legacy' | 'observe' | 'adaptive';
 
 export type WorkspaceAuthorityMetricSource =
   | 'cache'

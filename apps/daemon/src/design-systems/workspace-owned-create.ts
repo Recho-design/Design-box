@@ -1,4 +1,12 @@
-import type { WorkspaceResourceContext } from '../collab/workspace-resource-mutation.js';
+/**
+ * 本地设计体系工作区所有权辅助模块。
+ * 在已移除云协作 (collab) 的场景下，WorkspaceResourceContext 降级为本地上下文类型定义。
+ */
+export type WorkspaceResourceContext = {
+  workspaceId: string;
+  workspaceMemberId: string;
+} | null;
+
 import {
   createUserDesignSystem,
   deleteUserDesignSystem,

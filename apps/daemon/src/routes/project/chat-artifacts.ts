@@ -1,10 +1,9 @@
 // Read endpoints for immutable chat artifact snapshots.
 //
-// AUTHORITY: every route runs the SAME gate as `/raw` — project lookup, then
-// `authorizeProjectRequest({ mode: 'read' })`, then the Team-mirror revocation
-// check — and only then compares the snapshot's own `project_id` against the
-// route's project. An unguessable UUID is not an authorization mechanism, so
-// knowing a snapshot id gets a caller nothing without project read authority.
+// AUTHORITY: every route looks the project up, then compares the snapshot's own
+// `project_id` against the route's project. An unguessable UUID is not an
+// authorization mechanism, but in this single-user fork the daemon is the only
+// reader, so the project lookup plus the project-id match is the whole gate.
 //
 // PRIVACY: a caller never supplies a storage key or a path. It supplies an id;
 // the daemon resolves the key internally and never reveals it.
@@ -16,7 +15,6 @@
 
 import type { Express, Request, Response } from 'express';
 
-import type { AuthorizeProjectRequest } from '../../collab/project-request-authority.js';
 import type { RouteDeps } from '../../server-context.js';
 import { createChatArtifactBlobStore } from '../../chat-artifacts/blob-store.js';
 import {
@@ -33,9 +31,7 @@ import type {
 } from '../../chat-artifacts/types.js';
 
 export interface RegisterProjectChatArtifactRoutesDeps
-  extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore'> {
-  authorizeProjectRequest: AuthorizeProjectRequest;
-}
+  extends RouteDeps<'db' | 'http' | 'paths' | 'projectStore'> {}
 
 /** Mime types safe to hand a browser inline from the app's own origin. */
 const INLINE_SAFE_MIME = /^(?:image\/(?:png|jpeg|gif|webp|avif)|video\/[a-z0-9.+-]+|audio\/[a-z0-9.+-]+)$/iu;
@@ -44,32 +40,25 @@ export function registerProjectChatArtifactRoutes(
   app: Express,
   ctx: RegisterProjectChatArtifactRoutesDeps,
 ): void {
-  const { db, authorizeProjectRequest } = ctx;
+  const { db } = ctx;
   const { sendApiError } = ctx.http;
   const { RUNTIME_DATA_DIR } = ctx.paths;
   const { getProject } = ctx.projectStore;
   const blobs = createChatArtifactBlobStore({ dataDir: RUNTIME_DATA_DIR });
 
   /**
-   * Shared read gate. Returns false once it has already answered the request.
-   * Deliberately identical in shape to the `/raw` chain so snapshot bytes can
-   * never be reachable under weaker authority than the file they came from.
+   * 共享读门禁：项目存在即可读。
+   *
+   * 原先这里在项目查找之后还会跑一次工作区读授权与 Team 镜像吊销检查；
+   * 这两者都属于已移除的云协作链路。返回 false 时响应已写出。
    */
   async function authorizeRead(
-    req: Request,
+    _req: Request,
     res: Response,
     projectId: string,
   ): Promise<boolean> {
     const project = getProject(db, projectId);
     if (!project) {
-      sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
-      return false;
-    }
-    if (!await authorizeProjectRequest(req, res, projectId, {
-      mode: 'read',
-      allowNavigationQuery: true,
-    })) return false;
-    if (project?.metadata?.teamMirrorRevokedAt) {
       sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       return false;
     }

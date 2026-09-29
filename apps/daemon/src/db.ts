@@ -23,14 +23,7 @@ import {
   stripDoneMarkers,
   stripNextStepMarkers,
 } from '@open-design/contracts';
-import { migrateCollabSyncSnapshots } from './collab/sync-snapshot-store.js';
-import { migrateCommentRelayOutbox } from './collab/comment-relay-outbox.js';
-import { migratePublicFilePublications } from './collab/public-file-publication-store.js';
 import { migrateAmrTerminalReportOutbox } from './storage/amr-terminal-report-outbox.js';
-import {
-  collapseWorkspaceProjectHomes,
-  type WorkspaceProjectHomeRow,
-} from './collab/workspace-project-home.js';
 import { scrubDsmlToolProtocolTail } from './artifacts/text-suppression.js';
 import {
   listMessageArtifactRows,
@@ -109,7 +102,8 @@ function migrate(db: SqliteDb): void {
     );
 
     -- A project belongs to exactly ONE workspace, so project_id is the key.
-    -- See collab/workspace-project-home.ts for the ruling and the repair path.
+    -- The narrowing migration and the rule that picks the surviving row live in
+    -- migrateWorkspaceProjectsSingleHome below.
     CREATE TABLE IF NOT EXISTS workspace_projects (
       project_id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,
@@ -154,8 +148,7 @@ function migrate(db: SqliteDb): void {
     -- planned follow-ups — see specs/current for the phased rollout). Same
     -- "binding envelope" columns as workspace_projects, parameterized by
     -- resource_type so one CRUD layer (see getWorkspaceResource and friends
-    -- below) and one mutation gate (collab/workspace-resource-mutation.ts)
-    -- serve every resource type instead of forking per type.
+    -- below) serves every resource type instead of forking per type.
     --
     -- Unlike workspace_projects, resource_id has no FOREIGN KEY here: which
     -- table it points at depends on resource_type, and SQLite has no
@@ -621,67 +614,106 @@ function migrate(db: SqliteDb): void {
   migrateProjectScenarioBindings(db);
   migrateStrategyTaskStore(db);
   migrateChatArtifacts(db);
-  migrateCollabSyncSnapshots(db);
-  migrateCommentRelayOutbox(db);
   migrateAmrTerminalReportOutbox(db);
-  migratePublicFilePublications(db);
 }
 
 /**
- * Bind every project to exactly ONE workspace, and make any other state
- * unrepresentable.
+ * `workspace_projects` 的一行，只保留判断「项目归属哪个工作区」所需的字段。
  *
- * Product ruling (2026-07-21): a project is created in a workspace and lives
- * there; sharing flips `visibility` within that workspace rather than projecting
- * the project into a second one. See collab/workspace-project-home.ts for the
- * full statement and for the rule that picks the surviving row.
+ * 原接口定义在已删除的 `collab/workspace-project-home.ts`，云协作摘除后
+ * 只被下面的旧库去重迁移使用，因此就近声明。
+ */
+interface WorkspaceProjectHomeRow {
+  projectId: string;
+  workspaceId: string;
+  visibility?: string | null;
+  createdByWorkspaceMemberId?: string | null;
+  createdAt?: number | null;
+}
+
+/**
+ * 从同一项目的多行旧绑定里挑出应当保留的一行。
  *
- * Two steps, in this order, inside one transaction:
- *   1. collapse the duplicate rows an older build's blanket back-fill wrote —
- *      on the dogfood database 23 of 31 projects had rows in 2-4 workspaces;
- *   2. narrow the primary key from `(workspace_id, project_id)` back to
- *      `project_id`, which is what it was before a migration widened it (the
- *      table it renamed was called `workspace_projects_legacy_single_project`).
+ * 证据强弱：`team` 绑定（曾经分享过，删掉会让资源成为孤儿）> 记录了创建者的
+ * 行 > 无主的回填行；同级按创建时间早者优先，最后按 workspace id 兜底，保证
+ * 结果是确定的。挑选只针对多余的绑定行，`projects` 表本身不受影响。
+ */
+function pickWorkspaceProjectHomeRow(
+  rows: readonly WorkspaceProjectHomeRow[],
+): WorkspaceProjectHomeRow | undefined {
+  const rank = (row: WorkspaceProjectHomeRow): number => {
+    if (row.visibility === 'team') return 2;
+    return row.createdByWorkspaceMemberId == null ? 0 : 1;
+  };
+  return rows.reduce<WorkspaceProjectHomeRow | undefined>((best, row) => {
+    if (!best) return row;
+    if (rank(row) !== rank(best)) return rank(row) > rank(best) ? row : best;
+    if ((row.createdAt ?? 0) !== (best.createdAt ?? 0)) {
+      return (row.createdAt ?? 0) < (best.createdAt ?? 0) ? row : best;
+    }
+    return row.workspaceId < best.workspaceId ? row : best;
+  }, undefined);
+}
+
+/**
+ * 删除同一项目多余的 `workspace_projects` 行，返回删除条数。
  *
- * The order matters: the rebuild's INSERT would fail on the narrowed key if the
- * duplicates were still there. Step 1 therefore runs on every startup, not just
- * on the one that narrows the key, so a row that predates this build is repaired
- * even if the key was already narrow. It is idempotent and costs one indexed
- * scan.
+ * 旧版本的工作区回填会给每个项目在多个工作区各写一行；新表以 project_id
+ * 为主键，必须先收敛这些重复行，主键收窄的 INSERT 才不会撞唯一约束。
+ */
+function dropDuplicateWorkspaceProjectRows(db: SqliteDb): number {
+  const rows = db
+    .prepare(
+      `SELECT project_id AS projectId,
+              workspace_id AS workspaceId,
+              visibility,
+              created_by_workspace_member_id AS createdByWorkspaceMemberId,
+              created_at AS createdAt
+         FROM workspace_projects`,
+    )
+    .all() as WorkspaceProjectHomeRow[];
+  const byProject = new Map<string, WorkspaceProjectHomeRow[]>();
+  for (const row of rows) {
+    const bucket = byProject.get(row.projectId);
+    if (bucket) bucket.push(row);
+    else byProject.set(row.projectId, [row]);
+  }
+  const drop = db.prepare(
+    `DELETE FROM workspace_projects WHERE workspace_id = ? AND project_id = ?`,
+  );
+  let dropped = 0;
+  for (const [projectId, projectRows] of byProject) {
+    const keep = pickWorkspaceProjectHomeRow(projectRows);
+    for (const row of projectRows) {
+      if (row === keep) continue;
+      drop.run(row.workspaceId, projectId);
+      dropped += 1;
+    }
+  }
+  return dropped;
+}
+
+/**
+ * 让每个项目只留下一行工作区绑定，并让「多行」在 schema 层无法表达。
  *
- * A migration rather than the startup reconciliation used for impossible team
- * shares (server.ts `reconcileImpossibleTeamShares`): that one needs the
- * workspace DIRECTORY to decide, which is a signed-in network fact, so it cannot
- * run before the first read. This one decides from the table alone, so it can —
- * and it must, because the read path below now assumes at most one row.
+ * 产品裁定（2026-07-21）：项目在工作区里创建、留在那里；分享只是在同一个
+ * 工作区内翻转 `visibility`，而不会把项目投影到第二个工作区。云协作链路
+ * 摘除后，工作区不再参与可见性判定，但历史库里由旧版回填写下的重复绑定行
+ * 仍然必须收敛，否则主键收窄会失败。
+ *
+ * 一个事务内两步，顺序不可颠倒：
+ *   1. 收敛旧版「全量回填」写下的重复行——dogfood 库里 31 个项目中有 23 个
+ *      在 2-4 个工作区各留了一行；
+ *   2. 把主键从 `(workspace_id, project_id)` 收窄回 `project_id`，也就是它
+ *      被某次迁移放宽之前的样子（当时那张表叫
+ *      `workspace_projects_legacy_single_project`）。
+ *
+ * 顺序很关键：若重复行还在，重建表的 INSERT 会撞上收窄后的唯一约束。因此第
+ * 一步在每次启动都跑，而不是只在收窄主键的那一次跑；它幂等，代价是一次带
+ * 索引的扫描。
  */
 function migrateWorkspaceProjectsSingleHome(db: SqliteDb): void {
-  const collapse = db.transaction(() => {
-    const rows = db
-      .prepare(
-        `SELECT project_id AS projectId,
-                workspace_id AS workspaceId,
-                visibility,
-                created_by_workspace_member_id AS createdByWorkspaceMemberId,
-                created_at AS createdAt
-           FROM workspace_projects`,
-      )
-      .all() as WorkspaceProjectHomeRow[];
-    const decisions = collapseWorkspaceProjectHomes(rows);
-    if (decisions.length === 0) return 0;
-    const drop = db.prepare(
-      `DELETE FROM workspace_projects WHERE workspace_id = ? AND project_id = ?`,
-    );
-    let dropped = 0;
-    for (const decision of decisions) {
-      for (const row of decision.drop) {
-        drop.run(row.workspaceId, row.projectId);
-        dropped += 1;
-      }
-    }
-    return dropped;
-  });
-  const dropped = collapse();
+  const dropped = db.transaction(() => dropDuplicateWorkspaceProjectRows(db))();
   if (dropped > 0) {
     console.warn(
       `[od] bound ${dropped} duplicated workspace project row(s) to a single workspace each. ` +
@@ -1214,7 +1246,8 @@ export function setWorkspaceProjectMetadataRefreshPending(
 /**
  * The workspace a project belongs to, looked up by project alone.
  *
- * A project has exactly one workspace (see collab/workspace-project-home.ts), so
+ * A project has exactly one workspace (enforced by
+ * `migrateWorkspaceProjectsSingleHome` above), so
  * this — not `getWorkspaceProject(db, workspaceId, projectId)` — is the question
  * to ask before binding a project anywhere. Asking the two-key form and getting
  * nothing back means "not in THIS workspace", which an older build mistook for

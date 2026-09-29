@@ -18,10 +18,6 @@ import {
 } from '../media/models.js';
 import type { ImageGenerationRequestSummary } from '../media/image-generation-retry.js';
 import type { RouteDeps } from '../server-context.js';
-import type {
-  AuthorizeProjectRequest,
-  AuthorizeProjectToolRequest,
-} from '../collab/project-request-authority.js';
 import { proxyDispatcherRequestInit } from '../connectionTest.js';
 import {
   aihubmixCatalogUrl,
@@ -178,10 +174,7 @@ function mediaProviderId(model: string): string | undefined {
 const AIHUBMIX_CATALOG_TTL_MS = 5 * 60 * 1000;
 const aihubmixCatalogCache = new Map<string, { at: number; models: Array<{ id: string; label: string }> }>();
 
-export interface RegisterMediaRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'ids' | 'auth' | 'media' | 'appConfig' | 'orbit' | 'nativeDialogs' | 'projectStore' | 'projectFiles' | 'conversations' | 'research'> {
-  authorizeProjectRequest: AuthorizeProjectRequest;
-  authorizeProjectToolRequest: AuthorizeProjectToolRequest;
-}
+export interface RegisterMediaRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'ids' | 'auth' | 'media' | 'appConfig' | 'orbit' | 'nativeDialogs' | 'projectStore' | 'projectFiles' | 'conversations' | 'research'> {}
 
 export type LegacyMediaRouteGrantDecision =
   | { ok: true; grant: ToolTokenGrant | null }
@@ -1017,12 +1010,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      if (!await ctx.authorizeProjectRequest(
-        req,
-        res,
-        project.id,
-        { mode: 'write', capability: 'writeFiles' },
-      )) return;
       await handleHyperFramesScaffold(req, res, project.id);
     } catch (err: any) {
       const status = typeof err?.status === 'number' ? err.status : 400;
@@ -1039,11 +1026,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     });
     if (!grant) return;
     try {
-      if (!await ctx.authorizeProjectToolRequest(
-        res,
-        grant.projectId,
-        { mode: 'write', capability: 'writeFiles' },
-      )) return;
       await handleHyperFramesScaffold(req, res, grant.projectId);
     } catch (err: any) {
       const status = typeof err?.status === 'number' ? err.status : 400;
@@ -1067,12 +1049,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       if (!project) {
         return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      if (!await ctx.authorizeProjectRequest(
-        req,
-        res,
-        project.id,
-        { mode: 'write', capability: 'writeFiles' },
-      )) return;
       const grant = optionalToolGrantFromRequest(req, { operation: 'media:generate' });
       const grantDecision = resolveLegacyMediaRouteGrant({
         grant,
@@ -1103,11 +1079,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     const grant = authorizeToolRequest(req, res, 'media:generate');
     if (!grant) return;
     try {
-      if (!await ctx.authorizeProjectToolRequest(
-        res,
-        grant.projectId,
-        { mode: 'write', capability: 'writeFiles' },
-      )) return;
       await handleGenerate(req, res, { projectId: grant.projectId, grant });
     } catch (err: any) {
       const status = typeof err?.status === 'number' ? err.status : 400;
@@ -1187,14 +1158,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
         )
       : null;
     if (usesToolTokenLane && !toolGrant) return;
-    if (
-      toolGrant
-      && !await ctx.authorizeProjectToolRequest(
-        res,
-        toolGrant.projectId,
-        { mode: 'read' },
-      )
-    ) return;
 
     // Token callers must prove their grant targets the persisted local project
     // before task lookup; cloud availability is irrelevant to this local wait.
@@ -1210,13 +1173,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
           'media task belongs to a different project',
         );
       }
-    } else if (!await ctx.authorizeProjectRequest(
-      req,
-      res,
-      task.projectId,
-      { mode: 'read' },
-    )) {
-      return;
     }
 
     const since = Number.isFinite(req.body?.since) ? Number(req.body.since) : 0;
@@ -1261,7 +1217,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     if (!project) {
       return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
     }
-    if (!await ctx.authorizeProjectRequest(req, res, projectId, { mode: 'read' })) return;
     const includeDone =
       req.query.includeDone === '1' || req.query.includeDone === 'true';
     const taskRows = listMediaTasksByProject(db, projectId, {

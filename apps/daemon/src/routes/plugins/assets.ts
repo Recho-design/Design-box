@@ -1,15 +1,9 @@
 import type { Express, Request, Response } from 'express';
 import type * as BetterSqlite3 from 'better-sqlite3';
 import path from 'node:path';
-import type { WorkspaceCollabContext } from '@open-design/contracts';
-import {
-  resolveOptionalLocalWorkspaceRequestAuthority,
-  type VerifyWorkspaceRequestAuthority,
-} from '../../collab/workspace-resource-mutation.js';
 
 export interface RegisterPluginAssetRoutesDeps {
   db: PluginDbLike;
-  verifyWorkspaceRequestAuthority?: VerifyWorkspaceRequestAuthority;
   getWorkspacePlugin?: (
     db: PluginDbLike,
     id: string,
@@ -50,86 +44,25 @@ interface InstalledPluginLike {
 export function registerPluginAssetRoutes(app: Express, deps: RegisterPluginAssetRoutesDeps): void {
   const { db, pluginAssetCache, AssetCacheError, assetCacheRewriteUrl, isCacheableExternalUrl, assembleExample } = deps;
   const routeParam = (value: string | string[] | undefined): string => Array.isArray(value) ? value[0] ?? '' : value ?? '';
-  const requestWithNavigationScope = (req: Request): Request | 'conflict' => {
-    const workspaceId = typeof req.query.workspaceId === 'string'
-      ? req.query.workspaceId.trim()
-      : '';
-    const workspaceMemberId = typeof req.query.workspaceMemberId === 'string'
-      ? req.query.workspaceMemberId.trim()
-      : '';
-    if (!workspaceId && !workspaceMemberId) return req;
-    const headerWorkspaceId = req.get('x-od-workspace-id')?.trim() ?? '';
-    const headerWorkspaceMemberId =
-      req.get('x-od-workspace-member-id')?.trim() ?? '';
-    if (
-      (headerWorkspaceId || headerWorkspaceMemberId)
-      && (
-        headerWorkspaceId !== workspaceId
-        || headerWorkspaceMemberId !== workspaceMemberId
-      )
-    ) {
-      return 'conflict';
-    }
-    return {
-      get(name: string) {
-        const normalized = name.toLowerCase();
-        if (normalized === 'x-od-workspace-id') return workspaceId || undefined;
-        if (normalized === 'x-od-workspace-member-id') {
-          return workspaceMemberId || undefined;
-        }
-        return req.get(name);
-      },
-    } as Request;
-  };
-  const resolveWorkspaceAuthority = async (
-    req: Request,
-    res: Response,
-  ): Promise<WorkspaceCollabContext | null | undefined> => {
-    const scopedRequest = requestWithNavigationScope(req);
-    if (scopedRequest === 'conflict') {
-      res.status(400).json({
-        error: 'WORKSPACE_CONTEXT_CONFLICT',
-        message: 'workspace header and navigation scope must match',
-      });
-      return undefined;
-    }
-    const authority = resolveOptionalLocalWorkspaceRequestAuthority(scopedRequest);
-    if (!authority.ok) {
-      res.status(authority.status).json({
-        error: authority.code,
-        message: authority.message,
-        ...(authority.retryable ? { retryable: true } : {}),
-      });
-      return undefined;
-    }
-    return authority.context;
-  };
+  /**
+   * 解析本机已安装插件。
+   *
+   * 云协作（Team/Workspace 分区）链路已移除，这里不再带工作区身份读取，
+   * 只按本地插件目录解析；`getWorkspacePlugin` 的 workspace 参数固定传 null。
+   */
   const resolvePlugin = async (
     id: string,
-    authority: WorkspaceCollabContext | null,
   ): Promise<InstalledPluginLike | null> => {
     if (deps.getWorkspacePlugin) {
-      return deps.getWorkspacePlugin(
-        db,
-        id,
-        authority?.workspaceId ?? null,
-        authority?.workspaceMemberId ?? null,
-      );
+      return deps.getWorkspacePlugin(db, id, null, null);
     }
     const { getInstalledPlugin } = await import('../../plugins/index.js');
     return getInstalledPlugin(db, id) as InstalledPluginLike | null;
   };
-  const navigationScopeQuery = (
-    authority: WorkspaceCollabContext | null,
-  ): string => authority
-    ? `?workspaceId=${encodeURIComponent(authority.workspaceId)}&workspaceMemberId=${encodeURIComponent(authority.workspaceMemberId)}`
-    : '';
 
   async function servePluginSandboxedHtml(req: Request, res: Response, pickCandidates: (plugin: InstalledPluginLike) => Promise<string[]> | string[]) {
     try {
-      const authority = await resolveWorkspaceAuthority(req, res);
-      if (authority === undefined) return;
-      const plugin = await resolvePlugin(routeParam(req.params.id), authority);
+      const plugin = await resolvePlugin(routeParam(req.params.id));
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       const candidates = (await pickCandidates(plugin)).filter((p): p is string => typeof p === 'string' && p.length > 0);
       const fsp = await import('node:fs/promises');
@@ -203,7 +136,6 @@ export function registerPluginAssetRoutes(app: Express, deps: RegisterPluginAsse
             buf.toString('utf8'),
             routeParam(req.params.id),
             path.posix.dirname(contentRel.replace(/\\/g, '/')),
-            navigationScopeQuery(authority),
           ),
           'utf8',
         );
@@ -335,9 +267,7 @@ export function registerPluginAssetRoutes(app: Express, deps: RegisterPluginAsse
   });
   app.get('/api/plugins/:id/asset/*splat', async (req, res) => {
     try {
-      const authority = await resolveWorkspaceAuthority(req, res);
-      if (authority === undefined) return;
-      const plugin = await resolvePlugin(routeParam(req.params.id), authority);
+      const plugin = await resolvePlugin(routeParam(req.params.id));
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       const splatParam = req.params.splat;
       const relpath = Array.isArray(splatParam) ? splatParam.join('/') : String(splatParam ?? '');

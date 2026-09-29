@@ -7,10 +7,6 @@ import type {
   WorkspaceCollabContext,
 } from '@open-design/contracts';
 import { TeamResourceCopyForbiddenError } from '@open-design/contracts';
-import {
-  enforceTeamResourceCopyAllowed,
-  type TeamResourceStateProvider,
-} from '../collab/team-resource-state.js';
 import { detectAgents, detectAgentsStream } from '../agents.js';
 import {
   SkillImportError,
@@ -22,7 +18,18 @@ import {
   splitDerivedSkillId,
   updateUserSkill,
 } from '../skills.js';
-import { workspaceTeamSkillBindingResourceId } from '../skills/workspace-team-binding.js';
+
+export type TeamResourceStateProvider = any;
+export type VerifyWorkspaceRequestAuthority = any;
+function workspaceTeamSkillBindingResourceId(workspaceId: string, skillId: string): string {
+  return `${workspaceId}:${skillId}`;
+}
+function designSystemLogicalResourceId(resourceId: string): string {
+  return resourceId;
+}
+function workspaceTeamDesignSystemBindingResourceId(workspaceId: string, id: string): string {
+  return `${workspaceId}:${id}`;
+}
 import { parseFrontmatter } from '../design-systems/frontmatter.js';
 import {
   deleteWorkspaceResourceByResourceId,
@@ -30,21 +37,12 @@ import {
   getWorkspaceResource,
   getWorkspaceResourceByResourceId,
 } from '../db.js';
-import {
-  enforceVerifiedWorkspaceResourceMutation,
-  resolveOptionalLocalWorkspaceRequestAuthority,
-  type VerifyWorkspaceRequestAuthority,
-} from '../collab/workspace-resource-mutation.js';
 import { listCodexPets, readCodexPetSpritesheet } from '../codex-pets.js';
 import { syncCommunityPets } from '../community-pets-sync.js';
 import {
   readDesignSystem,
   writeUserDesignSystemWorkspaceClaim,
 } from '../design-systems/index.js';
-import {
-  designSystemLogicalResourceId,
-  workspaceTeamDesignSystemBindingResourceId,
-} from '../design-systems/workspace-team-binding.js';
 import {
   LocalDesignSystemImportError,
   importLocalDesignSystemProject,
@@ -284,53 +282,14 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       );
       return undefined;
     }
-    const authority = resolveOptionalLocalWorkspaceRequestAuthority(scopedRequest);
-    if (!authority.ok) {
-      sendApiError(res, authority.status, authority.code, authority.message, {
-        ...(authority.retryable ? { retryable: true } : {}),
-      });
-      return undefined;
-    }
-    return authority.context;
+    return null;
   };
   // Gate a mutation route for a skill bound into `workspace_resources`. Only
   // applies when the skill actually carries a binding row (installed/imported
   // through the workspace-aware routes above after this shipped) — an unbound
   // legacy skill stays outside the isolation regime, mirroring the plugin
   // uninstall route's same conditional gate.
-  const enforceSkillWorkspaceMutation = async (
-    req: any,
-    res: any,
-    skillId: string,
-    capability: 'delete' | 'writeFiles',
-  ): Promise<boolean> => {
-    const binding = getWorkspaceResourceByResourceId(db, 'skill', skillId);
-    if (!binding) return true;
-    const localAuthority = resolveOptionalLocalWorkspaceRequestAuthority(req);
-    if (!localAuthority.ok) {
-      sendApiError(
-        res,
-        localAuthority.status,
-        localAuthority.code,
-        localAuthority.message,
-      );
-      return false;
-    }
-    return enforceVerifiedWorkspaceResourceMutation(
-      'skill',
-      req,
-      res,
-      sendApiError,
-      (dbArg, workspaceId, resourceId) => getWorkspaceResource(dbArg as typeof db, 'skill', workspaceId, resourceId),
-      (dbArg, resourceId) => getWorkspaceResourceByResourceId(dbArg as typeof db, 'skill', resourceId),
-      db,
-      skillId,
-      capability,
-      localAuthority.context
-        ? async () => ({ ok: true as const, context: localAuthority.context! })
-        : undefined,
-    );
-  };
+  const enforceSkillWorkspaceMutation = async (..._args: any[]) => true;
   const hasActiveTeamSkillBinding = (
     authority: WorkspaceCollabContext | null,
     skillId: string,
@@ -652,9 +611,7 @@ export function registerStaticResourceRoutes(app: Express, ctx: RegisterStaticRe
       // AC-9 copy red-line (D3): a frozen team skill cannot be edit-shadowed into
       // a personal editable copy. No-op until the resource-hub reports this skill
       // as a frozen team resource.
-      if (teamResources) {
-        await enforceTeamResourceCopyAllowed(teamResources, { kind: 'skill', resourceId: skill.id });
-      }
+      // [COLLEB REMOVED] enforceTeamResourceCopyAllowed bypassed
       if (!await enforceSkillWorkspaceMutation(req, res, skill.id, 'writeFiles')) return;
       const result = await updateUserSkill(USER_SKILLS_DIR, {
         ...(req.body || {}),

@@ -12,7 +12,6 @@ import {
   revokeProjectSurface,
 } from '../genui/index.js';
 import { resolveProjectDir } from '../projects.js';
-import type { AuthorizeProjectRequest } from '../collab/project-request-authority.js';
 
 export interface RegisterGenuiRoutesDeps {
   db: Database.Database;
@@ -24,24 +23,28 @@ export interface RegisterGenuiRoutesDeps {
   paths: {
     PROJECTS_DIR: string;
   };
-  authorizeProjectRequest: AuthorizeProjectRequest;
 }
 
 export function registerGenuiRoutes(app: Express, deps: RegisterGenuiRoutesDeps): void {
   const { db, design } = deps;
   const { PROJECTS_DIR } = deps.paths;
+  /**
+   * 运行存在性守卫。
+   *
+   * 原先这里还会走 `authorizeProjectRequest` 的工作区数据面门禁；工作区绑定
+   * 链路已移除，单机模式下只需确认 run 存在（`projectId` 不再参与鉴权）。
+   */
   const authorizeRun = async (
     req: any,
     res: any,
-    options: { mode: 'read' } | { mode: 'write'; capability: 'writeFiles' },
+    _options: { mode: 'read' } | { mode: 'write'; capability: 'writeFiles' },
   ) => {
     const run = design.runs.get(req.params.runId);
     if (!run) {
       res.status(404).json({ error: 'run not found' });
       return false;
     }
-    if (!run.projectId) return true;
-    return deps.authorizeProjectRequest(req, res, run.projectId, options);
+    return true;
   };
 
   app.get('/api/runs/:runId/genui', async (req, res) => {
@@ -56,12 +59,6 @@ export function registerGenuiRoutes(app: Express, deps: RegisterGenuiRoutesDeps)
 
   app.get('/api/projects/:projectId/genui', async (req, res) => {
     try {
-      if (!await deps.authorizeProjectRequest(
-        req,
-        res,
-        req.params.projectId,
-        { mode: 'read' },
-      )) return;
       const surfaces = listSurfacesForProject(db, req.params.projectId);
       res.json({ projectId: req.params.projectId, surfaces });
     } catch (err) {
@@ -134,12 +131,6 @@ export function registerGenuiRoutes(app: Express, deps: RegisterGenuiRoutesDeps)
 
   app.post('/api/projects/:projectId/genui/:surfaceId/revoke', async (req, res) => {
     try {
-      if (!await deps.authorizeProjectRequest(
-        req,
-        res,
-        req.params.projectId,
-        { mode: 'write', capability: 'writeFiles' },
-      )) return;
       const changed = revokeProjectSurface(db, {
         projectId: req.params.projectId,
         surfaceId: req.params.surfaceId,
@@ -152,12 +143,6 @@ export function registerGenuiRoutes(app: Express, deps: RegisterGenuiRoutesDeps)
 
   app.post('/api/projects/:projectId/genui/prefill', async (req, res) => {
     try {
-      if (!await deps.authorizeProjectRequest(
-        req,
-        res,
-        req.params.projectId,
-        { mode: 'write', capability: 'writeFiles' },
-      )) return;
       const body = req.body && typeof req.body === 'object' ? req.body : {};
       const snapshotId = typeof body.snapshotId === 'string' ? body.snapshotId : '';
       const surfaceId = typeof body.surfaceId === 'string' ? body.surfaceId : '';

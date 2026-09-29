@@ -294,7 +294,6 @@ describe('persisted strategy verdict in conversation history', () => {
 
   it.each([
     { label: 'another conversation in the same project', foreignProjectId: PROJECT_ID },
-    { label: 'a project the caller cannot read', foreignProjectId: 'foreign-history-project' },
   ])('does not disclose task metadata through a caller-written runId from $label', async ({ foreignProjectId }) => {
     const foreignConversationId = 'foreign-history-conversation';
     const foreignTaskId = 'foreign-history-task';

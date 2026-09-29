@@ -24,13 +24,11 @@ import {
 import { parseFrontmatter } from './frontmatter.js';
 import type { FrontmatterObject, FrontmatterValue } from './frontmatter.js';
 import { extractSwiftColors } from './swift-colors.js';
-import { workspaceTeamDesignSystemBindingResourceId } from './workspace-team-binding.js';
 import {
   ensureWorkspaceResource,
   getWorkspaceResourceByResourceId,
   updateWorkspaceResource,
 } from '../db.js';
-import { teamResourceWorkspaceRoot } from '../collab/team-resource-materialization.js';
 
 type SqliteDb = Database.Database;
 
@@ -1419,21 +1417,18 @@ export function workspaceRenameDesignSystemId(project: {
 export type WorkspaceRenamePropagation = 'not-applicable' | 'propagated' | 'failed';
 
 /**
- * A Team design-system workspace project edits the workspace-scoped
- * materialization, never a same-id Personal canonical entry. The persisted
- * project binding is the scope authority; shell/current Workspace state is
- * deliberately irrelevant.
+ * 设计体系的读取根目录。
+ *
+ * 原实现会在项目绑定指向 Team 镜像时改读到
+ * `<root>/.team-workspaces/<hash>` 下的物化副本。Team 工作区分区已随
+ * 云协作链路摘除，本机只剩一份规范目录，因此始终返回 `canonicalRoot`；
+ * 参数保留是为了不打断既有调用点。
  */
 export function resolveWorkspaceProjectDesignSystemRoot(
   canonicalRoot: string,
-  binding: { workspaceId?: unknown; visibility?: unknown } | null | undefined,
+  _binding?: { workspaceId?: unknown; visibility?: unknown } | null,
 ): string {
-  const workspaceId = typeof binding?.workspaceId === 'string'
-    ? binding.workspaceId.trim()
-    : '';
-  return binding?.visibility === 'team' && workspaceId
-    ? teamResourceWorkspaceRoot(canonicalRoot, workspaceId)
-    : canonicalRoot;
+  return canonicalRoot;
 }
 
 export async function propagateWorkspaceProjectRename(
@@ -1678,9 +1673,11 @@ export async function backfillDesignSystemWorkspaceResources(
         }
       }
     }
-    const bindingResourceId = metadata.teamSynced === true && workspaceId
-      ? workspaceTeamDesignSystemBindingResourceId(workspaceId, id)
-      : id;
+    // 设计体系的绑定键在本机就是逻辑 id。原实现在 `teamSynced` 为真时会把
+    // 键改写成 Team 镜像限定的 `team-mirror:<workspace>:<id>`；Team 工作区
+    // 分区已随云协作链路摘除，旧的镜像目录不再被识别，因此这里一律用 id，
+    // 让历史上被镜像过的条目回落到本地绑定。
+    const bindingResourceId = id;
     const existing = getWorkspaceResourceByResourceId(
       db,
       'design_system',

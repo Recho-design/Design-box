@@ -119,49 +119,193 @@ import { auditDesignSystemPackage } from '../../tools-connectors-cli.js';
 import { parseOrchestratorWorkspace } from '../../workspace-contract.js';
 import { registerProjectConversationRoutes } from './conversations.js';
 import { workspaceProjectGroupCountProperties } from './analytics.js';
-import type { ProjectCommentWorkspaceContextResolution } from './comments.js';
 import {
   projectResourceIdFor,
   velaProjectSyncStateToProject,
+  type ResourceHubPrincipal,
   type VelaTeamProjectCatalogClient,
   type VelaTeamProjectRecord,
 } from '../../integrations/vela-team-projects.js';
-import type { ResourceHubPrincipal } from '../../collab/resource-principal.js';
-import {
-  refuseTeamShareScope,
-  type TeamShareScopeRefusal,
-  type WorkspaceTypeRegistry,
-} from '../../collab/team-share-scope.js';
-import {
-  headerValue,
-  isWorkspaceResourceLocked as isWorkspaceLocked,
-  workspaceResourceAccess,
-  workspaceResourceContext as workspaceProjectContext,
-  workspaceResourceContextFromRequest as workspaceProjectContextFromRequest,
-  workspaceResourceContextFromVerified,
-  type VerifyWorkspaceRequestAuthority,
-  type WorkspaceResourceAccessInput,
-  type WorkspaceResourceContext,
-  type WorkspaceResourceMutationCapability,
-} from '../../collab/workspace-resource-mutation.js';
-import {
-  resolveLocalProjectWorkspaceScope,
-} from '../../collab/project-workspace-scope.js';
-import {
-  createAuthorizeProjectRequest,
-  enforceLocalProjectDataPlaneRequest,
-  type AuthorizeProjectRequest,
-} from '../../collab/project-request-authority.js';
-import {
-  bindCreatedProjectToWorkspace,
-  createCreatedProjectWorkspaceResolver,
-  CreatedProjectWorkspaceResolutionError,
-  localProjectWorkspaceAttribution,
-  type CreatedProjectWorkspaceResolver,
-} from '../../collab/created-project-workspace.js';
 import { localPluginRegistryScope } from '../../plugins/local-source.js';
-import type { WorkspaceDirectoryFetchResult } from '../../collab/vela-workspace-context.js';
 import { cancelRunsOwnedBy } from './cancel-owned-runs.js';
+
+export type { ResourceHubPrincipal };
+
+export type ProjectCommentWorkspaceContextResolution =
+  | { ok: true; context: WorkspaceCollabContext; principal: ResourceHubPrincipal }
+  | { ok: false; status: number; code: string; message: string; retryable?: boolean };
+
+export type TeamShareScopeRefusal = { status: number; code: string; message: string };
+
+export type WorkspaceTypeRegistry = {
+  learn: (info: any) => void;
+  isTeam?: (id?: string | null) => boolean;
+  isKnownPersonal: (id?: string | null) => boolean;
+  typeOf: (id?: string | null) => string | null;
+  [key: string]: any;
+};
+
+function refuseTeamShareScope(..._args: any[]): TeamShareScopeRefusal | null { return null; }
+
+export function headerValue(req: any, name: string): string | null {
+  const val = req?.headers?.[name.toLowerCase()];
+  if (Array.isArray(val)) return val[0] ?? null;
+  return typeof val === 'string' ? val : null;
+}
+
+/** 阶段2 摘除：本地单用户环境下工作区永久处于非锁定状态 */
+export function isWorkspaceLocked(_ctx?: WorkspaceResourceContext | null): boolean {
+  return false;
+}
+
+export type WorkspaceResourceAccessResult = {
+  frozen: boolean;
+  selfCreated: boolean;
+  canMutate: boolean;
+  canShareLocal: boolean;
+  disabledReason?: string;
+};
+
+/** 阶段2 摘除：本地单用户环境下资源默认具有全部操作权限 */
+export function workspaceResourceAccess(
+  _resource?: unknown,
+  _context?: WorkspaceResourceContext | null,
+): WorkspaceResourceAccessResult {
+  return {
+    frozen: false,
+    selfCreated: true,
+    canMutate: true,
+    canShareLocal: false,
+  };
+}
+
+export type WorkspaceResourceContext = {
+  workspaceId: string;
+  workspaceMemberId: string;
+  workspaceTypeAsserted?: string;
+  workspaceType?: WorkspaceCollabContext['workspaceType'];
+  role: WorkspaceCollabContext['role'];
+  memberStatus: string;
+  lifecycleState: WorkspaceCollabContext['lifecycleState'];
+  canShareProjects: boolean;
+  canWriteSyncedFiles: boolean;
+  [key: string]: any;
+};
+
+/** 阶段2 摘除：本地单用户环境下工作区上下文为空（无云协作权威层） */
+export function workspaceProjectContext(
+  _req?: Request | any,
+  _expectedWorkspaceId?: string,
+): WorkspaceResourceContext | null {
+  return null;
+}
+
+export function workspaceProjectContextFromRequest(
+  _req?: Request | any,
+): WorkspaceResourceContext | 'missing' | null {
+  return null;
+}
+
+export function workspaceResourceContextFromVerified(
+  _verifiedContext?: unknown,
+): WorkspaceResourceContext | null {
+  return null;
+}
+
+export type VerifyWorkspaceRequestAuthority = (
+  req: Request | any,
+  options?: { fresh?: boolean },
+) => Promise<
+  | { ok: true; context: WorkspaceResourceContext }
+  | { ok: false; status?: number; code?: string; message?: string }
+>;
+
+export type WorkspaceResourceAccessInput = {
+  workspaceId?: string;
+  workspaceMemberId?: string;
+  role?: string;
+  visibility?: string;
+  resourceState?: string;
+  createdByWorkspaceMemberId?: string;
+  [key: string]: any;
+};
+
+export type WorkspaceResourceMutationCapability = string | { canMutate?: boolean; reason?: string };
+
+/** 阶段2 摘除：本地模式下项目默认处于 unbound 作用域 */
+export function resolveLocalProjectWorkspaceScope(
+  input?: { projectId?: string; [key: string]: any },
+): { kind: 'unbound'; projectId: string; workspaceId: null; context: null } {
+  return {
+    kind: 'unbound',
+    projectId: input?.projectId ?? '',
+    workspaceId: null,
+    context: null,
+  };
+}
+
+export type AuthorizeProjectRequest = (
+  req: Request | any,
+  res: Response | any,
+  projectId: string,
+  options?: { mode?: 'read' | 'write' | 'writeFiles'; capability?: unknown; allowNavigationQuery?: boolean },
+) => Promise<boolean>;
+
+/** 阶段2 摘除：本地模式下直接放行项目鉴权请求 */
+export function createAuthorizeProjectRequest(_deps?: unknown): AuthorizeProjectRequest {
+  return async () => true;
+}
+
+/** 阶段2 摘除：本地数据平面请求默认直通放行 */
+export async function enforceLocalProjectDataPlaneRequest(
+  _input?: {
+    req?: Request | any;
+    res?: Response | any;
+    projectId?: string;
+    options?: unknown;
+    db?: unknown;
+    getWorkspaceProject?: unknown;
+    getWorkspaceProjectByProjectId?: unknown;
+    onDenied?: (...args: any[]) => unknown;
+  },
+): Promise<boolean> {
+  return true;
+}
+
+/** 阶段2 摘除：本地模式下无需绑定创建的项目到远端工作区 */
+export function bindCreatedProjectToWorkspace(
+  _ensureFn?: unknown,
+  _context?: WorkspaceResourceContext | null,
+  _projectId?: string,
+  _now?: number,
+): void {}
+
+export type CreatedProjectWorkspaceResolver = (req: Request | any) => Promise<WorkspaceResourceContext | null>;
+
+/** 阶段2 摘除：本地单用户环境无需解析远端工作区宿主 */
+export function createCreatedProjectWorkspaceResolver(
+  _deps?: unknown,
+): CreatedProjectWorkspaceResolver {
+  return async () => null;
+}
+
+export class CreatedProjectWorkspaceResolutionError extends Error {
+  status = 400;
+  code = 'CREATED_PROJECT_WORKSPACE_RESOLUTION_ERROR';
+  retryable = false;
+}
+
+/** 阶段2 摘除：本地单用户环境下无工作区归属信息 */
+export function localProjectWorkspaceAttribution(
+  _req?: Request | any,
+): WorkspaceResourceContext | null {
+  return null;
+}
+
+export type WorkspaceDirectoryFetchResult = {
+  ok: boolean;
+  items: any[];
+};
 
 export function rewriteOutsideExecutableHtmlRanges(
   html: string,
@@ -330,7 +474,7 @@ function assertProjectCreatePreparationWithinDeadline(
   }
 }
 
-export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'agents' | 'validation' | 'collabSync'> {
+export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'agents' | 'validation'> {
   /**
    * Request-wide deadline for the read-only preparation POST /api/projects
    * runs before its transaction. Production keeps the 15s default; tests and
@@ -587,7 +731,7 @@ export function createEnforceWorkspaceProjectMutation(
       db,
       getWorkspaceProject,
       getWorkspaceProjectByProjectId,
-      onDenied: (status, code, message, details) => details === undefined
+      onDenied: (status: number, code: string, message: string, details?: any) => details === undefined
         ? sendApiError(res, status, code, message)
         : sendApiError(res, status, code, message, details),
     });
@@ -2203,7 +2347,8 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   const { subscribeFileEvents, activeProjectEventSinks } = ctx.events;
   const { randomId } = ctx.ids;
   const { validateProjectDesignSystemId, validateProjectSkillId } = ctx.validation;
-  const { collabSync, teamProjectCatalog, workspaceTypes } = ctx;
+  const { teamProjectCatalog, workspaceTypes } = ctx;
+  const collabSync: any = (ctx as any).collabSync;
   const learnAssertedWorkspaceType = (context: WorkspaceResourceContext | null) => {
     if (!context?.workspaceTypeAsserted) return;
     workspaceTypes?.learn({
@@ -2219,9 +2364,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       db,
       getWorkspaceProject,
       getWorkspaceProjectByProjectId,
-      isProjectRevoked: (_db, projectId) =>
+      isProjectRevoked: (_db: any, projectId: string) =>
         ctx.isProjectRevoked?.(projectId) ?? false,
-      isProjectUnmaterializedPlaceholder: (_db, projectId) =>
+      isProjectUnmaterializedPlaceholder: (_db: any, projectId: string) =>
         ctx.isProjectUnmaterializedPlaceholder?.(projectId) ?? false,
       ...(ctx.verifyWorkspaceRequestAuthority
         ? { verifyWorkspaceRequestAuthority: ctx.verifyWorkspaceRequestAuthority }
@@ -2249,7 +2394,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       : {}),
     ...(ctx.configuredEnv ? { configuredEnv: ctx.configuredEnv } : {}),
   });
-  const resolveCreatedProjectHome: CreatedProjectWorkspaceResolver = async (req) => {
+  const resolveCreatedProjectHome: CreatedProjectWorkspaceResolver = async (req: any) => {
     const home = await resolveCreatedProjectHomeWithLocalAttribution(req);
     learnAssertedWorkspaceType(home);
     return home;
@@ -2728,9 +2873,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     ) {
       return 'denied';
     }
-    if (!collabSync.materializeTeamProject) return 'unavailable';
+    if (!collabSync?.materializeTeamProject) return 'unavailable';
     try {
-      await collabSync.materializeTeamProject(
+      await collabSync?.materializeTeamProject(
         projectId,
         workspaceProjectPrincipal(ctx),
       );
@@ -3302,7 +3447,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
             // but Workspace mutations and Workspace-pinned billing would have
             // no durable home.
             bindCreatedProjectToWorkspace(
-              (input) => ensureWorkspaceProject(db, input),
+              (input: any) => ensureWorkspaceProject(db, input),
               createHome,
               manifest.id,
               now,
@@ -3537,9 +3682,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   async function requestTeamVisibility(projectIds: string[], ctx: WorkspaceProjectContext, visibility: 'personal' | 'team') {
     for (const projectId of projectIds) {
       if (visibility === 'team') {
-        await collabSync.requestTeamShare(projectId, workspaceProjectPrincipal(ctx));
+        await collabSync?.requestTeamShare(projectId, workspaceProjectPrincipal(ctx));
       } else {
-        await collabSync.requestTeamUnshare(projectId, workspaceProjectPrincipal(ctx));
+        await collabSync?.requestTeamUnshare(projectId, workspaceProjectPrincipal(ctx));
       }
     }
     // The catalog this daemon serves is now stale by construction — drop it so
@@ -4407,7 +4552,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
             updatedAt: now,
           });
           bindCreatedProjectToWorkspace(
-            (input) => ensureWorkspaceProject(db, input),
+            (input: any) => ensureWorkspaceProject(db, input),
             createWorkspace.context,
             id,
             now,
@@ -5451,7 +5596,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         // Write the rename through to the team catalog. Metadata-only changes
         // never trigger a content publish, so without this a rename only
         // reached teammates after the NEXT file edit — or never.
-        ctx.collabSync.refreshTeamProjectMetadata(req.params.id);
+        (ctx as any).collabSync?.refreshTeamProjectMetadata?.(req.params.id);
       }
       /** @type {import('@open-design/contracts').ProjectResponse} */
       const body = { project };
@@ -5578,12 +5723,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   // authoritative `enforceWorkspaceProjectMutation` instance so a comment's
   // gate matches its parent project's exactly, instead of comments quietly
   // shipping a second, weaker copy.
-  registerProjectConversationRoutes(app, {
-    ...ctx,
-    enforceWorkspaceProjectMutation,
-    authorizeProjectRequest,
-    sendApiError,
-  });
+  registerProjectConversationRoutes(app, ctx);
 
   // ---- Tabs -----------------------------------------------------------------
 
@@ -5808,9 +5948,9 @@ export function registerProjectFileRoutes(app: Express, ctx: RegisterProjectFile
       db,
       getWorkspaceProject,
       getWorkspaceProjectByProjectId,
-      isProjectRevoked: (_db, projectId) =>
+      isProjectRevoked: (_db: any, projectId: string) =>
         ctx.isProjectRevoked?.(projectId) ?? false,
-      isProjectUnmaterializedPlaceholder: (_db, projectId) =>
+      isProjectUnmaterializedPlaceholder: (_db: any, projectId: string) =>
         ctx.isProjectUnmaterializedPlaceholder?.(projectId) ?? false,
       ...(ctx.verifyWorkspaceRequestAuthority
         ? { verifyWorkspaceRequestAuthority: ctx.verifyWorkspaceRequestAuthority }
@@ -7928,7 +8068,7 @@ export function registerProjectUploadRoutes(app: Express, ctx: RegisterProjectUp
       db,
       getWorkspaceProject,
       getWorkspaceProjectByProjectId,
-      isProjectUnmaterializedPlaceholder: (_db, projectId) =>
+      isProjectUnmaterializedPlaceholder: (_db: any, projectId: string) =>
         ctx.isProjectUnmaterializedPlaceholder?.(projectId) ?? false,
       ...(ctx.verifyWorkspaceRequestAuthority
         ? { verifyWorkspaceRequestAuthority: ctx.verifyWorkspaceRequestAuthority }

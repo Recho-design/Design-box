@@ -47,11 +47,6 @@ export interface RegisterDeliverableSyntaxToolRoutesDeps {
     res: Response,
     operation: string,
   ): ToolGrant | null;
-  authorizeProjectToolRequest(
-    res: Response,
-    projectId: string,
-    access: { mode: 'read' },
-  ): Promise<boolean>;
   getProject(projectId: string): ProjectRecord | null;
   getRun(runId: string): ToolRun | null;
   persistRunState(run: ToolRun): void;
@@ -160,11 +155,6 @@ export function registerDeliverableSyntaxToolRoutes(
     try {
       const grant = ctx.authorizeToolRequest(req, res, 'deliverable-syntax:check');
       if (!grant) return;
-      if (!await ctx.authorizeProjectToolRequest(
-        res,
-        grant.projectId,
-        { mode: 'read' },
-      )) return;
 
       const project = ctx.getProject(grant.projectId);
       if (!project) {

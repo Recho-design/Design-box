@@ -12,23 +12,7 @@ import {
   duplicatePluginExampleIntoProject,
   PluginDuplicateProjectError,
 } from '../../plugins/duplicate-project.js';
-import {
-  enforceTeamResourceCopyAllowed,
-  type TeamResourceStateProvider,
-} from '../../collab/team-resource-state.js';
-import {
-  enforceVerifiedWorkspaceResourceMutation,
-  resolveOptionalLocalWorkspaceRequestAuthority,
-  type VerifyWorkspaceRequestAuthority,
-} from '../../collab/workspace-resource-mutation.js';
-import {
-  authorizeCreatedProjectWorkspace,
-  bindCreatedProjectToWorkspace,
-  sendCreatedProjectWorkspaceError,
-} from '../../collab/created-project-workspace.js';
-import type { WorkspaceDirectoryFetchResult } from '../../collab/vela-workspace-context.js';
 import type { PluginShareAction } from '../../services/plugin-share-tasks.js';
-import type { AuthorizeProjectRequest } from '../../collab/project-request-authority.js';
 import { workspaceTeamPluginBindingResourceId } from '../../plugins/registry.js';
 import { localPluginRegistryScope } from '../../plugins/local-source.js';
 import {
@@ -55,7 +39,7 @@ export interface RegisterPluginEventRoutesDeps {
     requireLocalDaemonRequest: RequestHandler;
     sendApiError: (res: Response, status: number, code: string, message: string) => unknown;
   };
-  verifyWorkspaceRequestAuthority?: VerifyWorkspaceRequestAuthority;
+  verifyWorkspaceRequestAuthority?: never;
   plugins: {
     listVisiblePluginIds(
       workspaceId: string | null,
@@ -191,10 +175,6 @@ interface PluginRouteHelpers {
 
 export interface RegisterPluginRoutesDeps {
   db: SqliteDbLike;
-  authorizeProjectRequest: AuthorizeProjectRequest;
-  /** Team-resource copy red-line (D3). When present, a frozen team plugin cannot
-   *  be duplicated into a personal project. Omit to skip the guard (no-op). */
-  teamResources?: TeamResourceStateProvider;
   paths: { PROJECTS_DIR: string; PLUGIN_REGISTRY_ROOTS: string[]; PLUGIN_LOCKFILE_PATH: string };
   ids: { randomId(): string };
   projectStore: {
@@ -204,11 +184,6 @@ export interface RegisterPluginRoutesDeps {
     dbDeleteProject(db: SqliteDbLike, id: string): unknown;
     removeProjectDir(projectsRoot: string, projectId: string): Promise<unknown>;
   };
-  fetchProjectCreationWorkspaceDirectory?: () => Promise<WorkspaceDirectoryFetchResult>;
-  /** Settled, TTL-bounded authority for the pure Plugin catalog read. */
-  verifyWorkspaceReadAuthority?: VerifyWorkspaceRequestAuthority;
-  /** Fresh authority for mutations and non-catalog reads. */
-  verifyWorkspaceRequestAuthority?: VerifyWorkspaceRequestAuthority;
   conversations: {
     insertConversation(db: SqliteDbLike, conversation: unknown): unknown;
   };
@@ -301,22 +276,17 @@ function duplicatedProjectKind(plugin: InstalledPluginLike): ProjectMetadata['ki
 }
 
 export function registerPluginEventRoutes(app: Express, deps: RegisterPluginEventRoutesDeps): void {
-  const resolveEventScope = async (req: Request, res: Response) => {
-    const authority = resolveOptionalLocalWorkspaceRequestAuthority(req);
-    if (!authority.ok) {
-      deps.http.sendApiError(
-        res,
-        authority.status,
-        authority.code,
-        authority.message,
-      );
-      return null;
-    }
-    return {
-      workspaceId: authority.context?.workspaceId ?? null,
-      workspaceMemberId: authority.context?.workspaceMemberId ?? null,
-    };
-  };
+  /**
+   * 插件事件的本地作用域。
+   *
+   * 原先这里从请求头解析工作区身份，身份不完整时会以 400 中止请求；工作区
+   * 分区链路已随官方账号体系移除，本机不再有工作区上下文，事件一律按本地
+   * （无工作区）目录的可见性过滤。
+   */
+  const resolveEventScope = async (_req: Request, _res: Response) => ({
+    workspaceId: null as string | null,
+    workspaceMemberId: null as string | null,
+  });
   const visibleEvents = async <T extends { pluginId: string }>(
     scope: { workspaceId: string | null; workspaceMemberId: string | null },
     events: ReadonlyArray<T>,
@@ -395,32 +365,24 @@ export function registerPluginEventRoutes(app: Express, deps: RegisterPluginEven
 }
 
 export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDeps): void {
-  const { db, paths, ids, projectStore, conversations, plugins, helpers, teamResources, workspaceResources } = deps;
+  const { db, paths, ids, projectStore, conversations, plugins, helpers, workspaceResources } = deps;
+  /**
+   * 解析请求的工作区身份。
+   *
+   * 云协作 / Team 工作区分区链路已随官方账号体系移除：本机不再持有工作区
+   * 上下文，因此恒返回 `null`，插件目录一律按本地个人分区读取。保留该函数
+   * 只是为了让各路由原有的 `authority === undefined`（身份不完整即 400）
+   * 分支保持同一形状而永不触发。
+   */
   const resolveWorkspaceAuthority = async (
-    req: Request,
-    res: Response,
-    verifyAuthority: VerifyWorkspaceRequestAuthority | undefined =
-      deps.verifyWorkspaceRequestAuthority,
-  ): Promise<WorkspaceCollabContext | null | undefined> => {
-    const authority = resolveOptionalLocalWorkspaceRequestAuthority(req);
-    if (!authority.ok) {
-      helpers.sendApiError(
-        res,
-        authority.status,
-        authority.code,
-        authority.message,
-      );
-      return undefined;
-    }
-    return authority.context;
-  };
+    _req: Request,
+    _res: Response,
+  ): Promise<WorkspaceCollabContext | null | undefined> => null;
   const resolveRequestPlugin = async (
     id: string,
-    authority: WorkspaceCollabContext | null,
   ) => {
-    const workspaceId = authority?.workspaceId ?? null;
     return plugins.getWorkspacePlugin
-      ? plugins.getWorkspacePlugin(db, id, workspaceId, authority?.workspaceMemberId ?? null)
+      ? plugins.getWorkspacePlugin(db, id, null, null)
       : plugins.getInstalledPlugin(db, id);
   };
   const applyResolvedPlugin = async (
@@ -454,18 +416,11 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
   const isTeamPlugin = (plugin: InstalledPluginLike | null | undefined): boolean =>
     typeof plugin?.source === 'string' && plugin.source.startsWith('team:plugin:');
   const hasActiveTeamPluginBinding = (
-    id: string,
-    authority: WorkspaceCollabContext | null,
+    _id: string,
+    _authority: WorkspaceCollabContext | null,
   ): boolean => {
-    const workspaceId = authority?.workspaceId?.trim();
-    if (!workspaceId || !workspaceResources) return false;
-    const binding = workspaceResources.getWorkspaceResource(
-      db,
-      'plugin',
-      workspaceId,
-      workspaceTeamPluginBindingResourceId(workspaceId, id),
-    );
-    return binding?.visibility === 'team' && binding.resourceState !== 'deleted';
+    // Team 插件绑定表随工作区分区链路移除，本机不再存在活跃的 Team 绑定。
+    return false;
   };
   const denyTeamPluginMutation = (
     res: Response,
@@ -479,27 +434,18 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
     res.status(403).json({ error: 'WORKSPACE_RESOURCE_MANAGE_DENIED' });
     return true;
   };
+  /**
+   * 判断一条 applied-plugin 快照是否对当前请求可见。
+   *
+   * 原先这里读 `workspace_projects` 绑定行做跨工作区隔离；工作区绑定的读写
+   * 路径已随云协作链路停用，本机不再存在绑定行，因此退化为
+   * 「快照挂在一个项目上即可见」。
+   */
   const snapshotVisibleToAuthority = (
     row: { projectId?: string },
-    authority: WorkspaceCollabContext | null,
-  ): boolean => {
-    if (!row.projectId || !workspaceResources?.getWorkspaceProjectByProjectId) {
-      return false;
-    }
-    const binding = workspaceResources.getWorkspaceProjectByProjectId(db, row.projectId);
-    // Headerless local compatibility is deliberately limited to a snapshot
-    // whose project is provably unbound. A Workspace-bound snapshot may hold
-    // prompts and connector inputs and must not leak through this global lane.
-    if (!authority) return !binding;
-    if (
-      !binding
-      || binding.workspaceId !== authority.workspaceId
-      || binding.resourceState === 'deleted'
-    ) return false;
-    return binding.visibility === 'team'
-      || binding.createdByWorkspaceMemberId === authority.workspaceMemberId;
-  };
-  app.get('/api/plugins', async (req, res) => { try { const authority = await resolveWorkspaceAuthority(req, res, deps.verifyWorkspaceReadAuthority ?? deps.verifyWorkspaceRequestAuthority); if (authority === undefined) return; const visible = await plugins.listInstalledPlugins(db, authority?.workspaceId ?? null, authority?.workspaceMemberId ?? null); res.json({ plugins: helpers.applyBakedPreviews(visible, helpers.PLUGIN_PREVIEWS_DIR) }); } catch (err) { res.status(500).json({ error: String(err) }); } });
+    _authority: WorkspaceCollabContext | null,
+  ): boolean => Boolean(row.projectId);
+  app.get('/api/plugins', async (req, res) => { try { const authority = await resolveWorkspaceAuthority(req, res); if (authority === undefined) return; const visible = await plugins.listInstalledPlugins(db, authority?.workspaceId ?? null, authority?.workspaceMemberId ?? null); res.json({ plugins: helpers.applyBakedPreviews(visible, helpers.PLUGIN_PREVIEWS_DIR) }); } catch (err) { res.status(500).json({ error: String(err) }); } });
   // Keep this static route before /api/plugins/:id; Express matches in
   // registration order and would otherwise interpret "stats" as a plugin id.
   app.get('/api/plugins/stats', async (req, res) => {
@@ -518,7 +464,7 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
       snapshotVisibleToAuthority(row, authority));
     return helpers.handlePluginStats(res, installed, visibleSnapshots);
   });
-  app.get('/api/plugins/:id', async (req, res) => { try { const authority = await resolveWorkspaceAuthority(req, res); if (authority === undefined) return; const plugin = await resolveRequestPlugin(req.params.id, authority); if (!plugin) return res.status(404).json({ error: 'plugin not found' }); res.json(plugin); } catch (err) { res.status(500).json({ error: String(err) }); } });
+  app.get('/api/plugins/:id', async (req, res) => { try { const authority = await resolveWorkspaceAuthority(req, res); if (authority === undefined) return; const plugin = await resolveRequestPlugin(req.params.id); if (!plugin) return res.status(404).json({ error: 'plugin not found' }); res.json(plugin); } catch (err) { res.status(500).json({ error: String(err) }); } });
   app.post('/api/plugins/upload-zip', (req, res) => {
     helpers.pluginUpload.single('file')(req, res, async (err: unknown) => {
       if (err) return helpers.sendMulterError(res, err);
@@ -576,29 +522,14 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
       if (!plugins.isSafePluginId(req.params.id)) return res.status(400).json({ error: 'invalid plugin id' });
       const authority = await resolveWorkspaceAuthority(req, res);
       if (authority === undefined) return;
-      const requestedPlugin = await resolveRequestPlugin(req.params.id, authority);
-      if (!requestedPlugin) return res.status(404).json({ error: 'plugin not found' });
+      const requestPlugin = await resolveRequestPlugin(req.params.id);
+      if (!requestPlugin) return res.status(404).json({ error: 'plugin not found' });
       if (
-        typeof requestedPlugin?.source === 'string' &&
-        requestedPlugin.source.startsWith('team:plugin:')
+        typeof requestPlugin?.source === 'string' &&
+        requestPlugin.source.startsWith('team:plugin:')
       ) {
         return res.status(403).json({ error: 'WORKSPACE_RESOURCE_MANAGE_DENIED' });
       }
-      const binding = workspaceResources?.getWorkspaceResourceByResourceId(db, 'plugin', req.params.id);
-      if (binding && workspaceResources && !await enforceVerifiedWorkspaceResourceMutation(
-        'plugin',
-        req,
-        res,
-        helpers.sendApiError,
-        (dbArg, workspaceId, resourceId) => workspaceResources.getWorkspaceResource(dbArg as SqliteDbLike, 'plugin', workspaceId, resourceId),
-        (dbArg, resourceId) => workspaceResources.getWorkspaceResourceByResourceId(dbArg as SqliteDbLike, 'plugin', resourceId),
-        db,
-        req.params.id,
-        'delete',
-        authority
-          ? async () => ({ ok: true as const, context: authority })
-          : undefined,
-      )) return;
       const result = await plugins.uninstallPlugin(db, req.params.id, paths.PLUGIN_REGISTRY_ROOTS); if (!result.ok && !result.removedFolder) return res.status(404).json({ error: 'plugin not found', warning: result.warning }); res.json(result);
     } catch (err) { res.status(500).json({ error: String(err) }); }
   });
@@ -610,24 +541,9 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
     // plugin so the resolver cannot fall through to a same-id Personal row
     // (or turn the Team mutation into a misleading 404 when none exists).
     if (denyTeamPluginMutation(res, req.params.id, authority)) return;
-    const requestedPlugin = await resolveRequestPlugin(req.params.id, authority);
+    const requestedPlugin = await resolveRequestPlugin(req.params.id);
     if (!requestedPlugin) return res.status(404).json({ error: 'plugin not found' });
     if (denyTeamPluginMutation(res, req.params.id, authority, requestedPlugin)) return;
-    const binding = workspaceResources?.getWorkspaceResourceByResourceId(db, 'plugin', req.params.id);
-    if (binding && workspaceResources && !await enforceVerifiedWorkspaceResourceMutation(
-      'plugin',
-      req,
-      res,
-      helpers.sendApiError,
-      (dbArg, workspaceId, resourceId) => workspaceResources.getWorkspaceResource(dbArg as SqliteDbLike, 'plugin', workspaceId, resourceId),
-      (dbArg, resourceId) => workspaceResources.getWorkspaceResourceByResourceId(dbArg as SqliteDbLike, 'plugin', resourceId),
-      db,
-      req.params.id,
-      'writeFiles',
-      authority
-        ? async () => ({ ok: true as const, context: authority })
-        : undefined,
-    )) return;
     return helpers.installOrUpgradePlugin(req, res, 'upgrade', authority);
   });
   app.post('/api/plugins/:id/apply-local', async (req, res) => {
@@ -669,7 +585,7 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
     try {
       const authority = await resolveWorkspaceAuthority(req, res);
       if (authority === undefined) return;
-      const plugin = await resolveRequestPlugin(req.params.id, authority);
+      const plugin = await resolveRequestPlugin(req.params.id);
       if (!plugin) return res.status(404).json({ error: 'plugin not found' });
       const registry = await helpers.loadPluginRegistryView({
         workspaceId: authority?.workspaceId ?? null,
@@ -706,24 +622,10 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
       const pluginId = Array.isArray(req.params.id) ? req.params.id[0] ?? '' : req.params.id ?? '';
       const authority = await resolveWorkspaceAuthority(req, res);
       if (authority === undefined) return;
-      const plugin = await resolveRequestPlugin(pluginId, authority);
+      const plugin = await resolveRequestPlugin(pluginId);
       if (!plugin) return res.status(404).json({ error: { code: 'plugin-not-found', message: 'plugin not found' } });
       if (typeof plugin.id !== 'string' || typeof plugin.fsPath !== 'string') {
         return res.status(422).json({ error: { code: 'plugin-not-duplicable', message: 'plugin record is missing a filesystem source' } });
-      }
-      // AC-9 copy red-line (D3): a frozen team plugin cannot be duplicated into a
-      // personal project. Runs before any project is created (nothing to clean up
-      // if it throws). No-op until the resource-hub reports this plugin as a
-      // frozen team resource.
-      if (teamResources) {
-        await enforceTeamResourceCopyAllowed(teamResources, { kind: 'plugin', resourceId: plugin.id });
-      }
-      const createWorkspace = await authorizeCreatedProjectWorkspace(
-        req,
-        deps.fetchProjectCreationWorkspaceDirectory,
-      );
-      if (!createWorkspace.ok) {
-        return sendCreatedProjectWorkspaceError(res, createWorkspace);
       }
       const body = req.body && typeof req.body === 'object'
         ? req.body as PluginDuplicateProjectRequest
@@ -774,12 +676,6 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
           createdAt: now,
           updatedAt: now,
         });
-        bindCreatedProjectToWorkspace(
-          (input) => projectStore.ensureWorkspaceProject(db, input),
-          createWorkspace.context,
-          projectId,
-          now,
-        );
         return createdProject;
       })();
       const loadedProject = projectStore.getProject(db, projectId) ?? project;
@@ -827,24 +723,30 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
     const authority = await resolveWorkspaceAuthority(req, res);
     if (authority === undefined) return;
     if (denyTeamPluginMutation(res, req.params.id, authority)) return;
-    const plugin = await resolveRequestPlugin(req.params.id, authority);
+    const plugin = await resolveRequestPlugin(req.params.id);
     if (!plugin) return res.status(404).json({ error: 'plugin not found' });
     if (denyTeamPluginMutation(res, req.params.id, authority, plugin)) return;
     return helpers.handleShareProject(req, res, plugin);
   });
-  app.post('/api/plugins/:id/doctor', async (req, res) => { try { const authority = await resolveWorkspaceAuthority(req, res); if (authority === undefined) return; const plugin = await resolveRequestPlugin(req.params.id, authority); if (!plugin) return res.status(404).json({ error: 'plugin not found' }); const registry = await helpers.loadPluginRegistryView({ workspaceId: authority?.workspaceId ?? null, workspaceMemberId: authority?.workspaceMemberId ?? null }); const connectorProbe = helpers.buildConnectorProbe(helpers.connectorService); res.json(plugins.doctorPlugin(plugin, registry, { connectorProbe })); } catch (err) { res.status(500).json({ error: String(err) }); } });
+  app.post('/api/plugins/:id/doctor', async (req, res) => { try { const authority = await resolveWorkspaceAuthority(req, res); if (authority === undefined) return; const plugin = await resolveRequestPlugin(req.params.id); if (!plugin) return res.status(404).json({ error: 'plugin not found' }); const registry = await helpers.loadPluginRegistryView({ workspaceId: authority?.workspaceId ?? null, workspaceMemberId: authority?.workspaceMemberId ?? null }); const connectorProbe = helpers.buildConnectorProbe(helpers.connectorService); res.json(plugins.doctorPlugin(plugin, registry, { connectorProbe })); } catch (err) { res.status(500).json({ error: String(err) }); } });
   app.post('/api/plugins/:id/trust', async (req, res) => {
     const authority = await resolveWorkspaceAuthority(req, res);
     if (authority === undefined) return;
-    const plugin = await resolveRequestPlugin(req.params.id, authority);
+    const plugin = await resolveRequestPlugin(req.params.id);
     if (!plugin) return res.status(404).json({ error: 'plugin not found' });
     if (typeof plugin.source === 'string' && plugin.source.startsWith('team:plugin:')) {
       return res.status(403).json({ error: 'WORKSPACE_RESOURCE_MANAGE_DENIED' });
     }
     return helpers.handlePluginTrust(req, res, plugin);
   });
+  /**
+   * 读取一条 applied-plugin 快照。
+   *
+   * 原先这里还会用快照所属项目跑一次工作区读门禁；工作区绑定链路已移除，
+   * 单机模式下只保留「快照存在与否」这一条本地事实。
+   */
   const authorizeSnapshotRead = async (
-    req: Request,
+    _req: Request,
     res: Response,
     snapshotId: string,
   ): Promise<AppliedPluginSnapshotLike | null> => {
@@ -853,16 +755,6 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
       res.status(404).json({ error: 'snapshot not found' });
       return null;
     }
-    const row = db.prepare(
-      `SELECT project_id AS projectId FROM applied_plugin_snapshots WHERE id = ?`,
-    ).get(snapshotId) as { projectId?: unknown } | undefined;
-    const projectId = typeof row?.projectId === 'string' ? row.projectId : '';
-    if (!projectId || !await deps.authorizeProjectRequest(
-      req,
-      res,
-      projectId,
-      { mode: 'read' },
-    )) return null;
     return snap;
   };
   app.get('/api/applied-plugins/:snapshotId', async (req, res) => {
@@ -906,12 +798,6 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
   });
   app.get('/api/projects/:projectId/applied-plugins', async (req, res) => {
     try {
-      if (!await deps.authorizeProjectRequest(
-        req,
-        res,
-        req.params.projectId,
-        { mode: 'read' },
-      )) return;
       const rows = db.prepare(
         `SELECT id FROM applied_plugin_snapshots WHERE project_id = ? ORDER BY applied_at DESC`,
       ).all(req.params.projectId) as SqliteRowId[];
@@ -934,12 +820,6 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
       if (typeof body.snapshotId === 'string' && body.snapshotId.length > 0) {
         if (!await authorizeSnapshotRead(req, res, body.snapshotId)) return;
       } else if (typeof body.projectId === 'string' && body.projectId.length > 0) {
-        if (!await deps.authorizeProjectRequest(
-          req,
-          res,
-          body.projectId,
-          { mode: 'read' },
-        )) return;
       } else {
         return helpers.sendApiError(
           res,
@@ -956,19 +836,10 @@ export function registerPluginRoutes(app: Express, deps: RegisterPluginRoutesDep
 
 export function registerProjectPluginRoutes(app: Express, deps: RegisterPluginRoutesDeps): void {
   const { db, paths, plugins, helpers } = deps;
-  const authorizeWrite = (req: Request, res: Response, projectId: string) =>
-    deps.authorizeProjectRequest(
-      req,
-      res,
-      projectId,
-      { mode: 'write', capability: 'writeFiles' },
-    );
   app.post('/api/projects/:id/plugins/install-folder', async (req, res) => {
-    if (!await authorizeWrite(req, res, req.params.id)) return;
     return helpers.handleProjectInstallFolder(req, res);
   });
   app.post('/api/projects/:id/plugins/publish-github', async (req, res) => {
-    if (!await authorizeWrite(req, res, req.params.id)) return;
     return helpers.handleProjectPluginCli(req, res, 'publish-github');
   });
   app.get('/api/projects/:id/plugin-candidates', async (req, res) => {
@@ -977,7 +848,6 @@ export function registerProjectPluginRoutes(app: Express, deps: RegisterPluginRo
       if (!project) {
         return helpers.sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found');
       }
-      if (!await deps.authorizeProjectRequest(req, res, req.params.id, { mode: 'read' })) return;
       const includeDismissed = req.query.includeDismissed === 'true';
       res.json({
         candidates: plugins.listSkillPluginCandidates(db, req.params.id, includeDismissed),
@@ -990,7 +860,6 @@ export function registerProjectPluginRoutes(app: Express, deps: RegisterPluginRo
     if (!helpers.isLocalSameOrigin(req, helpers.resolvedPortRef.current)) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
-    if (!await authorizeWrite(req, res, req.params.id)) return;
     const candidate = plugins.dismissSkillPluginCandidate(
       db,
       req.params.id,
@@ -1005,26 +874,21 @@ export function registerProjectPluginRoutes(app: Express, deps: RegisterPluginRo
     res.json({ ok: true, candidate });
   });
   app.post('/api/projects/:id/plugin-candidates/:candidateId/draft', async (req, res) => {
-    if (!await authorizeWrite(req, res, req.params.id)) return;
     return helpers.handleCandidateDraft(req, res);
   });
   app.post('/api/projects/:id/plugin-candidates/:candidateId/share-tasks', async (req, res) => {
-    if (!await authorizeWrite(req, res, req.params.id)) return;
     return helpers.handleCandidateShareTask(req, res);
   });
   app.post('/api/projects/:id/plugins/contribute-open-design', async (req, res) => {
-    if (!await authorizeWrite(req, res, req.params.id)) return;
     return helpers.handleProjectPluginCli(req, res, 'contribute-open-design');
   });
   app.post('/api/projects/:id/plugins/share-tasks', async (req, res) => {
-    if (!await authorizeWrite(req, res, req.params.id)) return;
     return helpers.handleProjectShareTask(req, res);
   });
   app.post('/api/plugins/share-tasks/:id/wait', async (req, res) => {
     if (!helpers.isLocalSameOrigin(req, helpers.resolvedPortRef.current)) return res.status(403).json({ error: 'cross-origin request rejected' });
     const task = helpers.pluginShareTaskStore.get(req.params.id);
     if (!task) return res.status(404).json({ error: 'task not found' });
-    if (!await deps.authorizeProjectRequest(req, res, task.projectId, { mode: 'read' })) return;
     const since = Number.isFinite(req.body?.since) ? Number(req.body.since) : 0;
     const requestedTimeout = Number.isFinite(req.body?.timeoutMs) ? Number(req.body.timeoutMs) : 25_000;
     const timeoutMs = Math.min(Math.max(requestedTimeout, 0), 25_000);

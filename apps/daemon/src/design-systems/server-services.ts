@@ -3,15 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
 import {
-  readTeamResourceMaterialization,
-  teamResourceWorkspaceRoot,
-} from '../collab/team-resource-materialization.js';
-import {
   getWorkspaceProjectByProjectId,
   getWorkspaceResourceByResourceId,
 } from '../db.js';
-import { workspaceTeamSkillBindingAllowsRead } from '../skills/workspace-team-binding.js';
-import { workspaceTeamDesignSystemBindingAllowsRead } from './workspace-team-binding.js';
 
 type JsonRecord = Record<string, unknown>;
 type SkillEntry = { id: string; dir?: string } & JsonRecord;
@@ -258,62 +252,8 @@ export function createDesignSystemServerServices({
       workspaceId: options.workspaceId,
       workspaceMemberId: options.workspaceMemberId ?? null,
     });
-    const workspaceId = options.workspaceId?.trim();
-    const userSkillsRoot = roots.SKILL_ROOTS[0];
-    if (!workspaceId || !userSkillsRoot) return personalAndBuiltIn;
-    const workspaceRoot = teamResourceWorkspaceRoot(userSkillsRoot, workspaceId);
-    let directories: fs.Dirent[] = [];
-    try {
-      directories = await fs.promises.readdir(workspaceRoot, { withFileTypes: true });
-    } catch {
-      return personalAndBuiltIn;
-    }
-    const markerByDirectory = new Map<string, string>();
-    await Promise.all(
-      directories
-        .filter((entry) => entry.isDirectory())
-        .map(async (entry) => {
-          // Skill hub ids may use either the plain local id or the historical
-          // `user:` prefix. Both materialize into the same safe storage name;
-          // the marker is authoritative about which logical id was pulled.
-          const candidates = [entry.name, `user:${entry.name}`];
-          let marker = null;
-          for (const candidate of candidates) {
-            marker = await readTeamResourceMaterialization(
-              userSkillsRoot,
-              workspaceId,
-              candidate,
-              entry.name,
-            );
-            if (marker) break;
-          }
-          if (
-            marker?.kind !== 'skill'
-            || !workspaceTeamSkillBindingAllowsRead(db, workspaceId, marker.resourceId)
-          ) return;
-          markerByDirectory.set(path.join(workspaceRoot, entry.name), marker.resourceId);
-        }),
-    );
-    if (markerByDirectory.size === 0) return personalAndBuiltIn;
-    const discoveredTeam = await skills.listSkills([workspaceRoot]);
-    // Re-check the exact binding after filesystem parsing. Reconciliation can
-    // tombstone a Team Skill while SKILL.md and its attachments are being
-    // read; that newer negative verdict must win over the stale directory.
-    const team = discoveredTeam.filter((entry) => {
-      const logicalId = typeof entry.dir === 'string'
-        ? markerByDirectory.get(entry.dir)
-        : undefined;
-      return Boolean(
-        logicalId
-        && (entry.id === logicalId || entry.id.startsWith(`${logicalId}:`))
-        && workspaceTeamSkillBindingAllowsRead(db, workspaceId, logicalId),
-      );
-    });
-    const teamIds = new Set(team.map((entry) => entry.id));
-    return [
-      ...team.map((entry) => ({ ...entry, teamSynced: true })),
-      ...personalAndBuiltIn.filter((entry) => !teamIds.has(entry.id)),
-    ];
+    // [COLLEB REMOVED] team skill materialization scan removed
+    return personalAndBuiltIn;
   }
 
   async function listAllDesignTemplates() {
@@ -379,44 +319,7 @@ export function createDesignSystemServerServices({
     } catch {
       // User directory may not exist yet or be unreadable.
     }
-    const workspaceId = options.workspaceId?.trim();
-    if (workspaceId) {
-      try {
-        const team = await designSystems.listDesignSystems(
-          teamResourceWorkspaceRoot(paths.USER_DESIGN_SYSTEMS_DIR, workspaceId),
-          {
-            idPrefix: 'user:',
-            source: 'user',
-            isEditable: false,
-            defaultStatus: 'published',
-            workspaceId,
-          },
-        );
-        // Team directories are intentionally retained after reconciliation so
-        // offline/local data is recoverable. Availability comes from the local
-        // binding row: filter both after async filesystem parsing and before
-        // exposing the catalogue, matching the Skill catalogue's boundary.
-        // This is local SSE/poll state, not a network membership check.
-        const teamDb = getDb?.();
-        const reconciledTeam = teamDb
-          ? team.filter((system) => workspaceTeamDesignSystemBindingAllowsRead(
-              teamDb,
-              workspaceId,
-              system.id,
-            ))
-          : team;
-        const teamIds = new Set(reconciledTeam.map((system) => system.id));
-        const teamSystems = reconciledTeam.map((system) => ({ ...system, teamSynced: true }));
-        installed = options.exactTeam
-          ? teamSystems
-          : [
-              ...teamSystems,
-              ...installed.filter((system) => !teamIds.has(system.id)),
-            ];
-      } catch {
-        // A workspace with no pulled Team systems has no scoped directory.
-      }
-    }
+    // [COLLEB REMOVED] team design systems scan removed
     const seen = new Set(builtIn.map((s) => s.id));
     const catalog = [
       ...installed
@@ -463,15 +366,7 @@ export function createDesignSystemServerServices({
   ) {
     const db = getDb?.();
     const workspaceId = options.workspaceId?.trim();
-    if (workspaceId && typeof id === 'string' && id.startsWith('user:')) {
-      const scoped = await designSystems.readDesignSystem(
-        teamResourceWorkspaceRoot(paths.USER_DESIGN_SYSTEMS_DIR, workspaceId),
-        id,
-        { idPrefix: 'user:', workspaceId },
-      );
-      if (scoped != null) return scoped;
-      if (options.exactTeam) return null;
-    }
+    // [COLLEB REMOVED] scoped team design system read removed
     if (typeof id === 'string' && id.startsWith('user:')) {
       const readOptions = designSystemUserReadOptions(db, id, options);
       if (readOptions === null) return null;
@@ -489,15 +384,7 @@ export function createDesignSystemServerServices({
   ) {
     const db = getDb?.();
     const workspaceId = options.workspaceId?.trim();
-    if (workspaceId && typeof id === 'string' && id.startsWith('user:')) {
-      const scoped = await designSystems.readDesignSystemPackageInfo(
-        teamResourceWorkspaceRoot(paths.USER_DESIGN_SYSTEMS_DIR, workspaceId),
-        id,
-        { idPrefix: 'user:', workspaceId },
-      );
-      if (scoped != null) return scoped;
-      if (options.exactTeam) return null;
-    }
+    // [COLLEB REMOVED] scoped team design system pkg read removed
     if (typeof id === 'string' && id.startsWith('user:')) {
       const readOptions = designSystemUserReadOptions(db, id, options);
       if (readOptions === null) return null;
@@ -516,16 +403,7 @@ export function createDesignSystemServerServices({
   ) {
     const db = getDb?.();
     const workspaceId = options.workspaceId?.trim();
-    if (workspaceId && typeof id === 'string' && id.startsWith('user:')) {
-      const scoped = await designSystems.readDesignSystemStaticFile(
-        teamResourceWorkspaceRoot(paths.USER_DESIGN_SYSTEMS_DIR, workspaceId),
-        id,
-        filePath,
-        { idPrefix: 'user:', workspaceId },
-      );
-      if (scoped != null) return scoped;
-      if (options.exactTeam) return null;
-    }
+    // [COLLEB REMOVED] scoped team design system static read removed
     if (typeof id === 'string' && id.startsWith('user:')) {
       const readOptions = designSystemUserReadOptions(db, id, options);
       if (readOptions === null) return null;
@@ -687,9 +565,7 @@ export function createDesignSystemServerServices({
     const summary = systems.find((s) => s.id === id && s.source === 'user');
     if (!summary) return null;
 
-    const sourceRoot = summary.teamSynced === true
-      ? teamResourceWorkspaceRoot(paths.USER_DESIGN_SYSTEMS_DIR, workspaceId)
-      : paths.USER_DESIGN_SYSTEMS_DIR;
+    const sourceRoot = paths.USER_DESIGN_SYSTEMS_DIR;
     let projectId = summary.teamSynced === true
       ? workspaceScopedDesignSystemProjectId(id, workspaceId)
       : projectBackedDesignSystemProjectId(id, summary);
