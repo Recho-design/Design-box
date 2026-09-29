@@ -93,7 +93,6 @@ import {
   resolveHyperFramesCliPath,
   resolveHyperFramesNodeBin,
 } from './hyperframes-runtime.js';
-import { renderVelaImage, renderVelaVideo } from './vela.js';
 import {
   ensureProject,
   kindFor,
@@ -481,15 +480,7 @@ export async function generateMedia(args: {
   // when stubs are swapped for paid integrations.
   const lengthClamp =
     surface === 'video'
-      ? def.provider === 'vela'
-        ? {
-            value:
-              typeof length === 'number' && Number.isFinite(length)
-                ? length
-                : undefined,
-            warning: null,
-          }
-        : clampWithWarning(length, VIDEO_LENGTHS_SEC, 'length')
+      ? clampWithWarning(length, VIDEO_LENGTHS_SEC, 'length')
       : { value: undefined, warning: null };
   const usesProviderSpecificAudioDuration =
     def.provider === 'elevenlabs'
@@ -615,19 +606,7 @@ export async function generateMedia(args: {
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
-    } else if (def.provider === 'vela' && surface === 'image') {
-      const result = await renderVelaImage(ctx);
-      bytes = result.bytes;
-      providerNote = result.providerNote;
-      suggestedExt = result.suggestedExt;
-    } else if (def.provider === 'vela' && surface === 'video') {
-      const result = await renderVelaVideo({
-        ...ctx,
-        onProgress: args.onProgress,
-      });
-      bytes = result.bytes;
-      providerNote = result.providerNote;
-      suggestedExt = result.suggestedExt;
+    
     } else if (def.provider === 'openai' && surface === 'image') {
       const result = await renderOpenAIImage(ctx, credentials);
       bytes = result.bytes;
@@ -821,7 +800,7 @@ export async function generateMedia(args: {
     // HyperFrames is a local render, not a remote provider. Falling back
     // to a stub here hides actionable composition/preflight failures and
     // can make the agent retry or narrate a fake MP4 as success.
-    if (def.provider === 'hyperframes' || def.provider === 'vela') {
+    if (def.provider === 'hyperframes') {
       throw err;
     }
     // A real provider failed (network blip, 4xx, missing key, …). We

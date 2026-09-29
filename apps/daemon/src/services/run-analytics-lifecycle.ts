@@ -41,7 +41,6 @@ import {
   getProject,
   updateProject,
 } from '../db.js';
-import { readVelaLoginStatus } from '../integrations/vela.js';
 import {
   deriveLangfuseDeliveryState,
   readTelemetrySinkConfig,
@@ -409,22 +408,12 @@ export function createRunAnalyticsLifecycle(
         const detectedAgentsForAnalytics = await detectAgents(
           toJsonRecord((appCfgForAnalytics as { agentCliEnv?: unknown }).agentCliEnv),
         ).catch((): Array<{ id: string; available: boolean }> => []);
-        const velaStatusForAnalytics = (() => {
-          try {
-            const configuredAmrEnv = agentCliEnvForAgent(
-              (appCfgForAnalytics as { agentCliEnv?: AgentCliEnv }).agentCliEnv,
-              'amr',
-            );
-            return readVelaLoginStatus(process.env, configuredAmrEnv);
-          } catch {
-            return null;
-          }
-        })();
+        const velaStatusForAnalytics = null;
         const configureGlobals = deriveConfigureGlobals({
           mode: 'daemon',
           agentId: typeof reqBody.agentId === 'string' ? reqBody.agentId : null,
           agents: detectedAgentsForAnalytics,
-          amrAuthorized: velaStatusForAnalytics?.loggedIn === true,
+          amrAuthorized: false,
         });
         const promptText =
           typeof reqBody.currentPrompt === 'string'

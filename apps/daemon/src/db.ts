@@ -23,7 +23,6 @@ import {
   stripDoneMarkers,
   stripNextStepMarkers,
 } from '@open-design/contracts';
-import { migrateAmrTerminalReportOutbox } from './storage/amr-terminal-report-outbox.js';
 import { scrubDsmlToolProtocolTail } from './artifacts/text-suppression.js';
 import {
   listMessageArtifactRows,
@@ -614,6 +613,63 @@ function migrate(db: SqliteDb): void {
   migrateProjectScenarioBindings(db);
   migrateStrategyTaskStore(db);
   migrateChatArtifacts(db);
+function hasAmrOutboxColumn(db: SqliteDb, name: string): boolean {
+  return (db.prepare('PRAGMA table_info(amr_terminal_report_outbox)').all() as Array<{ name: string }>)
+    .some((column) => column.name === name);
+}
+
+/**
+ * 迁移与创建 amr_terminal_report_outbox 历史表结构。
+ * 阶段2 摘除 AMR 主链路活跃读写后，保留 SQLite 迁移以维护已有数据文件 schema 的向后兼容性。
+ */
+function migrateAmrTerminalReportOutbox(db: SqliteDb): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS amr_terminal_report_outbox (
+      run_id TEXT PRIMARY KEY,
+      outcome TEXT NOT NULL CHECK (outcome IN ('failed', 'canceled')),
+      terminal_at INTEGER NOT NULL
+    );
+  `);
+  const additions: Array<[string, string]> = [
+    ['terminal_at_iso', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN terminal_at_iso TEXT'],
+    ['state', "ALTER TABLE amr_terminal_report_outbox ADD COLUMN state TEXT NOT NULL DEFAULT 'pending'"],
+    ['attempt_count', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0'],
+    ['next_attempt_at', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0'],
+    ['version', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN version INTEGER NOT NULL DEFAULT 0'],
+    ['lease_until', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN lease_until INTEGER'],
+    ['last_error_code', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN last_error_code TEXT'],
+    ['last_error', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN last_error TEXT'],
+    ['receipt', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN receipt TEXT'],
+    ['created_at', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0'],
+    ['updated_at', 'ALTER TABLE amr_terminal_report_outbox ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [name, statement] of additions) {
+    if (!hasAmrOutboxColumn(db, name)) db.exec(statement);
+  }
+  const missingIso = db.prepare(`
+    SELECT run_id AS runId, terminal_at AS terminalAt
+      FROM amr_terminal_report_outbox
+     WHERE terminal_at_iso IS NULL OR terminal_at_iso = ''
+  `).all() as Array<{ runId: string; terminalAt: number }>;
+  const backfill = db.prepare(`
+    UPDATE amr_terminal_report_outbox
+       SET terminal_at_iso = ?,
+           next_attempt_at = CASE WHEN next_attempt_at = 0 THEN terminal_at ELSE next_attempt_at END,
+           created_at = CASE WHEN created_at = 0 THEN terminal_at ELSE created_at END,
+           updated_at = CASE WHEN updated_at = 0 THEN terminal_at ELSE updated_at END
+     WHERE run_id = ?
+  `);
+  const transaction = db.transaction(() => {
+    for (const row of missingIso) backfill.run(new Date(row.terminalAt).toISOString(), row.runId);
+  });
+  transaction();
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_amr_terminal_report_outbox_due
+      ON amr_terminal_report_outbox(state, next_attempt_at, lease_until, run_id);
+    CREATE INDEX IF NOT EXISTS idx_amr_terminal_report_outbox_terminal_at
+      ON amr_terminal_report_outbox(terminal_at, run_id);
+  `);
+}
   migrateAmrTerminalReportOutbox(db);
 }
 

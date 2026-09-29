@@ -2057,12 +2057,7 @@ function renderMetadataBlock(
     lines.push(`### Reference prompt template — "${tpl.title ?? 'untitled'}"`);
     const meta = [];
     if (tpl.category) meta.push(`category: ${tpl.category}`);
-    const suggestedModel =
-      metadata.kind === 'image' &&
-      !metadata.imageModel?.trim() &&
-      tpl.model === 'gpt-image-2'
-        ? 'vela/gpt-image-2'
-        : tpl.model;
+    const suggestedModel = tpl.model;
     if (suggestedModel) meta.push(`suggested model: ${suggestedModel}`);
     if (tpl.aspect) meta.push(`aspect: ${tpl.aspect}`);
     if (Array.isArray(tpl.tags) && tpl.tags.length > 0) {

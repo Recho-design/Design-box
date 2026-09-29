@@ -253,7 +253,7 @@ Run via your shell tool (Bash on Claude Code, exec on Codex/Gemini, etc.):
   --output <filename> \\
   --prompt "<full prompt>" \\
   [--aspect 1:1|16:9|9:16|4:3|3:4] \\
-  [--quality <tier>]                # vela/* images only; gpt-image-2 accepts low|medium|high
+  [--quality <tier>]                # gpt-image-2 accepts low|medium|high
   [--resolution <res>]              # vela/* images only; e.g. 1K, 2K — must be published for --aspect
   [--length <seconds>]              # video only
   [--duration <seconds>]            # audio only

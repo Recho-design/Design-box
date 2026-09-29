@@ -26,7 +26,63 @@ import type {
   RunEventForDiagnostics,
 } from '../run-diagnostics.js';
 import type { RunEventForFailureClassification } from '../run-failure-classification.js';
-import type { RunWorkspaceScope } from './project-amr-trace-env.js';
+import { getWorkspaceProjectByProjectId } from '../db.js';
+
+type SqliteDb = Parameters<typeof getWorkspaceProjectByProjectId>[0];
+
+/**
+ * 阶段2 摘除 project-amr-trace-env.ts 后，将运行工作区作用域类型与快照纯函数内联至此。
+ */
+export type PinnedRunWorkspaceScope = Readonly<{
+  schemaVersion: 1;
+  projectId: string;
+  workspaceId: string;
+  workspaceMemberId?: string | null;
+  source: 'persisted_project_binding';
+}>;
+
+export type AccountScopedRunWorkspaceScope = Readonly<{
+  schemaVersion: 1;
+  projectId: string;
+  workspaceId: null;
+  source: 'unbound_account';
+}>;
+
+export type RunWorkspaceScope =
+  | PinnedRunWorkspaceScope
+  | AccountScopedRunWorkspaceScope;
+
+export function accountScopedRunWorkspaceScopeForProject(
+  projectId: string,
+): AccountScopedRunWorkspaceScope {
+  return Object.freeze({
+    schemaVersion: 1,
+    projectId,
+    workspaceId: null,
+    source: 'unbound_account',
+  });
+}
+
+export function pinRunWorkspaceScopeForProject(
+  db: SqliteDb,
+  projectId: string,
+): PinnedRunWorkspaceScope | null {
+  const normalizedProjectId = projectId.trim();
+  if (!normalizedProjectId) return null;
+  const binding = getWorkspaceProjectByProjectId(db, normalizedProjectId);
+  const workspaceId =
+    typeof binding?.workspaceId === 'string' && binding.workspaceId.trim()
+      ? binding.workspaceId.trim()
+      : null;
+  if (!workspaceId) return null;
+  return Object.freeze({
+    schemaVersion: 1,
+    projectId: normalizedProjectId,
+    workspaceId,
+    workspaceMemberId: binding?.createdByWorkspaceMemberId?.trim() || null,
+    source: 'persisted_project_binding',
+  });
+}
 import type { OdNextRolloutDecision } from '../strategies/od-next/rollout.js';
 import type { OdNextTaskInputSnapshotDescriptor } from '../strategies/od-next/task-input-snapshot.js';
 import type { RunTerminalLifecycleV1 } from '../observability/run-terminal-lifecycle.js';

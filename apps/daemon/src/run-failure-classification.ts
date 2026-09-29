@@ -20,10 +20,16 @@ import {
   isModelWindowLimitFailure,
 } from '@open-design/contracts';
 
-import {
-  classifyAmrAccountFailure,
-  reportsPlatformProviderCredentialFault,
-} from './integrations/vela-errors.js';
+const VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN =
+  /(?<![\w.-])upstream_provider_(?:unauthenticated|forbidden)(?![\w.-])/i;
+
+function classifyAmrAccountFailure(_text: string): { code: string; message: string; action: string } | null {
+  return null;
+}
+
+function reportsPlatformProviderCredentialFault(text: string): boolean {
+  return VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN.test(String(text || ''));
+}
 import { runFailureEvidence } from './services/run-failure-evidence.js';
 import { summarizeRunToolProgress } from './run-diagnostics.js';
 import { isAcpHandshakeRpcErrorText } from './runtimes/acp-handshake-id.js';

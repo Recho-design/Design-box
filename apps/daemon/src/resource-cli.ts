@@ -1,19 +1,7 @@
-import { runVelaCommand } from './integrations/vela-command.js';
-
 /**
- * `od resource` is a compatibility entry point for the login-backed Vela
- * resource drive. OpenDesign intentionally owns no Resource Hub credentials
- * or content-addressed transfer implementation.
+ * 阶段2 摘除 Vela 体系后，od resource 命令提示已下线。
  */
-export async function runResource(args: string[]): Promise<void> {
-  try {
-    const stdout = await runVelaCommand([
-      'resource',
-      ...(args.length > 0 ? args : ['--help']),
-    ]);
-    if (stdout) process.stdout.write(stdout);
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : 'vela resource command failed');
-    process.exitCode = 1;
-  }
+export async function runResource(_args: string[]): Promise<void> {
+  console.error('`od resource` command is no longer available as Vela cloud integrations have been removed.');
+  process.exitCode = 1;
 }

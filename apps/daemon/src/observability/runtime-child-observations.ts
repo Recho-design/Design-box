@@ -19,10 +19,6 @@ import {
   type OpenCodeChildRuntimeFact,
   type OpenCodeTaskTerminalCandidate,
 } from '../runtimes/opencode-child-evidence.js';
-import {
-  adaptVelaChildRuntimeFactV1,
-  type VelaChildRuntimeFact,
-} from '../runtimes/vela-child-evidence.js';
 
 const MAX_MAIN_TOOL_OBSERVATIONS_PER_RUN = 256;
 const SAFE_TOOL_NAME_RE = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
@@ -294,12 +290,7 @@ export function adaptRuntimeChildObservationsV1(input: AdaptRuntimeChildObservat
         }
         return [adaptOpenCodeTaskCandidateV1({ candidate, ...input })];
       }
-      if (diagnostic.name === 'vela_opencode_child_agent_lifecycle') {
-        return [adaptVelaChildRuntimeFactV1({
-          fact: diagnostic as unknown as VelaChildRuntimeFact,
-          ...input,
-        })];
-      }
+
       if (diagnostic.name === 'claude_child_runtime_fact') {
         const fact = diagnostic as unknown as ClaudeChildRuntimeFact;
         return [adaptClaudeChildRuntimeFactV1({

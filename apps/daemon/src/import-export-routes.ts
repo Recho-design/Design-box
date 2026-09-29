@@ -1,3 +1,4 @@
+import 'multer';
 import type { Express, Request, Response } from 'express';
 import {
   PROJECT_EXPORT_MANIFEST_SCHEMA,

@@ -12,7 +12,6 @@ import {
   agentIdToTracking,
   byokProtocolToTracking,
 } from '@open-design/contracts/analytics';
-import type { VelaLoginStatus } from './integrations/vela.js';
 
 const RUNTIME_TYPES: readonly TrackingRuntimeType[] = [
   'amr_cloud',
@@ -65,13 +64,7 @@ function readByokProviderProtocol(provider: unknown): string | null {
 // `app_user_id`. Env-configured auth (VELA_RUNTIME_KEY/VELA_LINK_URL) is
 // authorized but carries no profile, so it yields no stamp — only
 // file-backed sign-in knows the account id.
-export function amrUserIdForRunAnalytics(
-  status: VelaLoginStatus | null,
-): Record<string, string> {
-  if (status?.loggedIn !== true) return {};
-  const id = status.user?.id?.trim() ?? '';
-  return id ? { user_id: id } : {};
-}
+export function amrUserIdForRunAnalytics(_status?: unknown): Record<string, string> { return {}; }
 
 export interface RunEventForAnalyticsObservability {
   id?: number;

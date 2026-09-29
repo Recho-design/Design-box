@@ -17,7 +17,6 @@ import {
   OD_NEXT_RUNTIME_CAPABILITY_FIXTURE_MANIFESTS,
   OPENCODE_1_18_18_BEST_EFFORT_MANIFEST,
   OD_NEXT_RUNTIME_PATH_DESCRIPTORS,
-  VELA_OPENCODE_LOCAL_BEST_EFFORT_MANIFEST,
   evaluateOdNextExecutionEligibility,
   hashRuntimeCapabilityFixtureManifestV1,
   resolveBundledOdNextRuntimeCapability,
@@ -123,12 +122,11 @@ describe('OD Next runtime capability gate', () => {
   });
 
   it('registers every reviewed tuple, Vela included', () => {
-    expect(OD_NEXT_RUNTIME_CAPABILITY_REGISTRY).toHaveLength(4);
+    expect(OD_NEXT_RUNTIME_CAPABILITY_REGISTRY).toHaveLength(3);
     expect(OD_NEXT_RUNTIME_CAPABILITY_FIXTURE_MANIFESTS).toEqual([
       CODEX_0_147_0_BEST_EFFORT_MANIFEST,
       CLAUDE_2_1_233_BEST_EFFORT_MANIFEST,
       OPENCODE_1_18_18_BEST_EFFORT_MANIFEST,
-      VELA_OPENCODE_LOCAL_BEST_EFFORT_MANIFEST,
     ]);
     const manifests = fixtureFiles.map(readFixture);
     expect(manifests.map((manifest) => manifest.runtimePath)).toEqual(
@@ -219,45 +217,7 @@ describe('OD Next runtime capability gate', () => {
     });
   });
 
-  it('admits Vela on the native OpenCode runtime it shares with the registered OpenCode tuple', () => {
-    const seed = JSON.parse(readFileSync(
-      join(fixtureDir, 'vela-opencode-0.0.1-local-opencode-1.18.18.sanitized-real-seed.json'),
-      'utf8',
-    )) as { recordingDigest: string };
-    expect(VELA_OPENCODE_LOCAL_BEST_EFFORT_MANIFEST.provenance).toMatchObject({
-      kind: 'sanitized_real',
-      evidenceReview: 'open_design_best_effort',
-      recordingDigest: seed.recordingDigest,
-    });
-    expect(resolveOdNextRuntimeCapability({
-      agentId: 'amr',
-      agentCliVersion: '0.0.1-od-next-local',
-      runtimeCompanionName: 'opencode',
-      runtimeCompanionVersion: '1.18.18',
-      fixtureVersion: VELA_OPENCODE_LOCAL_BEST_EFFORT_MANIFEST.fixtureVersion,
-      fixtureManifest: VELA_OPENCODE_LOCAL_BEST_EFFORT_MANIFEST,
-      capturedAt: 1,
-    })).toMatchObject({
-      includedInInitialRollout: true,
-      tupleMatched: true,
-      // Vela drives the same native OpenCode runtime already registered under
-      // `native-opencode`; its Child mechanism is that runtime's, reached over
-      // the ACP extension instead of the CLI stream. Withholding the tuple did
-      // not withhold an unproven capability, it refused complex execution to an
-      // agent whose seven evidence paths all pass. Re-pin `agentCliVersion`
-      // once Vela publishes a build with a stable producer version.
-      reason: 'capability_resolved',
-      snapshot: {
-        runtimePath: 'vela-opencode',
-        agentCliVersion: '0.0.1-od-next-local',
-        runtimeCompanionVersion: '1.18.18',
-        nativeSessionContinuation: { support: 'verified' },
-        nativeSubagents: { support: 'verified', evidenceLevel: 'L2' },
-      },
-    });
-  });
-
-  it('admits prerelease and unknown Codex versions through the reviewed adapter contract', () => {
+    it('admits prerelease and unknown Codex versions through the reviewed adapter contract', () => {
     const seed = JSON.parse(readFileSync(
       join(fixtureDir, 'codex-0.147.0.sanitized-real-seed.json'),
       'utf8',

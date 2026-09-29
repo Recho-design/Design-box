@@ -1,6 +1,11 @@
 import { execAgentFile } from './invocation.js';
 import { readCodexProviderEnvKey } from '../codex-config-normalize.js';
-import { reportsPlatformProviderCredentialFault } from '../integrations/vela-errors.js';
+const VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN =
+  /(?<![\w.-])upstream_provider_(?:unauthenticated|forbidden)(?![\w.-])/i;
+
+function reportsPlatformProviderCredentialFault(text: string): boolean {
+  return VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN.test(String(text || ''));
+}
 import type { RuntimeAgentDef, RuntimeEnv } from './types.js';
 
 export type AgentAuthProbeResult = {

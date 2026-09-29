@@ -51,7 +51,6 @@ import {
   updateProject,
   upsertMessage,
 } from '../db.js';
-import { readVelaLoginStatus } from '../integrations/vela.js';
 import {
   ensureDetectedRuntimeCapabilities,
   ensureDetectedRuntimeVersions,
@@ -192,9 +191,7 @@ import {
   deriveActivationMilestones,
   runAskedUserQuestion,
 } from '../runtimes/run-artifacts.js';
-import {
-  type RunWorkspaceScope,
-} from '../runtimes/project-amr-trace-env.js';
+import { type RunWorkspaceScope } from '../runtimes/chat-run-records.js';
 import {
   runArtifactCountForRun,
   runDesignSystemCreatedForRun,
@@ -2617,13 +2614,7 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
           : {}),
         resume: {
           requested: requestBody.resume === true,
-          canResume: (candidate) =>
-            candidate.status === 'failed'
-            && candidate.agentId === 'amr'
-            && (
-              candidate.failureAction === 'recharge'
-              || candidate.errorCode === 'AMR_INSUFFICIENT_BALANCE'
-            ),
+          canResume: () => false,
         },
       });
     } catch (error) {
@@ -2642,13 +2633,7 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
           ...(runUserSeed ? { beforeClaimCommit: () => seedRunUserMessage() } : {}),
           resume: {
             requested: requestBody.resume === true,
-            canResume: (candidate) =>
-              candidate.status === 'failed'
-              && candidate.agentId === 'amr'
-              && (
-                candidate.failureAction === 'recharge'
-                || candidate.errorCode === 'AMR_INSUFFICIENT_BALANCE'
-              ),
+            canResume: () => false,
           },
         });
       } else {

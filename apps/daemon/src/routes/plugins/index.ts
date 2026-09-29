@@ -1,3 +1,4 @@
+import 'multer';
 import type { Express, NextFunction, Request, RequestHandler, Response } from 'express';
 import type {
   InstalledPluginRecord,

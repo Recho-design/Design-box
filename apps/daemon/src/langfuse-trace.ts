@@ -33,7 +33,6 @@ import {
 
 import type { TelemetryPrefs } from './app-config.js';
 import { normalizeOpenDesignTelemetryRelayUrl } from './integrations/telemetry-relay.js';
-import { readVelaControlApiContext } from './integrations/vela.js';
 import {
   deriveRunTelemetryExportExpectation,
   exportRunObservation,
@@ -510,7 +509,7 @@ export function readRunTelemetrySinkConfig(
   configuredEnv: Record<string, string> = {},
 ): RunTelemetrySinkConfig | null {
   if (isVelaTelemetryEnabled(env)) {
-    const context = readVelaControlApiContext(env, configuredEnv);
+    const context = null as any;
     const controlKey = context?.controlKey?.trim() ?? '';
     if (context && controlKey) {
       return {

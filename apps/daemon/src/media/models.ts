@@ -32,7 +32,6 @@ export type MediaModel = {
 
 export const MEDIA_PROVIDERS: MediaProvider[] = [
   { id: 'openai', label: 'OpenAI', hint: 'gpt-image-2 / dall-e-3', integrated: true, defaultBaseUrl: 'https://api.openai.com/v1' },
-  { id: 'vela', label: 'OpenDesign Cloud', hint: 'Managed image and video generation through Vela', integrated: true, credentialsRequired: false, settingsVisible: false },
   { id: 'volcengine', label: 'Volcengine Ark (Doubao)', hint: 'Seedance 2.0 / Seedream', integrated: true, defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3' },
   { id: 'grok', label: 'xAI Grok Imagine', hint: 'grok-imagine — image + video with native audio', integrated: true, defaultBaseUrl: 'https://api.x.ai/v1' },
   { id: 'hyperframes', label: 'HyperFrames', hint: 'Local HTML -> MP4 renderer', integrated: true, credentialsRequired: false, settingsVisible: false },
@@ -85,11 +84,10 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
 ];
 
 export const IMAGE_MODELS: MediaModel[] = [
-  { id: 'vela/gpt-image-2', label: 'gpt-image-2 (Cloud)', hint: 'OpenDesign Cloud · managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
-  { id: 'vela/nano-banana-2', label: 'nano-banana-2 (Cloud)', hint: 'OpenDesign Cloud · managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
-  { id: 'vela/nano-banana-2-lite', label: 'nano-banana-2-lite (Cloud)', hint: 'OpenDesign Cloud · fast managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
-  { id: 'vela/seedream-5.0', label: 'seedream-5.0 (Cloud)', hint: 'OpenDesign Cloud · managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
-  { id: 'vela/seedream-5.0-pro', label: 'seedream-5.0-pro (Cloud)', hint: 'OpenDesign Cloud · high-quality managed image generation and editing', provider: 'vela', caps: ['t2i', 'i2i'] },
+
+
+
+
   { id: 'gpt-image-2', label: 'gpt-image-2', hint: 'OpenAI · 4K, native multimodal', provider: 'openai', caps: ['t2i', 'i2i', 'inpaint'], default: true },
   { id: 'gpt-image-1.5', label: 'gpt-image-1.5', hint: 'OpenAI · 4× faster than gpt-image-1', provider: 'openai', caps: ['t2i', 'i2i', 'inpaint'] },
   { id: 'gpt-image-1', label: 'gpt-image-1', hint: 'OpenAI · ChatGPT native', provider: 'openai', caps: ['t2i', 'i2i', 'inpaint'] },
@@ -155,7 +153,6 @@ export const IMAGE_MODELS: MediaModel[] = [
 ];
 
 export const VIDEO_MODELS: MediaModel[] = [
-  { id: 'vela/doubao-seedance-2-0-260128', label: 'seedance-2.0 (Cloud)', hint: 'OpenDesign Cloud · managed text/image-to-video · 720p default', provider: 'vela', caps: ['t2v', 'i2v'] },
   { id: 'doubao-seedance-2-0-260128', label: 'seedance-2.0', hint: 'ByteDance · t2v + i2v + audio', provider: 'volcengine', caps: ['t2v', 'i2v', 'audio'], default: true },
   { id: 'doubao-seedance-2-0-fast-260128', label: 'seedance-2.0-fast', hint: 'ByteDance · faster, cheaper', provider: 'volcengine', caps: ['t2v', 'i2v', 'audio'] },
   { id: 'doubao-seedance-1-0-pro-250528', label: 'seedance-1.0-pro', hint: 'ByteDance · 1.0', provider: 'volcengine', caps: ['t2v', 'i2v'] },
@@ -242,21 +239,18 @@ const MEDIA_MODEL_ALIASES: Readonly<Record<string, string>> = {
  * `vela`（OpenDesign Cloud）的解析与渲染此阶段保持不变（阶段2 才摘除整套
  * 媒体链路），只是从"可选模型列表"这一层拿掉入口。
  */
-const UNOFFERED_MEDIA_PROVIDER_IDS: ReadonlySet<string> = new Set(['vela']);
-
 /**
- * 判断某个媒体模型是否仍然可选（出现在模型目录里）。
- * 只作用于列表这一层，不改变 `findMediaModel` 的解析结果。
+ * 阶段2 摘除 Vela 媒体链路后，所有已注册模型直通。
  */
-export function isMediaModelOffered(model: MediaModel): boolean {
-  return !UNOFFERED_MEDIA_PROVIDER_IDS.has(model.provider);
+export function isMediaModelOffered(_model: MediaModel): boolean {
+  return true;
 }
 
 /**
- * 判断某个媒体 provider 是否仍然可选（出现在模型目录里）。
+ * 阶段2 摘除 Vela 媒体链路后，所有已注册 provider 直通。
  */
-export function isMediaProviderOffered(provider: MediaProvider): boolean {
-  return !UNOFFERED_MEDIA_PROVIDER_IDS.has(provider.id);
+export function isMediaProviderOffered(_provider: MediaProvider): boolean {
+  return true;
 }
 
 /**
