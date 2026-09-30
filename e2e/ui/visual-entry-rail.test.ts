@@ -6,14 +6,12 @@
 // needs and seeds enough projects to overflow a short window.
 import { expect, test } from '@/playwright/suite';
 import type { Locator, Page } from '@playwright/test';
-import { AMR_PERSONAL_WORKSPACE_ITEM, mockAmrPersonalWorkspace } from '@/playwright/amr';
 import { ensureRailOpen } from '@/playwright/rail';
 import { T } from '@/timeouts';
 import {
   captureVisual,
   configureVisualPage,
   gotoVisualHome,
-  mockSignedInVelaAccount,
   waitForVisualFonts,
   type VisualProject,
 } from '@/playwright/visual';
@@ -67,11 +65,11 @@ async function expectHitTargetIsSelf(locator: Locator): Promise<void> {
 async function mockWorkspaceProjectList(page: Page, projects: readonly VisualProject[]): Promise<void> {
   const summaries = projects.map((project) => ({
     ...project,
-    workspaceId: AMR_PERSONAL_WORKSPACE_ITEM.workspaceId,
+    workspaceId: 'ws-visual-personal',
     visibility: 'personal',
     resourceState: 'active',
-    createdByWorkspaceMemberId: AMR_PERSONAL_WORKSPACE_ITEM.workspaceMemberId,
-    updatedByWorkspaceMemberId: AMR_PERSONAL_WORKSPACE_ITEM.workspaceMemberId,
+    createdByWorkspaceMemberId: 'wm-visual-personal',
+    updatedByWorkspaceMemberId: 'wm-visual-personal',
     resourceHubResourceId: null,
     cloudTombstonedAt: null,
     syncState: 'local_only',
@@ -100,8 +98,6 @@ async function mockWorkspaceProjectList(page: Page, projects: readonly VisualPro
 
 async function openRailWithRecentProjects(page: Page): Promise<void> {
   await configureVisualPage(page, { projects: RAIL_PROJECTS });
-  await mockSignedInVelaAccount(page);
-  await mockAmrPersonalWorkspace(page);
   await mockWorkspaceProjectList(page, RAIL_PROJECTS);
   await gotoVisualHome(page);
   await ensureRailOpen(page);

@@ -1,9 +1,5 @@
 import { expect, test } from '@/playwright/suite';
-import {
-  applyStandardMocks,
-  routeSignedOutVelaStatus,
-} from '@/playwright/mock-factory';
-import { mockAmrPersonalWorkspace } from '@/playwright/amr';
+import { applyStandardMocks } from '@/playwright/mock-factory';
 import { ensureRailOpen } from '@/playwright/rail';
 import { T } from '@/timeouts';
 
@@ -91,7 +87,6 @@ for (const direction of ['ltr', 'rtl'] as const) {
     // Below 1080px the entry layout auto-collapses the rail, and the account
     // row that normally carries the rocket goes off screen with it — so the
     // rocket falls back to its top-right home here.
-    await mockAmrPersonalWorkspace(page);
     await page.setViewportSize({ width: 700, height: 600 });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByText('Loading OpenDesign…').waitFor({ state: 'hidden', timeout: T.long });
@@ -137,7 +132,6 @@ for (const direction of ['ltr', 'rtl'] as const) {
   test(`[P1] signed-in ${direction.toUpperCase()} wide window parks the rocket on the rail account row and flies the prompt out beside it`, async ({
     page,
   }) => {
-    await mockAmrPersonalWorkspace(page);
     // Wide enough to keep the rail on screen, short enough that a prompt
     // growing downward from the foot of the rail would leave the viewport.
     await page.setViewportSize({ width: 1200, height: 600 });
@@ -209,7 +203,6 @@ for (const direction of ['ltr', 'rtl'] as const) {
 }
 
 test('[P1] signed-out update prompt stays clear of the composer and its agent picker', async ({ page }) => {
-  await routeSignedOutVelaStatus(page);
   await page.setViewportSize({ width: 700, height: 600 });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByText('Loading OpenDesign…').waitFor({ state: 'hidden', timeout: T.long });

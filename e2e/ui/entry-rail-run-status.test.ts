@@ -98,19 +98,6 @@ async function wireSignedInWorkspace(page: Page): Promise<{
   const runsRequests: string[] = [];
   const runGeneration = new Map<string, number>();
 
-  await page.route('**/api/integrations/vela/status', async (route) => {
-    await route.fulfill({
-      json: {
-        loggedIn: true,
-        loginInFlight: false,
-        profile: 'test',
-        user: { id: 'ui-run-status-user', email: 'run-status@example.com', name: 'Run Status', plan: 'free' },
-        account: { plan: 'free', balanceUsd: '0.00' },
-        configPath: '/tmp/.amr/config.json',
-      },
-    });
-  });
-
   await page.route('**/api/workspace/**', async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());

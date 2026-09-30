@@ -1,215 +1,16 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
-import type {
-  WorkspaceCollabContext,
-  WorkspaceDirectoryItem,
-} from '@open-design/contracts';
 import { dismissWhatsNewPopup, ensureRailOpen } from './rail.js';
 import { T } from '@/timeouts';
 
+/**
+ * 通用 UI 测试助手（原 `lib/playwright/amr.ts` 抽出的与 AMR/Vela 无关的部分）。
+ * AMR/Vela 云账号体系已删除，仅保留对任何测试都适用的导航、设置弹窗、
+ * 项目创建与 app-config 读写等通用入口。
+ */
+
 export const STORAGE_KEY = 'open-design:config';
 export const OPEN_SETTINGS_LABEL = /Open settings|打开设置|開啟設定|Account & settings/i;
-
-type MockAmrWalletOptions = {
-  balanceUsd?: string;
-  email?: string;
-  loggedIn?: () => boolean;
-  plan?: string;
-  profile?: string;
-};
-
-type MockAmrPersonalWorkspaceOptions = {
-  accountBalanceUsd?: string;
-  accountCredits?: number;
-  accountPlan?: string;
-  accountSummaryAvailable?: boolean;
-  workspaceBalanceAvailable?: boolean;
-};
-
-export const AMR_PERSONAL_WORKSPACE_ITEM = {
-  workspaceId: 'ws-amr-playwright-personal',
-  workspaceName: 'AMR Playwright personal workspace',
-  workspaceType: 'personal',
-  workspaceMemberId: 'mem-amr-playwright-personal',
-  role: 'owner',
-  memberStatus: 'active',
-  lifecycleState: 'active',
-} satisfies WorkspaceDirectoryItem;
-
-export const AMR_PERSONAL_WORKSPACE_CONTEXT = {
-  ...AMR_PERSONAL_WORKSPACE_ITEM,
-  billingState: 'active',
-  planId: null,
-  providerMode: 'platform_credits',
-  seatSummary: { seatLimit: 1, usedSeats: 1, availableSeats: 0, isSeatFull: true },
-  permissions: {
-    canManageMembers: true,
-    canManageBilling: true,
-    canInviteMembers: true,
-    canManageAutoRecharge: true,
-    canShareProjects: true,
-    canWriteSyncedFiles: true,
-    canViewWorkspaceSettings: true,
-    canManageSharedResources: true,
-  },
-} satisfies WorkspaceCollabContext;
-
-export const AMR_PERSONAL_WORKSPACE_HEADERS: Readonly<Record<string, string>> = {
-  'x-od-workspace-id': AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceId,
-  'x-od-workspace-type': AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceType,
-  'x-od-workspace-member-id': AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceMemberId,
-  'x-od-workspace-role': AMR_PERSONAL_WORKSPACE_CONTEXT.role,
-  'x-od-workspace-lifecycle-state': AMR_PERSONAL_WORKSPACE_CONTEXT.lifecycleState,
-  'x-od-workspace-member-status': AMR_PERSONAL_WORKSPACE_CONTEXT.memberStatus,
-  'x-od-workspace-can-share-projects': String(
-    AMR_PERSONAL_WORKSPACE_CONTEXT.permissions.canShareProjects,
-  ),
-  'x-od-workspace-can-write-synced-files': String(
-    AMR_PERSONAL_WORKSPACE_CONTEXT.permissions.canWriteSyncedFiles,
-  ),
-};
-
-/**
- * Give AMR browser scenarios the same explicit Personal Workspace identity
- * used when their project is created. This stays opt-in so signed-out local
- * CLI and BYOK scenarios continue to run without an AMR Workspace identity.
- */
-export async function mockAmrPersonalWorkspace(
-  page: Page,
-  projectId?: string,
-  options: MockAmrPersonalWorkspaceOptions = {},
-) {
-  const accountPlan = options.accountPlan ?? 'free';
-  const accountBalanceUsd = options.accountBalanceUsd ?? '0.00';
-  const accountCredits = options.accountCredits ?? 0;
-  await page.route('**/api/workspace/directory', async (route) => {
-    if (route.request().method() !== 'GET') {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      json: {
-        items: [AMR_PERSONAL_WORKSPACE_ITEM],
-        activeWorkspaceId: AMR_PERSONAL_WORKSPACE_ITEM.workspaceId,
-      },
-    });
-  });
-
-  await page.route('**/api/workspace/context', async (route) => {
-    if (route.request().method() !== 'GET') {
-      await route.fallback();
-      return;
-    }
-    const headers = route.request().headers();
-    if (
-      headers['x-od-workspace-id'] !== AMR_PERSONAL_WORKSPACE_ITEM.workspaceId
-      || headers['x-od-workspace-member-id'] !== AMR_PERSONAL_WORKSPACE_ITEM.workspaceMemberId
-    ) {
-      await route.fulfill({
-        status: 400,
-        json: { error: 'exact_workspace_scope_required' },
-      });
-      return;
-    }
-    await route.fulfill({ json: { context: AMR_PERSONAL_WORKSPACE_CONTEXT } });
-  });
-
-  await page.route('**/api/workspace/billing**', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (request.method() !== 'GET' || url.pathname !== '/api/workspace/billing') {
-      await route.fallback();
-      return;
-    }
-    if (url.searchParams.get('scope') === 'workspace') {
-      const workspaceId = url.searchParams.get('workspaceId');
-      if (workspaceId !== AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceId) {
-        await route.fulfill({ status: 404, json: { error: 'workspace_not_found' } });
-        return;
-      }
-      const observedAt = '2026-07-26T00:00:00.000Z';
-      await route.fulfill({
-        json: {
-          summary: null,
-          workspaceBalance: options.workspaceBalanceAvailable === false
-            ? null
-            : {
-                workspaceId,
-                workspaceMemberId: AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceMemberId,
-                balanceUsd: accountBalanceUsd,
-                billingScopeVersion: 2,
-                expiresAt: null,
-                updatedAt: observedAt,
-              },
-          workspaceRuntime: {
-            workspaceId,
-            workspaceMemberId: AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceMemberId,
-            status: 'fresh',
-            revision: '1',
-            observedAt,
-            softExpiresAt: '2099-07-26T00:00:30.000Z',
-            hardExpiresAt: '2099-07-26T00:02:00.000Z',
-            retryAt: null,
-            errorCode: null,
-            reason: 'authoritative-action-read',
-            sourceGapDetected: false,
-          },
-          authoritativeWorkspaceRead: {
-            workspaceId,
-            workspaceMemberId: AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceMemberId,
-            observedAt,
-          },
-        },
-      });
-      return;
-    }
-    if (url.searchParams.get('scope') !== 'account' || url.searchParams.size !== 1) {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      json: {
-        summary: options.accountSummaryAvailable === false
-          ? null
-          : {
-              workspaceId: null,
-              membershipTier: accountPlan,
-              totalAvailableCredits: accountCredits,
-              subscriptionCredits: accountCredits,
-              rechargeCredits: 0,
-              balanceUsd: accountBalanceUsd,
-              subscriptionStatus: 'active',
-              availableActions: [],
-              workspaceBalance: null,
-            },
-        workspaceBalance: null,
-      },
-    });
-  });
-
-  if (projectId) {
-    // These AMR UI scenarios exercise run/error recovery rather than Vela's
-    // remote directory transport. Scope only the project they create, and let
-    // every files/conversations/messages/run request continue to the real
-    // daemon with the context the Web derives from this response.
-    await page.route(
-      `**/api/projects/${encodeURIComponent(projectId)}/workspace-scope`,
-      async (route) => {
-        await route.fulfill({
-          json: {
-            scope: {
-              kind: 'personal',
-              projectId,
-              workspaceId: AMR_PERSONAL_WORKSPACE_CONTEXT.workspaceId,
-              visibility: 'personal',
-              context: AMR_PERSONAL_WORKSPACE_CONTEXT,
-            },
-          },
-        });
-      },
-    );
-  }
-}
 
 export async function waitForLoadingToClear(page: Page) {
   await page.getByText('Loading OpenDesign…').waitFor({ state: 'hidden', timeout: T.long }).catch(() => {});
@@ -233,63 +34,6 @@ export async function gotoEntryHome(page: Page) {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await waitForLoadingToClear(page);
   await dismissPrivacyDialog(page);
-}
-
-export async function mockAmrWalletSnapshot(
-  page: Page,
-  options: MockAmrWalletOptions = {},
-) {
-  const profile = options.profile ?? 'local';
-  const email = options.email ?? 'amr-wallet@example.com';
-  const plan = options.plan ?? 'plus';
-  const balanceUsd = options.balanceUsd ?? '20.00';
-  const fetchedAt = '2026-07-07T00:00:00.000Z';
-
-  await page.route('**/api/integrations/vela/wallet**', async (route) => {
-    if (options.loggedIn?.() === false) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          status: 'signed_out',
-          profile,
-          user: null,
-          balanceUsd: null,
-          updatedAt: null,
-          fetchedAt,
-          stale: false,
-          source: 'unavailable',
-          error: { code: 'signed_out', message: 'Sign in to view wallet balance.' },
-        }),
-      });
-      return;
-    }
-
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        status: 'available',
-        profile,
-        user: { id: 'amr-wallet-user', email, plan },
-        balanceUsd,
-        updatedAt: fetchedAt,
-        fetchedAt,
-        stale: false,
-        source: 'vela_api',
-      }),
-    });
-  });
-}
-
-export async function expectWorkspaceReady(page: Page) {
-  await waitForLoadingToClear(page);
-  await expect(page).toHaveURL(/\/projects\//);
-  await expect(page.getByTestId('chat-composer')).toBeVisible();
-  // The composer mounts before Workspace authority has resolved, but remains
-  // read-only until the current member has writer access. Wait on the actual
-  // submit gate so callers cannot race into an opaque click timeout.
-  await expect(page.getByTestId('chat-composer-input')).toBeEditable({ timeout: T.medium });
 }
 
 /**
@@ -438,15 +182,8 @@ export async function sendPrompt(page: Page, prompt: string) {
   await input.press('Enter');
 }
 
-export async function createProjectViaApi(
-  page: Page,
-  projectId: string,
-  name: string,
-  workspaceOptions: MockAmrPersonalWorkspaceOptions = {},
-) {
-  await mockAmrPersonalWorkspace(page, projectId, workspaceOptions);
+export async function createProjectViaApi(page: Page, projectId: string, name: string) {
   const response = await page.request.post('/api/projects', {
-    headers: { ...AMR_PERSONAL_WORKSPACE_HEADERS },
     data: {
       id: projectId,
       name,
@@ -468,7 +205,7 @@ export async function gotoProject(page: Page, projectId: string) {
     if (!/ERR_ABORTED|frame was detached/i.test(message)) throw error;
   }
   await dismissPrivacyDialog(page);
-  await expectWorkspaceReady(page);
+  await waitForLoadingToClear(page);
 }
 
 export async function putAppConfig(page: Page, config: Record<string, unknown>) {

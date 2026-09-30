@@ -9,7 +9,6 @@ import {
 } from '@/playwright/home-hero';
 import {
   routeAgents,
-  routeSignedOutVelaStatus,
   routeSuccessfulRuns,
   successfulRunEventBody,
   suppressWhatsNew,
@@ -1487,7 +1486,6 @@ test('[P0] home design-system picker carries explicit and cleared selections int
 
 test('[P0] signed-out Local setup can create a design system and start brand extraction', async ({ page }) => {
   const brandRequests: Array<{ url?: string; locale?: string }> = [];
-  await routeSignedOutVelaStatus(page);
   await routeHomeDesignSystems(page);
   await routeProjectCreates(page);
   await routeRunsAccepted(page);

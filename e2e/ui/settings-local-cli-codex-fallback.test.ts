@@ -1,6 +1,6 @@
 import { expect, test } from '@/playwright/suite';
 import type { Page } from '@playwright/test';
-import { openSettingsDialog } from '../lib/playwright/amr.js';
+import { openSettingsDialog } from '../lib/playwright/app-helpers.js';
 import { routeAgents, suppressWhatsNew } from '../lib/playwright/mock-factory.js';
 
 const STORAGE_KEY = 'open-design:config';
@@ -185,7 +185,7 @@ async function openLocalCliSettings(
     .first();
   await expect(codexCard).toBeVisible({ timeout: 20_000 });
   await codexCard.click();
-  await dialog.getByTestId('settings-cli-env').evaluate((details) => {
+  await dialog.getByTestId('settings-cli-env').evaluate((details: HTMLElement) => {
     if (details instanceof HTMLDetailsElement) details.open = true;
   });
   await expect(

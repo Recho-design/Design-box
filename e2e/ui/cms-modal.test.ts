@@ -3,10 +3,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { expect, test } from "@/playwright/suite";
-import {
-	mockAmrPersonalWorkspace,
-	mockAmrWalletSnapshot,
-} from "@/playwright/amr";
 import { applyStandardMocks } from "@/playwright/mock-factory";
 import { T } from "@/timeouts";
 import type { Page, Route } from "@playwright/test";
@@ -54,8 +50,8 @@ function contentFor(mode: CloseMode, tall = false) {
 		formatVersion: 2 as const,
 		runtimeKind: "web-component" as const,
 		runtimeApiVersion: 1 as const,
-		platformWrapperVersion: "vela-touchpoint-wrapper-v1" as const,
-		sdkVersion: "vela-touchpoint-sdk-v1" as const,
+		platformWrapperVersion: "touchpoint-wrapper-v1" as const,
+		sdkVersion: "touchpoint-sdk-v1" as const,
 		contentLine: "cms-modal-browser-fixture",
 		placements: [
 			{
@@ -97,8 +93,8 @@ function contentFor(mode: CloseMode, tall = false) {
 		runtime: {
 			kind: "web-component" as const,
 			apiVersion: 1 as const,
-			wrapperVersion: "vela-touchpoint-wrapper-v1" as const,
-			sdkVersion: "vela-touchpoint-sdk-v1" as const,
+			wrapperVersion: "touchpoint-wrapper-v1" as const,
+			sdkVersion: "touchpoint-sdk-v1" as const,
 		},
 		buildIdentity: { fingerprint: hostFingerprint },
 	};
@@ -205,24 +201,6 @@ async function installProductionFixture(
 ) {
 	const mode = options.mode ?? "none";
 	const events: Array<Record<string, unknown>> = [];
-	await page.route("**/api/integrations/vela/status", async (route) => {
-		await route.fulfill({
-			json: {
-				loggedIn: true,
-				profile: "local",
-				user: {
-					id: "cms-modal-user",
-					email: "cms-modal@example.com",
-					plan: "free",
-				},
-			},
-		});
-	});
-	await mockAmrPersonalWorkspace(page, undefined, { accountPlan: "free" });
-	await mockAmrWalletSnapshot(page, {
-		email: "cms-modal@example.com",
-		plan: "free",
-	});
 	await page.route(
 		"**/api/touchpoints/production-runtime**",
 		async (route: Route) => {

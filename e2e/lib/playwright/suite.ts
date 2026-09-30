@@ -9,7 +9,7 @@ import {
   warmPlaywrightDaemonRuntime,
   warmPlaywrightWebRuntime,
 } from './runtime-lifecycle.ts';
-import { routeUnavailableVelaStatus, suppressWhatsNew } from './mock-factory.ts';
+import { suppressWhatsNew } from './mock-factory.ts';
 import { resolvePlaywrightSlotNamespace } from './runtime-identity.ts';
 import { createToolsDevSuite, e2eWorkspaceRoot } from '../tools-dev/runtime.ts';
 import type { ToolsDevSuite } from '../tools-dev/types.ts';
@@ -50,12 +50,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       let useError: unknown = null;
       let stopError: unknown = null;
       try {
-        // Never let a developer's real ~/.amr/config.json turn an otherwise
-        // signed-out UI test into a Workspace-scoped daemon session. Specs
-        // that exercise AMR/Workspace authority provide their own explicit
-        // fake runtime configuration and request headers.
         await toolsDev.startWeb({
-          AMR_HOME: join(toolsDev.root, 'scratch', 'amr-home'),
           // The hermetic Codex fixture emits the legacy `exec --json` stream.
           // Pin its matching transport here; app-server protocol coverage lives
           // in the daemon transport/parity suites, not in this fake-CLI worker.
@@ -103,18 +98,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   baseURL: async ({ toolsDev }, use) => {
     await use(toolsDev.url.web());
   },
-
-  // Most UI specs exercise Home or Workspace behavior, not authentication.
-  // Model a transient Cloud-status outage so the Cloud-first entry gate cannot
-  // redirect them and no fake account changes local APIs to Workspace scope.
-  // Auth/onboarding specs register a later route with their intended state.
-  _defaultCloudStatus: [
-    async ({ page }, use) => {
-      await routeUnavailableVelaStatus(page);
-      await use();
-    },
-    { auto: true },
-  ],
 
   // A release announcement belongs to no spec's subject. The card renders in a
   // shared dialog whose overlay sits above the app chrome, so whenever one

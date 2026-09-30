@@ -1,6 +1,6 @@
 import { expect, test } from '@/playwright/suite';
 import { T } from '@/timeouts';
-import { openSettingsDialog } from '../lib/playwright/amr.js';
+import { openSettingsDialog } from '../lib/playwright/app-helpers.js';
 import { suppressWhatsNew } from '../lib/playwright/mock-factory.js';
 
 // Regression for #4509: the MCP server setup snippet renders inside a dark
@@ -41,7 +41,7 @@ test('[P1] MCP server snippet code stays transparent, not the inline-code chip (
   const code = settings.locator('pre code').filter({ hasText: 'claude mcp add-json' });
   await expect(code).toBeVisible({ timeout: T.short });
 
-  const style = await code.evaluate((element) => {
+  const style = await code.evaluate((element: HTMLElement) => {
     const computed = getComputedStyle(element);
     return { background: computed.backgroundColor, padding: computed.padding };
   });

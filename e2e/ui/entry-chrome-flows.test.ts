@@ -1,6 +1,6 @@
 import { expect, test } from '@/playwright/suite';
 import { ensureRailOpen, openNewProjectModal } from '@/playwright/rail';
-import { settingsSurface } from '@/playwright/amr';
+import { settingsSurface } from '@/playwright/app-helpers';
 import { expectStableCount } from '@/playwright/assertions';
 import {
   HOME_TYPE_PRIMARY_CHIP_IDS,
@@ -17,7 +17,6 @@ import type { Page, Request } from '@playwright/test';
 import {
   applyStandardMocks,
   fulfillAgentsRoute,
-  routeSignedOutVelaStatus,
   routeSuccessfulRuns,
   STORAGE_KEY,
 } from '@/playwright/mock-factory';
@@ -384,17 +383,6 @@ test('[P1] onboarding lands on the home composer without a recommended-start str
       },
     });
   });
-  await page.route('**/api/integrations/vela/status', async (route) => {
-    await route.fulfill({
-      json: {
-        loggedIn: true,
-        loginInFlight: false,
-        profile: 'local',
-        configPath: '/tmp/.amr/config.json',
-        user: { id: 'entry-onboarding', email: 'entry-onboarding@example.com' },
-      },
-    });
-  });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByText('Loading OpenDesign…').waitFor({ state: 'hidden', timeout: T.long });
 
@@ -428,7 +416,6 @@ test('[P1] onboarding lands on the home composer without a recommended-start str
 });
 
 test('[P1] entry top navigation matches the current home tab structure', async ({ page }) => {
-  await routeSignedOutVelaStatus(page);
   await gotoEntryHome(page);
   await ensureRailOpen(page);
 
@@ -1130,7 +1117,6 @@ test('[P2] home topbar overlays close on outside click, Escape, and Settings ope
 // entry pages. This spec now pins the rail's surviving destinations plus the
 // pill at its new, Home-only home.
 test('[P0] signed-out Local setup can navigate the surviving rail destinations', async ({ page }) => {
-  await routeSignedOutVelaStatus(page);
   await routeDesignSystems(page);
   await gotoEntryHome(page);
 
@@ -1325,7 +1311,6 @@ test('[P0] @critical home hero input keeps Shift+Enter as a newline and submits 
 });
 
 test('[P0] signed-out Local setup can apply a plugin from the Home composer', async ({ page }) => {
-  await routeSignedOutVelaStatus(page);
   await page.route('**/api/plugins', async (route) => {
     await route.fulfill({
       json: {

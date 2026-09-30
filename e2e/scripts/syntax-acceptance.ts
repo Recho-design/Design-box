@@ -43,11 +43,7 @@ export function resolveSyntaxTelemetryCanary(input: {
     fixtures,
     prefs: { metrics: true, content: true, artifactManifest: false },
     env: {
-      // Do not disable Vela priority. With an empty AMR home and no keys the
-      // real resolver naturally selects the anonymous test relay.
-      AMR_HOME: path.join(input.isolatedRoot, 'amr'),
       OD_INSTALLATION_DIR: '', OD_LEGACY_DATA_DIR: '',
-      VELA_CONTROL_KEY: '', VELA_RUNTIME_KEY: '',
       LANGFUSE_PUBLIC_KEY: '', LANGFUSE_SECRET_KEY: '',
       POSTHOG_KEY: '', NEXT_PUBLIC_POSTHOG_KEY: '',
       OPEN_DESIGN_TELEMETRY_RELAY_URL: input.relayUrl,
@@ -222,7 +218,7 @@ export async function collectRealEvidence(output: string, expectedIds: string[])
       && syntax.finalization.committedPatchCount === 0 && syntax.recoveredDeliveryCount === 0;
     return { ...entry, deliveredWithWarning, repairVerified,
     passed: entry.status === 'succeeded' && entry.metrics?.strategyRoute === 'od-next'
-      && entry.metrics?.agent === 'open-design:amr' && entry.metrics?.model === 'deepseek-v4-flash'
+      && entry.metrics?.model === 'deepseek-v4-flash'
       && (deliveredWithWarning || repairVerified || deliveredWithoutRepair),
     };
   });
@@ -244,25 +240,24 @@ const exec = promisify(execFile);
 const workspace = e2eWorkspaceRoot();
 const { values } = parseArgs({ args, options: {
   mode: { type: 'string' }, dataset: { type: 'string' }, sha256: { type: 'string' },
-  runner: { type: 'string' }, vela: { type: 'string' }, profile: { type: 'string', default: 'test' },
+  runner: { type: 'string' }, profile: { type: 'string', default: 'test' },
   'runner-version': { type: 'string', default: '0.9.24' },
   'expected-rows': { type: 'string', default: '24' }, repeat: { type: 'string' },
   'fixture-manifest': { type: 'string' }, 'timeout-ms': { type: 'string', default: String(3 * 60 * 60 * 1000) },
   'upload-telemetry': { type: 'boolean', default: false },
 } });
 if (values.mode !== 'real' && values.mode !== 'replay') {
-  throw new Error('Choose --mode replay or --mode real (real also requires --dataset --sha256 --runner --vela).');
+  throw new Error('Choose --mode replay or --mode real (real also requires --dataset --sha256 --runner).');
 }
 const mode = values.mode;
 const root = await mkdtemp(path.join(os.tmpdir(), 'od-syntax-acceptance-'));
 await chmod(root, 0o700);
 const canary = resolveSyntaxTelemetryCanary({
   enabled: values['upload-telemetry'] === true, mode, profile: values.profile!,
-  externalInputs: Boolean(values.dataset || values['fixture-manifest'] || values.runner || values.vela || values.sha256),
+  externalInputs: Boolean(values.dataset || values['fixture-manifest'] || values.runner || values.sha256),
   repeat: values.repeat, isolatedRoot: root, token: randomUUID().slice(0, 8),
   relayUrl: process.env.OPEN_DESIGN_TELEMETRY_RELAY_URL,
 });
-if (canary) await mkdir(canary.env.AMR_HOME, { mode: 0o700 });
 const telemetryPrefs = canary?.prefs ?? { metrics: false, content: false, artifactManifest: false };
 const runtime = createToolsDevSuite({
   root, namespace: `syntax-${randomUUID().slice(0, 8)}`, ownerPid: process.pid,
@@ -278,13 +273,11 @@ const env: Record<string, string | undefined> = {
   OD_INSTALLATION_DIR: '', OD_LEGACY_DATA_DIR: '',
   OD_NEXT_STRATEGY_ROLLOUT: mode === 'real' ? 'active' : 'off',
   OD_DELIVERABLE_SYNTAX_FINALIZER: '1',
-  OPEN_DESIGN_AMR_PROFILE: values.profile, VELA_PROFILE: values.profile,
-  ...(values.vela ? { VELA_BIN: path.resolve(values.vela) } : {}),
   ...canary?.env,
 };
 const report: Json = {
   mode, status: 'RUNNING', startedAt: new Date().toISOString(), root,
-  boundary: mode === 'real' ? 'real AMR / OD Next generation' : 'fake CLI / real deployed daemon terminal chain; NOT AMR acceptance',
+  boundary: mode === 'real' ? 'real OD Next generation' : 'fake CLI / real deployed daemon terminal chain',
   cases: [],
   ...(canary ? { telemetry: {
     uploadEnabled: true, destination: 'official-test-relay', environment: canary.env.OD_TELEMETRY_ENV,
@@ -354,7 +347,7 @@ async function replay() {
     for (const fixture of activeFixtures) {
       const id = `${fixture.id}-${round}`;
       const source = fixture.source;
-      // The fake CLI supplies fixed output; it does not pretend to be an AMR model.
+      // The fake CLI supplies fixed output; it does not pretend to be a real model.
       const bin = path.join(root, `fixture-${id}.cjs`);
       await writeFile(bin, `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -461,7 +454,7 @@ try {
   }
   if (mode === 'real') {
     if (values.profile !== 'test') throw new Error('Real local syntax acceptance requires --profile test; no production wallet fallback');
-    if (!values.dataset || !values.sha256 || !values.runner || !values.vela) throw new Error('Missing real-lane arguments');
+    if (!values.dataset || !values.sha256 || !values.runner) throw new Error('Missing real-lane arguments');
     dataset = await readFile(path.resolve(values.dataset));
     const rows = dataset.toString('utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
     if (hash(dataset) !== values.sha256.replace(/^sha256:/, '')) throw new Error('Dataset hash mismatch');
@@ -475,11 +468,6 @@ try {
       throw new Error(`RUNNER_VERSION_MISMATCH: expected ${values['runner-version']}, got ${report.runner.version}`);
     }
     report.profile = values.profile;
-    report.vela = { path: path.resolve(values.vela), version: (await exec(path.resolve(values.vela), ['--version'])).stdout.trim() };
-    try {
-      // Never log whoami's personal data or credentials and never silently change profile/model.
-      await exec(path.resolve(values.vela), ['whoami'], { env: { ...process.env, ...env }, timeout: 30_000 });
-    } catch { throw new Error(`AMR_AUTH_BLOCKED: Vela profile ${values.profile} is not authenticated/reachable`); }
   }
   console.log('Building current worktree and dependencies (no --skip-build).');
   await command('pnpm', ['--filter', '@open-design/daemon...', '--workspace-concurrency=4', 'build'], 'build.log', 600_000);
@@ -492,21 +480,15 @@ try {
   report.runtime = await runtime.startWeb(env);
   report.runtimeCheck = await runtime.check(env);
   await request(runtime.url.api('/api/app-config'), 'PUT', {
-    agentId: mode === 'real' ? 'amr' : 'claude',
+    agentId: 'claude',
     telemetry: telemetryPrefs, privacyDecisionAt: Date.now(),
-    ...(mode === 'real' ? { agentCliEnv: { amr: {
-      VELA_BIN: path.resolve(values.vela!), VELA_PROFILE: values.profile, OPEN_DESIGN_AMR_PROFILE: values.profile,
-    } } } : {}),
   });
   if (mode === 'replay') {
     await replay();
   } else {
-    const login = await request(runtime.url.api('/api/integrations/vela/status'));
-    report.daemonAuth = { loggedIn: login.loggedIn, profile: login.profile, sessionState: login.sessionState };
-    if (login.loggedIn !== true || login.profile !== values.profile) throw new Error('DAEMON_AMR_AUTH_MISMATCH');
     await writeFile(path.join(root, 'dataset.jsonl'), dataset!, { mode: 0o600 });
     await save('arm.json', {
-      id: 'local-syntax-acceptance', cli: 'amr', model: 'deepseek-v4-flash',
+      id: 'local-syntax-acceptance', cli: 'claude', model: 'deepseek-v4-flash',
       strategyRoute: 'od-next', keepDiscovery: true, autoAnswerForms: false,
       env: { kind: 'daemon', url: runtime.daemonUrl },
     });
@@ -520,7 +502,7 @@ try {
     if (!evidence.collection.complete) throw new Error('Incomplete evaluation evidence; see collection for unfinished/missing cases');
   }
   report.status = report.cases.length > 0 && report.cases.every((entry: Json) => entry.passed) ? 'PASS' : 'FAIL';
-  report.note = mode === 'real' ? 'Generation/terminal acceptance only; visual quality is not scored.' : 'Replay PASS is not real AMR / OD Next acceptance.';
+  report.note = mode === 'real' ? 'Generation/terminal acceptance only; visual quality is not scored.' : 'Replay PASS is not real OD Next acceptance.';
   if (canary) report.note += ' Canary PASS proves local execution and exporter acceptance only; exact remote Trace readback is still required. elapsedMs includes telemetry wait; checker metrics do not.';
 } catch (error) {
   report.status = 'BLOCKED';

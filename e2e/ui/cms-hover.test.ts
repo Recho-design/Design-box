@@ -2,10 +2,6 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Page, Route } from "@playwright/test";
-import {
-	mockAmrPersonalWorkspace,
-	mockAmrWalletSnapshot,
-} from "@/playwright/amr";
 import { applyStandardMocks } from "@/playwright/mock-factory";
 import { expect, test } from "@/playwright/suite";
 import { T } from "@/timeouts";
@@ -65,8 +61,8 @@ const manifest = {
 	formatVersion: 2 as const,
 	runtimeKind: "web-component" as const,
 	runtimeApiVersion: 1 as const,
-	platformWrapperVersion: "vela-touchpoint-wrapper-v1" as const,
-	sdkVersion: "vela-touchpoint-sdk-v1" as const,
+	platformWrapperVersion: "touchpoint-wrapper-v1" as const,
+	sdkVersion: "touchpoint-sdk-v1" as const,
 	contentLine: "cms-hover-browser-fixture",
 	placements: [
 		{
@@ -152,8 +148,8 @@ function contentFor(placementKey: string) {
 		runtime: {
 			kind: "web-component" as const,
 			apiVersion: 1 as const,
-			wrapperVersion: "vela-touchpoint-wrapper-v1" as const,
-			sdkVersion: "vela-touchpoint-sdk-v1" as const,
+			wrapperVersion: "touchpoint-wrapper-v1" as const,
+			sdkVersion: "touchpoint-sdk-v1" as const,
 		},
 		buildIdentity: { fingerprint: hostReleaseFingerprint },
 	};
@@ -244,24 +240,6 @@ async function installDesktopHost(page: Page) {
 async function installCmsFixture(page: Page) {
 	const responses: Array<{ placementKey: string; fingerprint: string }> = [];
 	const events: Array<Record<string, unknown>> = [];
-	await page.route("**/api/integrations/vela/status", async (route) => {
-		await route.fulfill({
-			json: {
-				loggedIn: true,
-				profile: "local",
-				user: {
-					id: "cms-hover-user",
-					email: "cms-hover@example.com",
-					plan: "free",
-				},
-			},
-		});
-	});
-	await mockAmrPersonalWorkspace(page, undefined, { accountPlan: "free" });
-	await mockAmrWalletSnapshot(page, {
-		email: "cms-hover@example.com",
-		plan: "free",
-	});
 	await page.route(
 		"**/api/touchpoints/production-runtime**",
 		async (route: Route) => {

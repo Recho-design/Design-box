@@ -6,9 +6,7 @@ import {
   captureVisualTarget,
   configureVisualPage,
   gotoVisualHome,
-  mockSignedInVelaAccount,
   scrollVisualLocatorIntoStableView,
-  VISUAL_AMR_AGENT,
   VISUAL_CLI_AGENTS,
   waitForVisualFonts,
   waitForVisualProjects,
@@ -19,8 +17,7 @@ test('[P2] captures the onboarding cloud sign-in surface', async ({ page }) => {
 
   await configureVisualPage(page, {
     projects: [],
-    agents: [VISUAL_AMR_AGENT, ...VISUAL_CLI_AGENTS],
-    velaLoggedIn: false,
+    agents: [...VISUAL_CLI_AGENTS],
     config: {
       onboardingCompleted: false,
     },
@@ -57,12 +54,11 @@ test('[P2] captures the onboarding Local Agent CLI list surface', async ({ page 
 
   await configureVisualPage(page, {
     projects: [],
-    agents: [VISUAL_AMR_AGENT, ...VISUAL_CLI_AGENTS],
+    agents: [...VISUAL_CLI_AGENTS],
     config: {
       onboardingCompleted: false,
     },
   });
-  await mockSignedInVelaAccount(page);
 
   await page.goto('/onboarding', { waitUntil: 'domcontentloaded' });
   await page.getByText('Loading OpenDesign…').waitFor({ state: 'hidden', timeout: T.long });
@@ -112,7 +108,6 @@ test('[P2] captures the unpaid DeepSeek campaign at narrow and short viewport bo
   await page.clock.setFixedTime('2026-08-21T00:00:00+08:00');
   await page.setViewportSize({ width: 600, height: 720 });
   await configureVisualPage(page, { projects: [] });
-  await mockSignedInVelaAccount(page, { plan: 'free' });
   await gotoVisualHome(page);
   // Functional specs seed campaign dismissals globally so marketing surfaces
   // cannot interrupt unrelated flows. This visual contract deliberately opts

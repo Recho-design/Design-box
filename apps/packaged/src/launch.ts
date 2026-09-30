@@ -17,7 +17,6 @@ export type PackagedSingleInstanceApp = {
   requestSingleInstanceLock: () => boolean;
 };
 export type PackagedSecondInstanceControls = {
-  dispatchDeeplink: (url: string | null) => void;
   show: () => void;
 };
 type PathDiagnostic = {
@@ -147,7 +146,6 @@ export function claimPackagedSingleInstanceLock(
 export function createPackagedSecondInstanceHandoff() {
   let controls: PackagedSecondInstanceControls | null = null;
   let pendingFocus = false;
-  const pendingDeeplinks: string[] = [];
 
   return {
     attach(nextControls: PackagedSecondInstanceControls): void {
@@ -156,11 +154,8 @@ export function createPackagedSecondInstanceHandoff() {
 
       pendingFocus = false;
       controls.show();
-      for (const url of pendingDeeplinks.splice(0)) {
-        controls.dispatchDeeplink(url);
-      }
     },
-    handle(deeplinkUrl: string | null): void {
+    handle(): void {
       if (controls != null) {
         // Once desktop startup reaches onDesktopReady, its own second-instance
         // listener is attached before Electron can deliver another event. Keep
@@ -171,7 +166,6 @@ export function createPackagedSecondInstanceHandoff() {
       }
 
       pendingFocus = true;
-      if (deeplinkUrl != null) pendingDeeplinks.push(deeplinkUrl);
     },
   };
 }

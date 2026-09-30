@@ -1,5 +1,5 @@
-// Focus target for the `opendesign://` deeplink hand-off. Kept out of
-// `invite-deeplink.ts` so it stays electron-free and unit testable.
+// Focus target for the generic `opendesign://` hand-off. Kept electron-free
+// so both the desktop SHOW path and unit tests can consume it.
 
 /** Minimal view of the desktop runtime the hand-off needs. */
 export type DeeplinkFocusTarget = {

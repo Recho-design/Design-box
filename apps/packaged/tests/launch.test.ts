@@ -118,8 +118,8 @@ describe("claimPackagedSingleInstanceLock", () => {
     ]);
   });
 
-  it("queues a deeplink from the lock fallback while desktop IPC is unavailable", async () => {
-    const root = mkdtempSync(join(tmpdir(), "od-packaged-lock-deeplink-"));
+  it("queues focus from the lock fallback while desktop IPC is unavailable", async () => {
+    const root = mkdtempSync(join(tmpdir(), "od-packaged-lock-focus-"));
     const listeners = new Map<string, (event: unknown, argv: string[]) => void>();
     const deeplinkUrl = "opendesign://workspace/invite/continue?nonce=cold-race";
     const handoff = createPackagedSecondInstanceHandoff();
@@ -131,7 +131,6 @@ describe("claimPackagedSingleInstanceLock", () => {
       quit: vi.fn(),
       requestSingleInstanceLock: vi.fn(() => true),
     };
-    const dispatchDeeplink = vi.fn();
     const show = vi.fn();
 
     try {
@@ -146,17 +145,15 @@ describe("claimPackagedSingleInstanceLock", () => {
       })).resolves.toEqual({ action: "continue", reason: "inspect-failed" });
 
       expect(claimPackagedSingleInstanceLock(app, (argv) => {
-        handoff.handle(findPackagedDeeplinkArg(argv));
+        handoff.handle();
       })).toBe(true);
       listeners.get("second-instance")?.({}, ["Open Design.exe", deeplinkUrl]);
 
       expect(show).not.toHaveBeenCalled();
-      expect(dispatchDeeplink).not.toHaveBeenCalled();
 
-      handoff.attach({ dispatchDeeplink, show });
+      handoff.attach({ show });
 
       expect(show).toHaveBeenCalledTimes(1);
-      expect(dispatchDeeplink).toHaveBeenCalledExactlyOnceWith(deeplinkUrl);
     } finally {
       rmSync(root, { force: true, recursive: true });
     }

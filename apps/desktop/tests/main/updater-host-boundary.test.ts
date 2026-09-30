@@ -84,10 +84,9 @@ describe("desktop updater host boundary", () => {
     expect(showStart).toBeGreaterThanOrEqual(0);
     expect(clickStart).toBeGreaterThan(showStart);
     const showHandler = main.slice(showStart, clickStart);
-    expect(showHandler).toContain("activeDesktop.show()");
-    expect(showHandler).toContain("dispatchInviteDeeplink(request.input?.deeplinkUrl ?? null)");
+    expect(showHandler).toContain("focusDesktopForDeeplink(activeDesktop)");
     expect(showHandler).toContain("notifyDesktopExternalShow(options.onExternalShow)");
-    expect(showHandler.indexOf("activeDesktop.show()"))
+    expect(showHandler.indexOf("focusDesktopForDeeplink(activeDesktop)"))
       .toBeLessThan(showHandler.indexOf("notifyDesktopExternalShow(options.onExternalShow)"));
     expect(main).not.toContain("listProcessSnapshots");
     expect(main).not.toContain("stopProcesses");

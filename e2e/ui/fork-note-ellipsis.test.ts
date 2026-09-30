@@ -2,13 +2,11 @@ import { expect, test } from '@/playwright/suite';
 import type { Locator, Page } from '@playwright/test';
 
 import {
-  AMR_PERSONAL_WORKSPACE_HEADERS,
   createProjectViaApi,
   dismissPrivacyDialog,
-  expectWorkspaceReady,
   putAppConfig,
   seedBrowserConfig,
-} from '@/playwright/amr';
+} from '@/playwright/app-helpers';
 import { routeAgents } from '@/playwright/mock-factory';
 import { T } from '@/timeouts';
 
@@ -33,15 +31,6 @@ import { T } from '@/timeouts';
  * observable geometry and pixels through a stable `data-testid`.
  */
 
-const AGENT = {
-  id: 'amr',
-  name: 'OpenDesign AMR',
-  bin: 'vela',
-  available: true,
-  version: 'test',
-  models: [{ id: 'default', label: 'Default' }],
-};
-
 /**
  * German is the longest of the 19 shipped `assistant.forkNote` translations
  * (`Fortsetzung der Konversation`, 28 characters against English's 19), so it
@@ -61,20 +50,20 @@ async function seedForkedConversation(page: Page): Promise<Locator> {
     window.localStorage.setItem('open-design:locale', locale);
     window.localStorage.setItem('open-design:locale-source', 'manual');
   }, LOCALE);
-  await routeAgents(page, [AGENT]);
+  await routeAgents(page, []);
 
   const config = {
     mode: 'daemon',
     apiKey: '',
     baseUrl: '',
     model: '',
-    agentId: 'amr',
+    agentId: null,
     skillId: null,
     designSystemId: null,
     onboardingCompleted: true,
     privacyDecisionAt: 1,
     mediaProviders: {},
-    agentModels: { amr: { model: 'default', reasoning: 'default' } },
+    agentModels: {},
   };
   await seedBrowserConfig(page, config);
   await putAppConfig(page, config);
@@ -88,7 +77,6 @@ async function seedForkedConversation(page: Page): Promise<Locator> {
   const titled = await page.request.patch(
     `/api/projects/${projectId}/conversations/${conversationId}`,
     {
-      headers: { ...AMR_PERSONAL_WORKSPACE_HEADERS },
       data: { title: 'Storefront prototype' },
     },
   );
@@ -98,11 +86,10 @@ async function seedForkedConversation(page: Page): Promise<Locator> {
   const seeded = await page.request.put(
     `/api/projects/${projectId}/conversations/${conversationId}/messages/${assistantMessageId}`,
     {
-      headers: { ...AMR_PERSONAL_WORKSPACE_HEADERS },
       data: {
         role: 'assistant',
         content: 'Both pages are done.',
-        agentId: 'amr',
+        agentId: null,
         runStatus: 'succeeded',
         createdAt: Date.now() - 1_000,
         startedAt: Date.now() - 1_000,
@@ -119,7 +106,6 @@ async function seedForkedConversation(page: Page): Promise<Locator> {
   // message — that stamp is what renders the divider. Writing the stamp
   // directly would prove a shape no user flow produces.
   const forked = await page.request.post(`/api/projects/${projectId}/conversations`, {
-    headers: { ...AMR_PERSONAL_WORKSPACE_HEADERS },
     data: {
       seedFromConversationId: conversationId,
       forkAfterMessageId: assistantMessageId,
@@ -133,7 +119,6 @@ async function seedForkedConversation(page: Page): Promise<Locator> {
     waitUntil: 'domcontentloaded',
   });
   await dismissPrivacyDialog(page);
-  await expectWorkspaceReady(page);
 
   // Let the divider paint at the default width first, so the squeeze below has
   // something to measure.

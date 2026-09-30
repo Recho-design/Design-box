@@ -2,64 +2,41 @@ import { expect, test } from '@/playwright/suite';
 import type { Locator, Page } from '@playwright/test';
 
 import {
-  AMR_PERSONAL_WORKSPACE_HEADERS,
   createProjectViaApi,
   gotoProject,
   putAppConfig,
   seedBrowserConfig,
-} from '@/playwright/amr';
+} from '@/playwright/app-helpers';
 import { runErrorCard } from '@/playwright/chat';
 import { routeAgents } from '@/playwright/mock-factory';
 import { T } from '@/timeouts';
 
-const AMR_AGENT = {
-  id: 'amr',
-  name: 'OpenDesign AMR',
-  bin: 'vela',
-  available: true,
-  version: 'test',
-  models: [{ id: 'default', label: 'Default' }],
-};
-
 async function seedCloudRunFailure(page: Page, locale: 'en' | 'zh-CN') {
   // Use an ordinary run error: insufficient balance belongs to the separate
-  // quota-card workflow covered by amr-run-failure-recovery.test.ts.
+  // quota-card workflow.
   await page.addInitScript((nextLocale) => {
     window.localStorage.setItem('open-design:locale', nextLocale);
     window.localStorage.setItem('open-design:locale-source', 'manual');
   }, locale);
-  await routeAgents(page, [AMR_AGENT]);
+  await routeAgents(page, []);
   await page.route('**/api/skills', (route) => route.fulfill({ json: { skills: [] } }));
   await page.route('**/api/design-templates', (route) =>
     route.fulfill({ json: { designTemplates: [] } }));
   await page.route('**/api/design-systems', (route) =>
     route.fulfill({ json: { designSystems: [] } }));
-  await page.route('**/api/integrations/vela/status', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        loggedIn: true,
-        profile: 'local',
-        configPath: '/tmp/.amr/config.json',
-        user: { id: 'layout-user', email: 'layout@example.com', plan: 'free' },
-      }),
-    }));
 
   const config = {
     mode: 'daemon',
     apiKey: '',
     baseUrl: '',
     model: '',
-    agentId: 'amr',
+    agentId: null,
     skillId: null,
     designSystemId: null,
     onboardingCompleted: true,
     privacyDecisionAt: 1,
     mediaProviders: {},
-    agentModels: {
-      amr: { model: 'default', reasoning: 'default' },
-    },
+    agentModels: {},
   };
   await seedBrowserConfig(page, config);
   await putAppConfig(page, config);
@@ -74,7 +51,6 @@ async function seedCloudRunFailure(page: Page, locale: 'en' | 'zh-CN') {
   const userResponse = await page.request.put(
     `/api/projects/${projectId}/conversations/${conversationId}/messages/${userMessageId}`,
     {
-      headers: { ...AMR_PERSONAL_WORKSPACE_HEADERS },
       data: {
         role: 'user',
         content: 'Generate a landing page',
@@ -87,11 +63,10 @@ async function seedCloudRunFailure(page: Page, locale: 'en' | 'zh-CN') {
   const assistantResponse = await page.request.put(
     `/api/projects/${projectId}/conversations/${conversationId}/messages/a-${projectId}`,
     {
-      headers: { ...AMR_PERSONAL_WORKSPACE_HEADERS },
       data: {
         role: 'assistant',
         content: '',
-        agentId: 'amr',
+        agentId: null,
         runId: `run-${projectId}`,
         runStatus: 'failed',
         createdAt: Date.now() - 1_000,
