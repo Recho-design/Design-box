@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-/** Environment error copy remains classified separately from regional S30.
- * G16 fixes error-card actions by the failed run's Cloud/local identity;
- * certificate diagnostics no longer add Settings or local Retry controls.
- */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,7 +24,7 @@ vi.mock('../../src/i18n', () => ({
 afterEach(() => cleanup());
 
 /** 同事真机上撞到的那一格:opencode 的证书报错原样传到 daemon 并被命名。 */
-function certificateFailureTurn(agentId = 'amr'): ChatMessage[] {
+function certificateFailureTurn(agentId = 'opencode'): ChatMessage[] {
   return [
     { id: 'user-1', role: 'user', content: 'Build it', createdAt: 0 },
     {
@@ -75,8 +71,8 @@ function renderPane(extra: Record<string, unknown>) {
   );
 }
 
-describe('G16 · 环境类报错卡的固定按钮', () => {
-  it('Cloud 证书失败只通过固定重试处理原失败轮', () => {
+describe('环境类报错卡的恢复按钮', () => {
+  it('证书失败通过重试处理原失败轮', () => {
     const onOpenSettings = vi.fn();
     const onRetry = vi.fn();
     renderPane({ onOpenSettings, onRetry });
@@ -88,24 +84,6 @@ describe('G16 · 环境类报错卡的固定按钮', () => {
     expect(onOpenSettings).not.toHaveBeenCalled();
   });
 
-  it('本地 CLI 证书失败只交给 Cloud，不调用本地重试或设置', () => {
-    const onRetry = vi.fn();
-    const onOpenSettings = vi.fn();
-    const onSwitchToAmrAndRetry = vi.fn();
-    renderPane({ messages: certificateFailureTurn('opencode'), onRetry, onOpenSettings, onSwitchToAmrAndRetry });
-    const card = screen.getByTestId('chat-run-error-card');
-    expect(within(card).getAllByRole('button').map((button) => button.textContent?.trim()))
-      .toEqual(['联系我们', '导出日志', '切换到 OpenDesign Cloud']);
-    fireEvent.click(within(card).getByRole('button', { name: '切换到 OpenDesign Cloud' }));
-    expect(onSwitchToAmrAndRetry).toHaveBeenCalledWith(expect.objectContaining({ id: 'assistant-1', agentId: 'opencode' }));
-    expect(onRetry).not.toHaveBeenCalled();
-    expect(onOpenSettings).not.toHaveBeenCalled();
-  });
-
-  it('固定动作不额外生成另一张 Cloud 指导卡', () => {
-    const { container } = renderPane({ onOpenSettings: vi.fn(), onRetry: vi.fn() });
-    expect(container.querySelector('.amr-guidance')).toBeNull();
-  });
 });
 
 describe('S30 · 环境类报错卡的文案', () => {
@@ -113,8 +91,7 @@ describe('S30 · 环境类报错卡的文案', () => {
    * ⚠️ 这张卡**没有**用产品文档 S30 的润色列。S30 那张润色表只写了一行,
    * 「场景内的情况」写死是「地区不支持」;而这张卡服务的五个 detail 里没有一个
    * 是地区拦截(真正的地区信号 `Country, region, or territory not supported`
-   * 落在 `upstream_client_error`)。判据全文在 `amr-guidance.ts` 的
-   * `clientEnvironmentCard` 文档注释里。此处改用补充文档 revision 96 为证书专门批准的文案。
+   * 落在 `upstream_client_error`)。此处使用补充文档 revision 96 为证书专门批准的文案。
    */
   it('卡面逐字使用产品补充文档的证书标题和正文', () => {
     renderPane({ onOpenSettings: vi.fn(), onRetry: vi.fn() });

@@ -164,17 +164,11 @@ describe('i18n locales', () => {
     for (const locale of LOCALES) {
       const dict = await loadDict(locale);
       expect(dict['entry.credits'], `${locale}.entry.credits`).toBe(expected[locale]);
-      expect(dict['settings.amrBalance'], `${locale}.settings.amrBalance`).toBe(
-        expected[locale],
-      );
     }
   });
 
   it('keeps Chinese workspace wallet and pre-run gate copy on the 额度 terminology', () => {
     const keys: Array<keyof Dict> = [
-      'chat.amrError.balanceMessage',
-      'chat.amrBalanceGate.message',
-      'chat.amrBalanceGate.watchingWallet',
       // `chat.amrLowBalance.title` / `.message` 曾经也在这张表里 —— 那两条属于
       // 首页的软提醒弹窗 `AmrLowBalanceDialog`,产品 2026-09-06 裁决删掉整张弹窗
       // (规格 T53),key 随之清掉。
@@ -198,37 +192,6 @@ describe('i18n locales', () => {
         expect(dict[key], `${locale}.${key}`).toContain(quota);
         expect(dict[key], `${locale}.${key}`).not.toMatch(/余额|餘額|积分|積分/);
       }
-    }
-  });
-
-  it('keeps the recharge recovery action concise enough to sit beside retry', async () => {
-    const expected: Record<Locale, string> = {
-      ar: 'شحن',
-      de: 'Aufladen',
-      en: 'Top up',
-      'es-ES': 'Recargar',
-      fa: 'شارژ',
-      fr: 'Recharger',
-      hu: 'Feltöltés',
-      id: 'Isi ulang',
-      it: 'Ricarica',
-      ja: 'チャージ',
-      ko: '충전',
-      pl: 'Doładuj',
-      'pt-BR': 'Recarregar',
-      ru: 'Пополнить',
-      th: 'เติมเงิน',
-      tr: 'Bakiye yükle',
-      uk: 'Поповнити',
-      'zh-CN': '充值',
-      'zh-TW': '儲值',
-    };
-
-    for (const locale of LOCALES) {
-      const dict = await loadDict(locale);
-      expect(dict['chat.amrError.rechargeCta'], `${locale}.chat.amrError.rechargeCta`).toBe(
-        expected[locale],
-      );
     }
   });
 

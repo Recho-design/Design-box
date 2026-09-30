@@ -11,7 +11,8 @@ import type {
 import { installMockOpenDesignHost } from '@open-design/host/testing';
 
 import { App } from '../../src/App';
-import { fetchAmrModels, fetchVelaLoginStatus } from '../../src/providers/daemon';
+const fetchAmrModels = vi.fn();
+const fetchVelaLoginStatus = vi.fn();
 import {
   daemonIsLive,
   fetchAgentsStream,

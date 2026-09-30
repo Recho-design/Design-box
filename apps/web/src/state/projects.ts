@@ -136,7 +136,7 @@ function writeContextBelongsToCurrentGeneration(state: WorkspaceContextForWrite)
 export type WorkspaceContextWriteResolutionOptions = {
   /**
    * `unscoped` is reserved for callers whose operation is genuinely local and
-   * does not require AMR Workspace authority. All Workspace-owned writes keep
+   * does not require workspace authority. All Workspace-owned writes keep
    * the default `reject` policy.
    */
   unavailablePolicy?: 'reject' | 'unscoped';
@@ -728,7 +728,7 @@ export class ProjectCreateError extends Error {
 
 /**
  * Whether a failed workspace-scoped write should be retried. The daemon marks
- * `WORKSPACE_AUTHORITY_UNAVAILABLE` (vela membership authority momentarily down)
+ * `WORKSPACE_AUTHORITY_UNAVAILABLE` (workspace authority momentarily down)
  * as a 503 `retryable: true`; a cross-workspace 403 or a validation 4xx is
  * permanent and must surface immediately.
  */
@@ -781,7 +781,7 @@ export async function createProject(
     // the Create button into a silent no-op (issue #849).
     //
     // The id is minted ONCE and reused across retries: a retryable 503 fails
-    // vela's authority check before any row is inserted, so replaying the same
+    // the authority check before any row is inserted, so replaying the same
     // client-provided id is idempotent, never a duplicate project.
     const id = input.id ?? randomUUID();
     for (let attempt = 0; ; attempt += 1) {

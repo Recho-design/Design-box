@@ -6,7 +6,7 @@
  *
  * 宿主(`ProjectView`)本来就有一个 `currentConversationActionDisabled` 布尔:
  * 六个条件或起来,为真就让 `handleRetry` / `handleResumeRun` /
- * `handleSwitchToAmrAndRetry` **静默 `return`**。而按钮那一侧从来没接过这个
+ * `handleSwitchAndRetry` **静默 `return`**。而按钮那一侧从来没接过这个
  * 布尔 —— 于是屏幕上是一颗永远可点的〔重试〕,点下去什么都不发生,埋点却已经
  * 上报了一次「用户点了重试」(OPEND-2821)。
  *
@@ -29,7 +29,7 @@
 /**
  * 挡住恢复动作的那一档。四档是原来六个条件的一个划分,不是新的门。
  *
- * 优先级从具体到笼统:身份 → 转录 → 计费主体 → 忙。同一时刻可能有多档成立,
+ * 优先级从具体到笼统:身份 → 转录 → 计费主体 → 忙。同一时刻可能有多种成立,
  * 取第一档,好让说明稳定(不会因为一次无关的状态抖动换一句话)。
  */
 export type RecoveryActionBlockReason =
@@ -47,7 +47,7 @@ export interface RecoveryActionGateInput {
   readOnly: boolean;
   /** `failedMessagesConversationId === activeConversationId` */
   messagesUnavailable: boolean;
-  /** `projectRunHasBillableAmrPrincipal` */
+  /** `projectRunHasBillablePrincipal` */
   billingPrincipalResolved: boolean;
   /** `currentConversationBusy || currentConversationAwaitingActiveRunAttach` */
   conversationBusy: boolean;

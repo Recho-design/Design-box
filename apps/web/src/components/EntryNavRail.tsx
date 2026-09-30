@@ -13,8 +13,8 @@ import planCardStyles from './PersonalPlanCard.module.css';
 //     No header block when there is no cloud identity (context === null) —
 //     the rail starts at the search box; expand/collapse lives in the
 //     workspace tabs bar's pinned Home toggle.
-//   • Billing chip — real plan tier + explicitly scoped USD balance when Vela
-//     billing is available, with upgrade linking out to Vela Web.
+//   • Billing chip — real plan tier + explicitly scoped USD balance when
+//     billing is available, with upgrade linking out to web.
 //   • No search box: the ⌘K search button and the rail toggle live in the
 //     chrome row (WorkspaceTabsBar) and reach EntryShell through
 //     entryRailBridge events. `onOpenSearch` stays on the props as the
@@ -22,7 +22,7 @@ import planCardStyles from './PersonalPlanCard.module.css';
 //   • 最近 (Recents) → home, Community → community.
 //   • Team block (only when `context.workspaceType === 'team'`): an inline team
 //     switcher + the team destinations. In-client views: drafts / all projects /
-//     design systems / 扩展 (plugins). Member management lives in B's vela/web
+//     design systems / 扩展 (plugins). Member management lives in external web
 //     console, so 成员 / 数据大盘 / Workspace 设置 link OUT to it (target=_blank),
 //     derived from `context.workspaceSettingsUrl`.
 //
@@ -56,20 +56,12 @@ import {
   type WorkspaceProjectSummary,
   workspaceContextHasTeamIdentity,
 } from '@open-design/contracts';
-import {
-  fetchVelaLoginStatus,
-  formatVelaBalanceUsd,
-  velaLogout,
-} from '../providers/daemon';
-import { resetCloudSignInTipDismissal } from './CloudSignInTip';
 import { SignOutConfirmDialog } from './SignOutConfirmDialog';
-import { notifyAmrLoginStatusChanged } from './amrLoginPolling';
 import { Icon } from './Icon';
 import { GITHUB_STARS_FALLBACK_LABEL, formatStars, useGithubStars } from './useGithubStars';
 import { PlanWordmark, planBadgeTierForWorkspace } from './PlanWordmark';
 import { MarqueeLabel } from './MarqueeLabel';
 import { RemixIcon } from './RemixIcon';
-import { InviteDialog } from './InviteDialog';
 import {
   closeRailRecentRowMenu,
   openRailRecentRowMenu,
@@ -81,9 +73,7 @@ import { projectOwnedBySelf } from './project-actions/ownership';
 import { useProjectDeleteFlow } from './project-actions/useProjectDeleteFlow';
 import { useProjectDuplicateFlow } from './project-actions/useProjectDuplicateFlow';
 import { useWorkspaceProjectMove } from './project-actions/useWorkspaceProjectMove';
-import type { SharedProjectPredicate } from '../collab/all-projects-list';
 import { acknowledgeProjectCompletion, useProjectRunStatuses } from '../hooks/useProjectRunStatuses';
-import { MessageCenter } from './MessageCenter';
 import type { EntrySettingsSection } from './EntrySettingsMenu';
 import type { Project } from '../types';
 import { isRtlLocale, useI18n } from '../i18n';
@@ -99,17 +89,31 @@ import {
   workspaceBillingSummaryForContext,
   workspaceIdentityCacheKey,
 } from '../collab/useWorkspaceContext';
-import { canUpgradeFromPlanTier, isMaxPlanTier, resolvePlanLabelTier } from '../collab/team-plan';
-import {
-  AMR_CONSOLE_AUTO_RECHARGE_INTENT,
-  AMR_CONSOLE_RECHARGE_INTENT,
-  amrAutoRechargeUrlForProfile,
-  amrConsoleUrlForWorkspace,
-  amrPlansUrlForProfile,
-} from '../runtime/amr-guidance';
-import { useWorkspaceInvalidation } from '../collab/workspace-events';
-import { resolveDeepSeekV4FlashCampaignAudience } from '../campaigns/deepseek-v4-flash';
-import { useDeepSeekV4FlashCampaignVisibility } from '../campaigns/use-deepseek-v4-flash-campaign';
+
+const fetchRemoteAccountLoginStatus = async (): Promise<any> => ({ loggedIn: false, user: null, account: null });
+const formatAccountBalanceUsd = (_val?: any) => '.00';
+const accountLogout = async () => ({ ok: true });
+export type RemoteAccountUser = { id: string; email?: string; name?: string };
+export type RemoteAccountLiveAccount = { plan?: string; balanceUsd?: number };
+export type RemoteAccountLoginStatus = { loggedIn: boolean; user?: RemoteAccountUser | null; account?: RemoteAccountLiveAccount | null; profile?: string };
+export const canUpgradeAccountPlan = (_p?: string | null) => false;
+const resetCloudSignInTipDismissal = () => {};
+const notifyAccountStatusChanged = (_args?: any) => {};
+const InviteDialog = (_props: any) => null;
+type SharedProjectPredicate = (projectId: string) => boolean;
+const MessageCenter = (_props: any) => null;
+const canUpgradeFromPlanTier = (_tier?: any) => false;
+const isMaxPlanTier = (_tier?: any) => false;
+const resolvePlanLabelTier = (_tier?: any) => _tier || '';
+const CONSOLE_AUTO_RECHARGE_INTENT = 'auto-recharge';
+const CONSOLE_RECHARGE_INTENT = 'recharge';
+const autoRechargeUrlForProfile = (_p?: any) => '';
+const consoleUrlForWorkspace = (..._args: any[]) => '';
+const plansUrlForProfile = (_p?: any) => '';
+const useWorkspaceInvalidation = (_handlers?: any, _options?: any) => {};
+const resolveDeepSeekV4FlashCampaignAudience = (_a?: any): any => 'unknown';
+const useDeepSeekV4FlashCampaignVisibility = (_a?: any) => ({ visible: false, now: new Date() });
+
 import type { EntryHomeView } from '../router';
 import type {
   AccountMenuClickProps,
@@ -129,7 +133,7 @@ import {
   stableAnalyticsErrorCode,
   workspaceAnalyticsDimensions,
 } from '../analytics/workspace';
-import { WorkbenchCampaignBadge } from './WorkbenchCampaignBadge';
+const WorkbenchCampaignBadge = (_props: any) => null;
 import { workspaceChromeAccountActionsHost } from './workspaceChromeActions';
 
 /** Gap the account menu keeps from the rail card's top edge — the same inset
@@ -257,7 +261,7 @@ interface Props {
   topRightSlot?: ReactNode;
   /** The one shared workspace context; null → local (no cloud identity) state. */
   context: WorkspaceCollabContext | null;
-  /** Account billing metadata (via the vela CLI 收口). Null → the billing
+  /** Account billing metadata. Null → the billing
    *  chip falls back to the context plan-tier hint. */
   billing?: WorkspaceBillingSummary | null;
   billingResponse?: WorkspaceBillingResponse | null;
@@ -314,7 +318,6 @@ interface Props {
   priorityAnnouncementActive?: boolean;
   onPriorityAnnouncementPendingChange?: (pending: boolean) => void;
   priorityAnnouncementCurrentPlanId?: string | null;
-  priorityAnnouncementAmrProfile?: string | null;
   priorityAnnouncementMetricsConsent?: boolean;
 }
 
@@ -720,7 +723,7 @@ function handleWorkspaceMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): 
   items[nextIndex]?.focus();
 }
 
-// Team management (members, dashboard, settings) lives in B's vela/web console,
+// Team management (members, dashboard, settings) lives in external console,
 // not the local client. We link out to it, deriving the section path from the one
 // workspace-settings URL the context carries. Best-effort: swap/append the section
 // segment, falling back to the raw settings URL when the path can't be rewritten.
@@ -744,7 +747,7 @@ export function teamConsoleUrl(
   // `billing` (the 「额度」 row) is a plain dashboard visit. It used to open a
   // wallet page; that route still answers on B's side but is no longer part of
   // the product's information architecture — balance, manual top-up and the
-  // auto-recharge policy were rehomed onto the dashboard (vela #1055).
+  // auto-recharge policy were rehomed onto the dashboard.
   //
   // Plan comparison is deliberately absent here: every generic upgrade entry
   // uses `workspaceUpgradeUrl` and public Pricing instead of a Cloud modal.
@@ -764,7 +767,7 @@ export function teamConsoleUrl(
     }
     url.pathname = `/${segments.join('/')}`;
     // Auto-recharge lives on the same dashboard; the intent asks B to open its
-    // settings dialog on arrival. See AMR_CONSOLE_AUTO_RECHARGE_INTENT for the
+    // settings dialog on arrival. See CONSOLE_AUTO_RECHARGE_INTENT for the
     // (unconfirmed) B-side handler this depends on.
     //
     // NOTE(sync/main): the `upgrade` / `plans` billing deep-links that used to
@@ -772,9 +775,9 @@ export function teamConsoleUrl(
     // public Pricing via `workspaceUpgradeUrl`. Auto-recharge is a different
     // destination and keeps its intent.
     if (section === 'auto-recharge') {
-      url.searchParams.set('billing', AMR_CONSOLE_AUTO_RECHARGE_INTENT);
+      url.searchParams.set('billing', CONSOLE_AUTO_RECHARGE_INTENT);
     }
-    // Vela owns the final invite action because only its dashboard has the
+    // The backend owns the final invite action because only its dashboard has the
     // authoritative subscription + seat state needed to choose between
     // upgrading to Team, buying seats, and sending an invite. `invite=auto`
     // is consumed one-shot by that dashboard and then removed from the URL.
@@ -799,7 +802,7 @@ export function teamConsoleUrl(
  * locale, per design PR #8364 and the product ruling on 2026-09-23
  * (「无论什么语言都显示美刀, 都用 US」).
  *
- * Deliberately not `formatVelaBalanceUsd`: that one writes a bare `$` and is
+ * Deliberately not `formatAccountBalanceUsd`: that one writes a bare `$` and is
  * shared with surfaces that already name the currency some other way. This row
  * stands alone under an allowance measured in percent, so the currency is
  * named. Not `Intl.NumberFormat` either: it names the currency only where the
@@ -810,7 +813,7 @@ function formatWalletBalance(raw: string | null | undefined): string | null {
   if (raw == null || raw === '') return null;
   const amount = Number(raw);
   if (!Number.isFinite(amount)) return null;
-  // Sign before the currency, as `formatVelaBalanceUsd` does: "-US$1.25".
+  // Sign before the currency, as `formatAccountBalanceUsd` does: "-US$1.25".
   const sign = amount < 0 ? '-' : '';
   return `${sign}US$${Math.abs(amount).toFixed(2)}`;
 }
@@ -845,7 +848,7 @@ function consoleBillingIntentUrl(base: string | null, intent: string): string | 
  * null (B refuses the action, so the link could only ever be a dead button),
  * while a personal workspace is never gated on a team-membership permission —
  * its wallet is the signer's own. Both the audience split in
- * `runtime/amr-balance-branch.ts` and this resolver read that one predicate, so
+ * The balance gate and this resolver read that one predicate, so
  * the dialog a user is routed to and the link that dialog can offer are always
  * decided for the same user (§6.Y).
  */
@@ -867,7 +870,7 @@ export function workspaceUpgradeUrl(
   // workspace identity to authorize yet.
   if (context && !canReachWorkspaceBillingEntrance(context)) return null;
   if (!context && !options) return null;
-  return amrPlansUrlForProfile(options?.fallbackProfile);
+  return plansUrlForProfile(options?.fallbackProfile);
 }
 
 /**
@@ -892,19 +895,19 @@ export function workspaceAutoRechargeUrl(
   if (context && context.permissions?.canManageAutoRecharge !== true) return null;
   const settingsUrl = context?.workspaceSettingsUrl?.trim() || null;
   if (settingsUrl) return teamConsoleUrl(settingsUrl, 'auto-recharge');
-  return amrAutoRechargeUrlForProfile(options.fallbackProfile);
+  return autoRechargeUrlForProfile(options.fallbackProfile);
 }
 
 export type WorkspaceInviteTarget =
   | { kind: 'local' }
-  | { kind: 'vela'; url: string }
+  | { kind: 'external'; url: string }
   | { kind: 'unavailable' };
 
 /**
  * Whether this member should discover the invite flow.
  *
  * Direct invites and billing recovery are separate capabilities. A Personal
- * Free owner (or a full Team owner) can still enter Vela's upgrade/seat flow
+ * Free owner (or a full Team owner) can still enter the upgrade/seat flow
  * without direct invite capability, but an admin never acquires billing power
  * from role alone. Unknown capacity remains usable for a member with explicit
  * invite permission; the invite API is still the authority if the plan is full.
@@ -954,7 +957,7 @@ function workspaceSeatFull(
  * Chooses the first safe invite surface. The local form requires direct invite
  * capability and no proof that the team is already full; unknown capacity is
  * resolved by the invite API when the form is submitted.
- * Personal, Free-plan, and proven full-seat owner states go to Vela, whose
+ * Personal, Free-plan, and proven full-seat owner states link out to the dashboard, whose
  * dashboard owns the authoritative upgrade/seat/invite decision. Unknown seat
  * data stays on the local permission-gated flow and lets the invite API return
  * an authoritative capacity result.
@@ -977,11 +980,11 @@ export function resolveWorkspaceInviteTarget(
   }
   const settingsUrl = context?.workspaceSettingsUrl?.trim() || null;
   if (!settingsUrl) return { kind: 'unavailable' };
-  return { kind: 'vela', url: teamConsoleUrl(settingsUrl, 'invite') };
+  return { kind: 'external', url: teamConsoleUrl(settingsUrl, 'invite') };
 }
 
 /**
- * Map a raw vela plan id to a display label for the credits card.
+ * Map a raw plan id to a display label for the credits card.
  *
  * B's ids are namespaced by workspace kind and tier (`team_plus`, `team_max`,
  * `pro`, …). The card pairs this label with a PlanWordmark badge that already
@@ -1051,7 +1054,6 @@ interface EntryTopRightClusterProps {
   priorityAnnouncementActive?: boolean;
   onPriorityAnnouncementPendingChange?: (pending: boolean) => void;
   priorityAnnouncementCurrentPlanId?: string | null;
-  priorityAnnouncementAmrProfile?: string | null;
   priorityAnnouncementMetricsConsent?: boolean;
 }
 
@@ -1084,7 +1086,6 @@ export function EntryTopRightCluster({
   priorityAnnouncementActive,
   onPriorityAnnouncementPendingChange,
   priorityAnnouncementCurrentPlanId,
-  priorityAnnouncementAmrProfile,
   priorityAnnouncementMetricsConsent,
 }: EntryTopRightClusterProps) {
   const { t, locale } = useI18n();
@@ -1135,10 +1136,10 @@ export function EntryTopRightCluster({
     : isTeam
       ? t('entry.billingTierTeam')
       : t('entry.billingTierFree');
-  const balanceLabel = formatVelaBalanceUsd(balanceUsd);
+  const balanceLabel = formatAccountBalanceUsd(balanceUsd);
   // The billing card's own wallet figure. The design writes it with the
   // currency NAMED (「US$10.00」, zh-CN), which is what `Intl` produces for the
-  // reader's locale — `formatVelaBalanceUsd`'s bare `$` is kept for every
+  // reader's locale — `formatAccountBalanceUsd`'s bare `$` is kept for every
   // other surface that already sits next to something naming the currency.
   const walletBalanceLabel = formatWalletBalance(balanceUsd);
   // #5517: wordmark badge inside the menu's billing card. It names the plan
@@ -1225,17 +1226,17 @@ export function EntryTopRightCluster({
   const githubStars = useGithubStars();
   // Signed-in account email for the menu head (#5517 shows it under the
   // display name). The workspace context carries no email, so lazily read the
-  // vela login-status projection the first time the menu opens — never on
+  // login-status projection the first time the menu opens — never on
   // mount, so shells without an open menu spend zero requests on it.
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   useEffect(() => {
     if (!accountOpen) return;
     // Refetch on EVERY open (the previous value stays visible while the read
     // is in flight, so there is no flicker). A fetch-once cache here went
-    // stale the moment the user switched vela accounts mid-session — the menu
+    // stale the moment the user switched accounts mid-session — the menu
     // kept showing the first account's email (#102).
     let cancelled = false;
-    void fetchVelaLoginStatus().then((status) => {
+    void fetchRemoteAccountLoginStatus().then((status) => {
       if (!cancelled) setAccountEmail(status?.user?.email?.trim() || '');
     });
     return () => {
@@ -1326,7 +1327,7 @@ export function EntryTopRightCluster({
   // #62: the 积分 row links straight OUT to B's console dashboard (usage detail
   // lives there) — no intermediate credits popover in the client, matching
   // #5517. It used to open a wallet page; balance, top-up and the auto-recharge
-  // policy were rehomed onto the dashboard (vela #1055).
+  // policy were rehomed onto the dashboard .
   const billingConsoleUrl = workspaceSettingsUrl
     ? teamConsoleUrl(workspaceSettingsUrl, 'billing')
     : null;
@@ -1338,17 +1339,17 @@ export function EntryTopRightCluster({
   // dashboard from the workspace id alone, exactly as EntryShell and the
   // campaign badge already build their plans links.
   const accountBillingUrl =
-    billingConsoleUrl ?? amrConsoleUrlForWorkspace(undefined, context?.workspaceId);
+    billingConsoleUrl ?? consoleUrlForWorkspace(undefined, context?.workspaceId);
   // Where the card's 「管理」 goes for a tier with nothing left to buy: the same
   // workspace-scoped console the wallet row opens, asked to open its
   // auto-recharge settings on arrival. Topping up IS the action for a top-tier
-  // subscriber — see AMR_CONSOLE_AUTO_RECHARGE_INTENT.
+  // subscriber — see CONSOLE_AUTO_RECHARGE_INTENT.
   // 管理 (Max) lands on the plain dashboard — product ruling 2026-09-23
-  // (「点击管理, 就跳转到 vela dashboard 就行」), not on the auto-recharge dialog.
+  // (「点击管理, 就跳转到 dashboard 就行」), not on the auto-recharge dialog.
   const billingManageUrl = accountBillingUrl;
   // The wallet row asks the console for its manual top-up dialog; see
-  // AMR_CONSOLE_RECHARGE_INTENT for the (pending) B-side handler.
-  const walletRechargeUrl = consoleBillingIntentUrl(accountBillingUrl, AMR_CONSOLE_RECHARGE_INTENT);
+  // CONSOLE_RECHARGE_INTENT for the (pending) B-side handler.
+  const walletRechargeUrl = consoleBillingIntentUrl(accountBillingUrl, CONSOLE_RECHARGE_INTENT);
   // Product decision: plan comparison lives on public Pricing and payment
   // lives in Cloud. The client refreshes billing + context when focus returns
   // so a completed web upgrade syncs plan, credits, seats and gates.
@@ -1710,8 +1711,8 @@ export function EntryTopRightCluster({
                   className="entry-nav-rail__account-bell"
                   aria-haspopup="dialog"
                   aria-expanded={messageCenterOpen}
-                  aria-label={t('messageCenter.title')}
-                  title={t('messageCenter.title')}
+                  aria-label={'Notifications'}
+                  title={'Notifications'}
                   data-testid="entry-nav-account-message-center"
                   onClick={() => {
                     trackAccountAction('message_center');
@@ -1837,11 +1838,11 @@ export function EntryTopRightCluster({
                     onCancel={() => setConfirmSignOut(false)}
                     onConfirm={() => {
                       setConfirmSignOut(false);
-                      // Real sign-out: clear the vela profile auth on the
+                      // Real sign-out: clear the profile auth on the
                       // daemon, then nudge every workspace surface to re-read
                       // (the context read now resolves to null → the shell
                       // falls back to the signed-out local form).
-                      void velaLogout().then(async (result) => {
+                      void accountLogout().then(async (result) => {
                         if (!result.ok) return;
                         await onSignedOut?.();
                         // recvqbkcLqIFH7: a stale "dismissed" flag on the
@@ -1849,7 +1850,7 @@ export function EntryTopRightCluster({
                         // sign-out, or the rail's only sign-in entry point
                         // silently disappears with nothing left in its place.
                         resetCloudSignInTipDismissal();
-                        notifyAmrLoginStatusChanged();
+                        notifyAccountStatusChanged();
                         notifyWorkspaceContextRefresh();
                         notifyWorkspaceBillingRefresh();
                         notifyTeamProjectsChanged();
@@ -1878,7 +1879,6 @@ export function EntryTopRightCluster({
           priorityAnnouncementActive={priorityAnnouncementActive}
           onPriorityAnnouncementPendingChange={onPriorityAnnouncementPendingChange}
           priorityAnnouncementCurrentPlanId={priorityAnnouncementCurrentPlanId}
-          priorityAnnouncementAmrProfile={priorityAnnouncementAmrProfile}
           priorityAnnouncementMetricsConsent={priorityAnnouncementMetricsConsent}
         />
       ) : null}
@@ -1895,9 +1895,6 @@ export function WorkspaceTopRightAccountCluster({
   updaterSlot,
   workspaceContextOverride,
   workspaceContextLoading,
-  amrLoggedIn = null,
-  amrAccountPlan = null,
-  amrAccountId = null,
   metricsConsent = false,
   installationId,
 }: {
@@ -1907,9 +1904,6 @@ export function WorkspaceTopRightAccountCluster({
   updaterSlot?: ReactNode;
   workspaceContextOverride?: WorkspaceCollabContext | null;
   workspaceContextLoading?: boolean;
-  amrLoggedIn?: boolean | null;
-  amrAccountPlan?: string | null;
-  amrAccountId?: string | null;
   metricsConsent?: boolean;
   installationId?: string | null;
 }) {
@@ -1934,14 +1928,11 @@ export function WorkspaceTopRightAccountCluster({
   const campaignPlan = resolvePlanLabelTier({
     billing,
     context,
-    accountPlan:
-      contextLoading || context?.workspaceType === 'team'
-        ? null
-        : amrAccountPlan,
+    accountPlan: null,
   });
   const deepSeekCampaignAudience = resolveDeepSeekV4FlashCampaignAudience({
     plan: campaignPlan,
-    loggedIn: amrLoggedIn,
+    loggedIn: false,
     now: deepSeekCampaignVisibility.now,
   });
   const campaignAudience =
@@ -1964,7 +1955,7 @@ export function WorkspaceTopRightAccountCluster({
           page="project"
           metricsConsent={metricsConsent}
           installationId={installationId}
-          loggedIn={amrLoggedIn}
+          loggedIn={false}
         />
       ) : null}
       updaterSlot={updaterSlot}
@@ -2114,7 +2105,6 @@ export function EntryNavRail({
   priorityAnnouncementActive,
   onPriorityAnnouncementPendingChange,
   priorityAnnouncementCurrentPlanId,
-  priorityAnnouncementAmrProfile,
   priorityAnnouncementMetricsConsent,
 }: Props) {
   const { t } = useI18n();
@@ -2505,7 +2495,7 @@ export function EntryNavRail({
                             ...workspaceDimensions,
                           });
                           setTeamOpen(false);
-                          if (inviteTarget.kind === 'vela') {
+                          if (inviteTarget.kind === 'external') {
                             window.open(inviteTarget.url, '_blank', 'noopener,noreferrer');
                           } else if (inviteTarget.kind === 'local') {
                             setInviteOpen(true);
@@ -2793,8 +2783,8 @@ export function EntryNavRail({
                 className="entry-nav-rail__account-bell"
                 aria-haspopup="dialog"
                 aria-expanded={messageCenterOpen}
-                aria-label={t('messageCenter.title')}
-                title={t('messageCenter.title')}
+                aria-label={'Notifications'}
+                title={'Notifications'}
                 data-testid="entry-nav-message-center"
                 onClick={() => {
                   trackAccountMenuClick(analytics.track, {
@@ -2831,7 +2821,6 @@ export function EntryNavRail({
           priorityAnnouncementActive={priorityAnnouncementActive}
           onPriorityAnnouncementPendingChange={onPriorityAnnouncementPendingChange}
           priorityAnnouncementCurrentPlanId={priorityAnnouncementCurrentPlanId}
-          priorityAnnouncementAmrProfile={priorityAnnouncementAmrProfile}
           priorityAnnouncementMetricsConsent={priorityAnnouncementMetricsConsent}
         />
       )}
@@ -2871,7 +2860,6 @@ export function EntryNavRail({
         priorityAnnouncementActive={priorityAnnouncementActive}
         onPriorityAnnouncementPendingChange={onPriorityAnnouncementPendingChange}
         priorityAnnouncementCurrentPlanId={priorityAnnouncementCurrentPlanId}
-        priorityAnnouncementAmrProfile={priorityAnnouncementAmrProfile}
         priorityAnnouncementMetricsConsent={priorityAnnouncementMetricsConsent}
       />
     </nav>

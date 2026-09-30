@@ -48,7 +48,6 @@ import { OdCardView } from '../../../src/components/OdCard';
 import { QueuedSendStrip, UserMessageImpl } from '../../../src/components/ChatPane';
 import { AssistantFeedback, AssistantFeedbackReasons, AssistantFooter, AssistantMessage, feedbackReasonOptions } from '../../../src/components/AssistantMessage';
 import { FileOpsSummary } from '../../../src/components/FileOpsSummary';
-import { UpgradeCard } from '../../../src/components/chat/UpgradeCard';
 import { PlanPill } from '../../../src/components/chat/PlanPill';
 import { UserStatusCard } from '../../../src/components/chat/UserStatusCard';
 import { parseTodoWriteInput } from '../../../src/runtime/todos';
@@ -930,7 +929,7 @@ const planPill = (items: Array<[string, string]>) => (
 /** 升级卡(组件 18):流水里的一张卡,余额决定走哪一档 */
 const upgrade = (balanceUsd: number) => (
   <div className={CAGE_UPGRADE}>
-    <UpgradeCard balanceUsd={balanceUsd} onUpgrade={() => undefined} />
+    null
   </div>
 );
 

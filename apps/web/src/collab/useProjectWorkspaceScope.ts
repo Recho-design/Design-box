@@ -13,31 +13,10 @@ import {
   forceSharedCancellableGet,
   sharedCancellableGet,
 } from '../lib/shared-cancellable-get';
-import { useWorkspaceInvalidation } from './workspace-events';
 import { workspaceIdentityCacheKey } from './workspace-identity';
 
 const PROJECT_SCOPE_RETRY_MS = 5_000;
-/**
- * First retry delay, doubling up to {@link PROJECT_SCOPE_RETRY_MS}.
- *
- * What this polls for is almost always a project row the daemon has not
- * written yet — the first open of a project pulled from the hub — and that
- * clears in a second or two. At a flat steady cadence the reader spends most
- * of the wait idle AFTER the row exists, which is dead time the user reads as
- * a slow open. Probe tightly first, then relax so a genuinely long outage
- * still settles into a cheap poll rather than hammering the daemon.
- */
 const PROJECT_SCOPE_FIRST_RETRY_MS = 500;
-/**
- * How long "the daemon has not materialized this project yet" stays worth
- * re-asking.
- *
- * That answer can only become true while materialization is actually running.
- * A project that is simply gone returns the same 404 forever, so without a
- * deadline a stale tab pointed at a deleted project polls for as long as it
- * stays open. A transient backend outage deliberately keeps its unbounded
- * poll — that one can start succeeding at any moment.
- */
 const PROJECT_SCOPE_MATERIALIZATION_WINDOW_MS = 120_000;
 
 interface ProjectWorkspaceAuthority {
@@ -48,8 +27,8 @@ interface ProjectWorkspaceAuthority {
 function projectWorkspaceAuthority(
   context: WorkspaceCollabContext | null | undefined,
 ): ProjectWorkspaceAuthority | null {
-  const workspaceId = context?.workspaceId.trim() ?? '';
-  const workspaceMemberId = context?.workspaceMemberId.trim() ?? '';
+  const workspaceId = context?.workspaceId.trim() ?? "";
+  const workspaceMemberId = context?.workspaceMemberId.trim() ?? "";
   return workspaceId && workspaceMemberId
     ? { workspaceId, workspaceMemberId }
     : null;
@@ -60,28 +39,28 @@ function projectWorkspaceAuthorityKey(
 ): string {
   return authority
     ? `${authority.workspaceId}:${authority.workspaceMemberId}`
-    : 'none';
+    : "none";
 }
 
 function projectWorkspaceAuthorityHeaders(
   authority: ProjectWorkspaceAuthority,
 ): HeadersInit {
   return {
-    'x-od-workspace-id': authority.workspaceId,
-    'x-od-workspace-member-id': authority.workspaceMemberId,
+    "x-od-workspace-id": authority.workspaceId,
+    "x-od-workspace-member-id": authority.workspaceMemberId,
   };
 }
 
 export interface ProjectWorkspaceScopeState {
   loading: boolean;
   scope: ProjectWorkspaceScope | null;
-  failure?: 'unsupported' | 'forbidden' | 'unavailable';
+  failure?: "unsupported" | "forbidden" | "unavailable";
 }
 
 export function projectWorkspaceContext(
   scope: ProjectWorkspaceScope | null | undefined,
 ): WorkspaceCollabContext | null {
-  return scope?.kind === 'personal' || scope?.kind === 'team'
+  return scope?.kind === "personal" || scope?.kind === "team"
     ? scope.context
     : null;
 }
@@ -89,29 +68,21 @@ export function projectWorkspaceContext(
 export function projectWorkspaceScopeReady(
   scope: ProjectWorkspaceScope | null | undefined,
 ): boolean {
-  return scope?.kind === 'unbound' || scope?.kind === 'personal' || scope?.kind === 'team';
+  return scope?.kind === "unbound" || scope?.kind === "personal" || scope?.kind === "team";
 }
 
-/**
- * The daemon's own visibility verdict for a resolved project scope.
- *
- * Deliberately independent of `kind`: a private draft can live in a team
- * workspace and still be `personal`. Null when the scope has not resolved, or
- * for a legacy unbound project that has no `workspace_projects` row to be
- * visible in — neither case is evidence of anything.
- */
 export function projectWorkspaceVisibility(
   scope: ProjectWorkspaceScope | null | undefined,
 ): ProjectVisibility | null {
-  return scope && scope.kind !== 'unbound' ? scope.visibility : null;
+  return scope && scope.kind !== "unbound" ? scope.visibility : null;
 }
 
 function activePersonalAdoptionWitness(
   caller: WorkspaceCollabContext | null | undefined,
 ): WorkspaceCollabContext | null {
   if (
-    caller?.workspaceType !== 'personal'
-    || caller.memberStatus !== 'active'
+    caller?.workspaceType !== "personal"
+    || caller.memberStatus !== "active"
     || caller.workspaceId.trim().length === 0
     || caller.workspaceMemberId.trim().length === 0
   ) {
@@ -120,12 +91,6 @@ function activePersonalAdoptionWitness(
   return caller;
 }
 
-/**
- * The one run-identity branch allowed to move a truly unbound historical
- * project into a Workspace. Exporting the decision lets recovery flows carry
- * structured proof of this exact branch instead of guessing from an opaque
- * identity cache key.
- */
 export function runWorkspacePersonalAdoptionWitness(
   state: ProjectWorkspaceScopeState,
   caller: WorkspaceCollabContext | null,
@@ -133,7 +98,7 @@ export function runWorkspacePersonalAdoptionWitness(
 ): WorkspaceCollabContext | null {
   if (persistedProjectWorkspaceId != null || state.failure) return null;
   if (
-    state.scope?.kind !== 'unbound'
+    state.scope?.kind !== "unbound"
     && !(state.loading && state.scope === null)
   ) {
     return null;
@@ -141,36 +106,6 @@ export function runWorkspacePersonalAdoptionWitness(
   return activePersonalAdoptionWitness(caller);
 }
 
-/**
- * The workspace identity a run creation asserts to the daemon.
- *
- * The project's resolved scope wins: it is the authority for which workspace
- * the run writes into and which wallet pays. Before the first scope answer,
- * Home may auto-send, so the caller is a safe temporary witness only when the
- * project's persisted binding already names that same workspace. That binding
- * lives on the project read model and survives ProjectView's authorization-key
- * remount; unlike hook-local "first read" state it therefore cannot turn an
- * A-bound project into workspace B during a switch.
- *
- * A transient `unavailable` answer is not an authorization decision. When the
- * persisted project binding and exact caller still agree, keep asserting that
- * pair and let the daemon's mutation gate perform the fresh authoritative
- * membership check. Dropping the headers here would turn every project read
- * and run into `WORKSPACE_CONTEXT_REQUIRED` during a directory outage. A
- * `forbidden` answer remains authoritative and never borrows the caller.
- *
- * While the first scope read is pending, a caller whose workspace matches the
- * project's persisted workspace id may be used so the first request does not
- * escape unscoped.
- *
- * A project whose read model is explicitly unbound has one narrower exception:
- * an active Personal caller may witness the daemon's one-time transactional
- * adoption. This does not let the web authorize or persist the binding; the
- * daemon freshly verifies that exact Personal workspace/member pair and owns
- * the decision. Team callers, absent callers, and any failed/forbidden/
- * unavailable scope read stay headerless so the client cannot adopt the
- * project into whichever Workspace happens to be selected.
- */
 export function runWorkspaceIdentity(
   state: ProjectWorkspaceScopeState,
   caller: WorkspaceCollabContext | null,
@@ -188,8 +123,8 @@ export function runWorkspaceIdentity(
   if (
     exactBoundCaller
     && (
-      state.failure === 'unavailable'
-      || state.scope?.kind === 'unavailable'
+      state.failure === "unavailable"
+      || state.scope?.kind === "unavailable"
     )
   ) {
     return exactBoundCaller;
@@ -209,16 +144,6 @@ export function runWorkspaceIdentity(
     return exactBoundCaller;
   }
   return null;
-}
-
-/** Whether the settled project scope itself resolves an explicit AMR billing
- * principal. An unbound project can still present a Personal adoption witness
- * through {@link runWorkspaceIdentity}; this predicate intentionally describes
- * only the persisted project scope. */
-export function projectWorkspaceScopeAuthorizesAmr(
-  scope: ProjectWorkspaceScope | null | undefined,
-): boolean {
-  return scope?.kind === 'personal' || scope?.kind === 'team';
 }
 
 /**
@@ -531,16 +456,6 @@ export function useProjectWorkspaceScope(
     revalidateInBackground();
   }, [projectId, revalidateInBackground]);
 
-  useWorkspaceInvalidation(
-    {
-      'workspace-context-changed': revalidateInBackground,
-      'team-projects-changed': revalidateOnTeamProjectsChanged,
-    },
-    {
-      workspaceContext: projectWorkspaceContext(state.scope),
-      onActive: revalidateOnActive,
-    },
-  );
 
   useEffect(() => {
     window.addEventListener(

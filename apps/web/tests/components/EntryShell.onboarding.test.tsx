@@ -132,7 +132,6 @@ function renderOnboarding(
     onRefreshAgents: vi.fn(() => [amrAgent(), cliAgent()]),
     onCreateProject: vi.fn(),
     onBeginProjectCreation: () => ({ projectId: 'optimistic-project', rollback: () => undefined }),
-    onAmrBalanceGateBlockChange: () => undefined,
     onCreatePluginShareProject: vi.fn(),
     onImportClaudeDesign: vi.fn(),
     onOpenProject: vi.fn(),
@@ -199,7 +198,6 @@ function renderHome(
     onRefreshAgents: vi.fn(() => [cliAgent()]),
     onCreateProject: vi.fn(),
     onBeginProjectCreation: () => ({ projectId: 'optimistic-project', rollback: () => undefined }),
-    onAmrBalanceGateBlockChange: () => undefined,
     onCreatePluginShareProject: vi.fn(),
     onImportClaudeDesign: vi.fn(),
     onOpenProject: vi.fn(),
@@ -738,29 +736,6 @@ describe('EntryShell Home submit handoff', () => {
 });
 
 describe('EntryShell onboarding OpenDesign AMR runtime', () => {
-  it('gates Home on an authoritative signed-out Cloud session without clearing saved setup', async () => {
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse({ loggedIn: false, profile: 'prod', configPath: '/x', user: null }),
-    ) as typeof fetch;
-    const config = baseConfig({
-      onboardingCompleted: true,
-      mode: 'daemon',
-      agentId: 'amr',
-      model: 'claude-opus-4-5',
-    });
-    const props = renderHome({ config, amrLoggedIn: false });
-
-    expect(
-      await screen.findByRole('heading', { name: 'Welcome to OpenDesign' }),
-    ).toBeTruthy();
-    expect(await screen.findByText('Free Credits')).toBeTruthy();
-    expect(screen.getByLabelText('New users get free starter credits to try DeepSeek V4.1 Flash.')).toBeTruthy();
-    expect(window.location.pathname).toBe('/onboarding');
-    expect(props.onConfigPersist).not.toHaveBeenCalled();
-    expect(props.onModeChange).not.toHaveBeenCalled();
-    expect(props.onAgentChange).not.toHaveBeenCalled();
-  });
-
   it.each([
     ['Local CLI', baseConfig({ mode: 'daemon', agentId: 'claude-code' })],
     ['BYOK', baseConfig({
@@ -773,7 +748,7 @@ describe('EntryShell onboarding OpenDesign AMR runtime', () => {
   ])('keeps Home available for signed-out %s execution', async (_label, config) => {
     globalThis.fetch = vi.fn(async () => jsonResponse({})) as typeof fetch;
 
-    renderHome({ config, amrLoggedIn: false });
+    renderHome({ config });
 
     expect(await screen.findByTestId('home-hero-input')).toBeTruthy();
     expect(window.location.pathname).toBe('/');
@@ -880,44 +855,6 @@ describe('EntryShell onboarding OpenDesign AMR runtime', () => {
       source_count: 0,
     });
     expect(trackedEvents('onboarding_complete_result')).toHaveLength(1);
-  });
-
-  it('resumes a completed setup after passive reauthentication without changing its model source', async () => {
-    const onAmrLoginStatusChange = vi.fn();
-    globalThis.fetch = vi.fn(async () =>
-      jsonResponse({
-        loggedIn: true,
-        profile: 'prod',
-        configPath: '/x',
-        user: { id: 'u', email: 'user@example.com' },
-      }),
-    ) as typeof fetch;
-    const props = renderOnboarding({
-      config: baseConfig({
-        onboardingCompleted: true,
-        mode: 'api',
-        apiKey: 'persisted-key',
-        baseUrl: 'https://api.anthropic.com',
-        model: 'claude-sonnet-4-5',
-      }),
-      onAmrLoginStatusChange,
-    });
-
-    await waitFor(() => {
-      expect(props.onCompleteOnboarding).toHaveBeenCalledTimes(1);
-    });
-    expect(props.onModeChange).not.toHaveBeenCalled();
-    expect(props.onAgentChange).not.toHaveBeenCalled();
-    expect(onAmrLoginStatusChange).toHaveBeenCalledWith(
-      expect.objectContaining({ loggedIn: true }),
-    );
-    expect(screen.queryByRole('heading', { name: 'Choose your model source' })).toBeNull();
-    expect(
-      trackedEvents('page_view').filter(([, payload]) =>
-        (payload as Record<string, unknown>).page_name === 'onboarding',
-      ),
-    ).toHaveLength(0);
-    expect(trackedEvents('onboarding_complete_result')).toHaveLength(0);
   });
 
   it('returns a completed but invalid setup to the model-source chooser after sign-in', async () => {

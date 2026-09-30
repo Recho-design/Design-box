@@ -284,7 +284,6 @@ describe('W96 · 流水里的行不许被 flex 压扁', () => {
         onSend={vi.fn()}
         onStop={vi.fn()}
         onRetry={vi.fn()}
-        amrBalanceCardUsd={0.33}
         onOpenSettings={vi.fn() as never}
         conversations={[
           { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },

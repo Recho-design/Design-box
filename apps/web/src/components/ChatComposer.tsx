@@ -648,8 +648,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     // window cannot enqueue the same still-visible payload again.
     const composedSendPendingRef = useRef(false);
     // The latch above prevents duplicates, but a ref alone leaves the UI
-    // completely unchanged while an async admission gate (notably AMR's
-    // workspace billing check) is pending. Mirror it in state so Send turns
+    // completely unchanged while an async admission gate is pending. Mirror it in state so Send turns
     // into an immediate, non-interactive "Preparing..." pill instead of
     // looking like the click was lost.
     const [composedSendPending, setComposedSendPending] = useState(false);

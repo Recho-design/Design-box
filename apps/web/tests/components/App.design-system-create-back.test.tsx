@@ -31,7 +31,8 @@ import {
   fetchPromptTemplates,
   fetchSkills,
 } from '../../src/providers/registry';
-import { fetchAmrModels, fetchVelaLoginStatus } from '../../src/providers/daemon';
+const fetchAmrModels = vi.fn();
+const fetchVelaLoginStatus = vi.fn();
 import { listProjects, listTemplates } from '../../src/state/projects';
 import { resetWorkspaceContextCache } from '../../src/collab/useWorkspaceContext';
 import { resetCoalescedGet } from '../../src/lib/coalesced-get';

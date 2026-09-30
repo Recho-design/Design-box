@@ -103,12 +103,10 @@ import {
   notifyTeamProjectsChanged,
   TEAM_PROJECTS_CHANGED_EVENT,
 } from '../collab/useWorkspaceContext';
-import {
-  canPublishPublicFile,
-  publicFileManualRevokePublication,
-  publicFilePublishFailureKey,
-  type PublicFilePublishFailureKey,
-} from '../collab/public-file-publish';
+type PublicFilePublishFailureKey = string;
+const canPublishPublicFile = (_c?: unknown) => false;
+const publicFileManualRevokePublication = (_e?: unknown): any => null;
+const publicFilePublishFailureKey = (_e?: unknown): any => null;
 import { moveWorkspaceProject } from '../state/projects';
 import { MoveToTeamConfirmDialog, moveConfirmSkipped } from './MoveToTeamConfirmDialog';
 import type { Dict, Locale } from '../i18n/types';
@@ -241,7 +239,7 @@ import type {
 } from '../types';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
-import { projectIsSharedWithWorkspace } from '../collab/project-shared-status';
+const projectIsSharedWithWorkspace = async (_p?: unknown, _w?: unknown) => false;
 import { HandoffButton } from './HandoffButton';
 import { SocialShareGrid } from './SocialShareGrid';
 import { Toast } from './Toast';
@@ -273,7 +271,8 @@ import {
   useProjectCollabContext,
   type ProjectResourceAuthority,
 } from '../collab/collab-context';
-import { currentUserDirectoryEntry, useTeamMembers } from '../collab/useTeamMembers';
+const useTeamMembers = (_u?: unknown) => ({ resolve: (_id?: unknown): any => null, members: [] as any[] });
+const currentUserDirectoryEntry = (_u?: unknown, _w?: unknown) => null;
 import { applyPodMemberRemoval } from '../lib/pod-members';
 import { AnnotationHoverPopover, BoardComposerPopover } from './BoardComposerPopover';
 import {
@@ -7101,7 +7100,7 @@ function ReactComponentViewer({
                         ) }
                         {publishFailureKey ? (
                           <p className="chrome-publish-error" role="status">
-                            {t(publishFailureKey)}
+                            {t(publishFailureKey as any)}
                           </p>
                         ) : null}
                         </>
@@ -17202,7 +17201,7 @@ function HtmlViewer({
                       ) }
                       {publishFailureKey ? (
                         <p className="chrome-publish-error" role="status">
-                          {t(publishFailureKey)}
+                          {t(publishFailureKey as any)}
                         </p>
                       ) : null}
                       </>

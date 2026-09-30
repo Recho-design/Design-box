@@ -74,7 +74,7 @@ apps/web/src/runtime/chat/     纯函数领域逻辑(无 JSX、无 DOM)
 
 **8 家 agent 完全不吐工具事件**(qoder / cursor-agent / qwen / deepseek / grok-build /
 aider / antigravity / atomcode),**opencode 直连不吐 thinking**,
-**AMR 的终端输出被安全打码**。
+**部分 agent 的终端输出可能被脱敏打码**。
 
 因此每个消费 agent 事件的组件必须回答:数据缺席时长什么样?
 

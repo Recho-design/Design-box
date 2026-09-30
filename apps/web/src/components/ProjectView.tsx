@@ -74,7 +74,6 @@ import {
   runAgentProviderId,
 } from '../analytics/run-task';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
-import { requestAmrArtifactUpgrade } from '../runtime/amr-artifact-upgrade';
 import {
   resolveQuestionFormStrategyTaskExecutionId,
   strategySettledMessageFields,
@@ -86,7 +85,6 @@ import {
   isWorkspaceLifecycleReadable,
   workspaceBillingAuthorityContext,
   workspacePrincipalKey,
-  type AmrWalletSnapshot,
   type ByokChatProviderConfig,
   type ByokMediaDefaults,
   type ByokChatProtocol,
@@ -150,11 +148,6 @@ import { randomUUID } from '../utils/uuid';
 import { DEFAULT_NOTIFICATIONS, KNOWN_PROVIDERS } from '../state/config';
 import type { TodoItem } from '../runtime/todos';
 import {
-  amrAuthRetryMatchesRouteContext,
-  type AmrAuthRetryContinuation,
-  type AmrAuthRetryPersonalAdoptionWitness,
-} from '../runtime/amr-auth-retry-continuation';
-import {
   appendErrorStatusEvent,
   removeErrorStatusEvent,
   runFailureFieldsFromError,
@@ -170,30 +163,8 @@ import {
 } from '../runtime/design-delivery';
 import { notifyArtifactDelivered } from './experience-survey-trigger';
 import { RESUME_CONTINUE_PROMPT } from '../runtime/resume';
-import {
-  amrBalanceGateScopeForWorkspaceContext,
-  amrBalanceGateScopesMatch,
-  amrWalletBalanceUsd,
-  checkAmrBalanceGate,
-  fetchAmrBalanceCardWalletSnapshot,
-  isAmrBalanceGateScope,
-  type AmrBalanceGateScope,
-} from '../runtime/amr-balance-gate';
-import {
-  amrBalanceBlockedDialog,
-  amrBalanceDialogUpgradeIntent,
-  amrBalanceUpgradeIntent,
-  resolveAmrBalanceBranch,
-  type AmrBalanceBlockedDialogKind,
-} from '../runtime/amr-balance-branch';
-import { AmrOwnerTopUpDialog } from './chat/AmrOwnerTopUpDialog';
 import { markHistoryReplayLanded } from './chat/useCharReveal';
 import { workspaceAutoRechargeUrl, workspaceUpgradeUrl } from './EntryNavRail';
-import {
-  amrHandoffDeviceId,
-  attributedAmrUrl,
-  recordAmrEntry,
-} from '../analytics/amr-attribution';
 import { getResolvedDeviceId } from '../analytics/client';
 import {
   cancelBrandExtraction,
@@ -300,27 +271,19 @@ import { Icon } from './Icon';
 import { useWorkspaceTabsDockRef } from './workspaceTabsDock';
 import { localizePluginTitle } from './plugins-home/localization';
 import { DesignSystemPicker } from './DesignSystemPicker';
-import { PresenceBar } from '../collab/PresenceBar';
 import { useProjectCollab } from '../collab/useProjectCollab';
-import {
-  currentUserDirectoryEntry,
-  useTeamMembers,
-} from '../collab/useTeamMembers';
 import { workspaceIdentityCacheKey } from '../collab/workspace-identity';
 import {
   useWorkspaceBillingResponse,
   useWorkspaceContext,
   workspaceBillingSummaryForContext,
-  workspaceIdentityCanBillAmr,
-} from '../collab/useWorkspaceContext';
+  } from '../collab/useWorkspaceContext';
 import {
   projectWorkspaceContext,
-  projectWorkspaceScopeAuthorizesAmr,
-  projectWorkspaceScopeReady,
+    projectWorkspaceScopeReady,
   projectWorkspaceVisibility,
   runWorkspaceIdentity,
-  runWorkspacePersonalAdoptionWitness,
-  useProjectWorkspaceScope,
+    useProjectWorkspaceScope,
 } from '../collab/useProjectWorkspaceScope';
 import {
   CollabProvider,
@@ -454,10 +417,6 @@ type ProjectChatSendMeta = ChatSendMeta & {
    *  lives in the queue item, so a pre-run block (e.g. the AMR balance gate)
    *  must NOT re-queue it — only pause further drains. */
   queueDrain?: boolean;
-  /** The OpenDesign Cloud balance gate already ran for this exact send at
-   *  the home submit (with any soft warning answered there); skip re-gating
-   *  so the user is never double-prompted for one task. */
-  amrGatePrechecked?: boolean;
   /** The caller owns a payload that must be consumed exactly once — the Home
    *  handoff's separately persisted prompt, an inline question form's single
    *  answer. Once the payload is durably parked in this view's queue, report
@@ -465,23 +424,6 @@ type ProjectChatSendMeta = ChatSendMeta & {
    *  copy that the queue drain would then send twice. This flag is
    *  transport-only and is stripped before queue persistence. */
   acceptDurableQueue?: boolean;
-  /**
-   * 这一发的正文**此刻属于输入框**,而且输入框正等着知道要不要把它收回去。
-   *
-   * 只有 `handleComposerSend` 打这个标记。它是 OPEND-2719 那条「余额耗尽不代管、
-   * 把正文还给输入框」的**唯一**入场券:`handleSend` 还有十来个直接调用方
-   * (分享到社区、设计系统反馈、继续未完成任务、续跑、问答表单、首页自动发送、
-   * 重发失败的用户消息……),它们的正文不在输入框里,用户也没在等着编辑它 ——
-   * 对它们「不代管」等于悄悄取消了排队。
-   *
-   * ⚠️ 判据必须是**肯定式**。原来写成「不是重试、不是排空队列 ⇒ 就是输入框」,
-   * 而那份排除法把上面那十来个调用方全算成了输入框(PR #7927 评审)。
-   *
-   * ⚠️ 和 `acceptDurableQueue` 同类:**transport-only**,由
-   * `stripQueueOnlyFromMeta` 在入队前摘掉。一条排过队的输入框消息,它的正文已经
-   * 交给队列项保管了,回放时再声称「输入框在等它」就是撒谎。
-   */
-  composerOwnedDraft?: true;
   /** Stable task lineage for retries, resumes and clarification answers. */
   taskAnalytics?: ChatTaskExecutionAnalytics;
   /** Explicit daemon-issued OD Next continuation handle. */
@@ -624,7 +566,7 @@ function terminalErrorEventOf(message: ChatMessage): AgentEvent | undefined {
  * (its Run had none to write). So the post-run alignment refresh arrives
  * carrying only the process status — and the plain `{...server}` copy read that
  * silence as a correction, dropping the verdict AND its reason code. The
- * blocked card that `runtime/amr-guidance.ts` already writes for
+ * blocked card that runtime guidance already writes for
  * `od_next_protocol_runtime_state_missing` could therefore never render: with
  * no `runStatus: 'failed'` there is no `retryAssistant`, with no
  * `retryAssistant` there is no `runFailureUi`, and the chat fell back to the
@@ -842,16 +784,6 @@ interface Props {
   initialMaterializationPending?: boolean;
   /** Workspace/member authorization lifetime for async title reads. */
   projectAuthorizationKey?: string;
-  amrAuthRetryContinuation?: AmrAuthRetryContinuation | null;
-  onArmAmrAuthRetryContinuation?: (
-    continuation: Omit<AmrAuthRetryContinuation, 'accountIdAtArm' | 'createdAtMs'>,
-  ) => void;
-  onConsumeAmrAuthRetryContinuation?: (
-    continuation: AmrAuthRetryContinuation,
-  ) => boolean;
-  onDiscardAmrAuthRetryContinuation?: (
-    continuation: AmrAuthRetryContinuation,
-  ) => void;
   /**
    * The current title from the team catalog when this project is shared by
    * another member. That catalog is the naming authority; the member's local
@@ -893,8 +825,6 @@ interface Props {
   daemonLive: boolean;
   onModeChange: (mode: AppConfig['mode']) => void;
   onAgentChange: (id: string) => void;
-  /** Resolves only after the App configuration owner has persisted Cloud. */
-  onSwitchToCloud?: () => Promise<void>;
   onAgentModelChange: (
     id: string,
     choice: { model?: string; reasoning?: string; serviceTier?: string },
@@ -902,7 +832,6 @@ interface Props {
   onApiModelChange?: (model: string) => void;
   onRefreshAgents: () => void;
   onOpenSettings: (section?: SettingsSection) => void;
-  onOpenAmrSettings?: () => void;
   onOpenMcpSettings?: () => void;
   onBrowsePlugins?: () => void;
   onOpenConnectors?: () => void;
@@ -1005,7 +934,7 @@ const DESIGN_SYSTEM_AUDIT_AUTO_REPAIR_ATTEMPTS = 2;
 // For a personal project that is a transient blip, but opening a TEAM-SHARED
 // project a member has not pulled yet only registers it locally after the collab
 // status resolves and the auto-pull completes — several seconds against a remote
-// collab backend (e.g. a packaged feature-env build round-tripping through vela).
+// collab backend (e.g. a packaged feature-env build round-tripping through a remote backend).
 // The old ~1s window ran out mid-pull and surfaced a hard "conversations 404"
 // error on first open of a shared project. Retry on the 404 long enough to cover
 // that sync (~12s); a genuinely missing project is rare on this path (the user
@@ -1452,14 +1381,6 @@ function autoSendContextKey(projectId: string): string {
   return `od:auto-send-context:${projectId}`;
 }
 
-/** Exact workspace/member authority checked by the Home AMR preflight. */
-function autoSendAmrGateWitnessKey(projectId: string): string {
-  return `od:auto-send-amr-gate-witness:${projectId}`;
-}
-
-function legacyAutoSendAmrGateOkKey(projectId: string): string {
-  return `od:auto-send-amr-gate-ok:${projectId}`;
-}
 
 function designSystemAuditAutoRepairKey(projectId: string): string {
   return `od:design-system-audit-auto-repair:${projectId}`;
@@ -1499,22 +1420,6 @@ function readAutoSendContext(projectId: string): RunContextSelection | null {
   }
 }
 
-function readAutoSendAmrGateWitness(
-  projectId: string,
-): AmrBalanceGateScope | undefined {
-  if (typeof window === 'undefined') return undefined;
-  try {
-    const raw = window.sessionStorage.getItem(
-      autoSendAmrGateWitnessKey(projectId),
-    );
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as unknown;
-    return isAmrBalanceGateScope(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function clearAutoSendSession(projectId: string): void {
   if (typeof window === 'undefined') return;
   try {
@@ -1522,8 +1427,6 @@ function clearAutoSendSession(projectId: string): void {
     window.sessionStorage.removeItem(autoSendPromptKey(projectId));
     window.sessionStorage.removeItem(autoSendAttachmentsKey(projectId));
     window.sessionStorage.removeItem(autoSendContextKey(projectId));
-    window.sessionStorage.removeItem(autoSendAmrGateWitnessKey(projectId));
-    window.sessionStorage.removeItem(legacyAutoSendAmrGateOkKey(projectId));
   } catch {
     /* ignore */
   }
@@ -1888,7 +1791,7 @@ function projectMediaVoiceSeed(
 // Carry the creation-time model pick into the conversation ONLY when it belongs
 // to the active BYOK provider. Guards against clobbering a user's Settings
 // default with a model from a different provider — e.g. a SenseAudio user whose
-// image project was created with the dialog's default `vela/gpt-image-2` keeps their
+// image project was created with the dialog's default `openai/gpt-image-2` keeps their
 // configured SenseAudio model instead of being forced to the registry default.
 // AIHubMix's live (`aihubmix-` prefixed) ids resolve via mediaModelProviderId
 // without waiting on the async catalogue, so the AIHubMix path still seeds.
@@ -2105,10 +2008,6 @@ export function ProjectView({
   initialProjectDetail,
   initialMaterializationPending = false,
   projectAuthorizationKey = project.id,
-  amrAuthRetryContinuation = null,
-  onArmAmrAuthRetryContinuation,
-  onConsumeAmrAuthRetryContinuation,
-  onDiscardAmrAuthRetryContinuation,
   authoritativeProjectName,
   resolveAuthoritativeProjectName,
   routeFileName,
@@ -2125,8 +2024,6 @@ export function ProjectView({
   onApiModelChange,
   onRefreshAgents,
   onOpenSettings,
-  onOpenAmrSettings,
-  onSwitchToCloud,
   onOpenMcpSettings,
   onBrowsePlugins,
   onOpenConnectors,
@@ -2149,10 +2046,6 @@ export function ProjectView({
   onCreationHandoffSettled,
 }: Props) {
   const { locale, t } = useI18n();
-  const amrAuthRetryMountIdRef = useRef<string | null>(null);
-  if (amrAuthRetryMountIdRef.current === null) {
-    amrAuthRetryMountIdRef.current = randomUUID();
-  }
   const activeAuthorizationLifetimeRef = useRef<string | null>(projectAuthorizationKey);
   /**
    * The Home-carried attachments, by every name the workspace might list them
@@ -2229,11 +2122,6 @@ export function ProjectView({
     workspaceContext,
     project.workspaceId,
   );
-  const personalAdoptionContext = runWorkspacePersonalAdoptionWitness(
-    projectWorkspaceScopeState,
-    workspaceContext,
-    project.workspaceId,
-  );
   // Scope revalidation returns a freshly decoded context object even when the
   // data-plane authority did not change. Project hydration is keyed to the
   // authority carried by resource requests, not that object's allocation:
@@ -2242,16 +2130,6 @@ export function ProjectView({
   const projectRunAuthorityKey = workspaceIdentityCacheKey(
     resolvedProjectRunWorkspaceContext,
   );
-  const amrAuthRetryPersonalAdoptionWitness:
-    AmrAuthRetryPersonalAdoptionWitness | null = personalAdoptionContext
-      ? {
-          workspaceIdentityKey: workspaceIdentityCacheKey(personalAdoptionContext),
-          workspaceId: personalAdoptionContext.workspaceId,
-          workspaceMemberId: personalAdoptionContext.workspaceMemberId,
-          workspaceType: 'personal',
-          memberStatus: 'active',
-        }
-      : null;
   const canonicalProjectRunWorkspaceContextRef = useRef<{
     authorityKey: string;
     context: WorkspaceCollabContext | null;
@@ -2334,31 +2212,6 @@ export function ProjectView({
     () => workspaceBillingAuthorityContext(projectRunPreflightContext, workspaceContext),
     [projectRunPreflightContext, workspaceContext],
   );
-  const cloudModelSelected = config.mode === 'daemon' && config.agentId === 'amr';
-  const projectRunRequiresWorkspaceScope = cloudModelSelected;
-  // An OpenDesign Cloud run needs a wallet, and the ONLY client-side veto is
-  // "there is no billing principal at all". Either witness suffices: the
-  // caller's own cloud identity, or a project scope that already names an
-  // explicit personal/team principal.
-  //
-  // What this deliberately stops doing is requiring the PROJECT's membership
-  // projection to resolve before a send. A transient directory failure says
-  // nothing authoritative about access or billing: the daemon still forwards
-  // the project's persisted Workspace id with the signed-in account, and Vela
-  // makes the final membership/balance decision. It must not be converted to a
-  // Personal run. A settled unbound historical project is also allowed to
-  // reach the daemon: with an exact Personal witness it may be transactionally
-  // adopted; with a Team/absent witness the daemon rejects it explicitly.
-  // An explicit backend rejection is preferable to a client-side dead button
-  // or a popup for the wrong wallet.
-  //
-  // Strictly a widening: every state this admits was previously blocked, and
-  // nothing previously admitted becomes blocked.
-  const projectRunHasBillableAmrPrincipal =
-    !projectRunRequiresWorkspaceScope ||
-    projectWorkspaceScopeState.scope?.kind === 'unbound' ||
-    workspaceIdentityCanBillAmr(workspaceContextState) ||
-    projectWorkspaceScopeAuthorizesAmr(projectWorkspaceScopeState.scope);
   // Onboarding first-generation funnel (spec §11.1). Consume the pending entry
   // (set by the Home recommendation) exactly once on mount; the refs guard the
   // two lifecycle events so each fires only for the genuine first send / first
@@ -2424,10 +2277,6 @@ export function ProjectView({
   // syncing project, not the misleading “shared by someone else” notice.
   const projectMutationReadOnly =
     projectCollab.viewerOnly || projectCollab.materializationPending;
-  const { resolve: resolvePresenceMember } = useTeamMembers(
-    currentUserDirectoryEntry(projectRunWorkspaceContext),
-    projectRunWorkspaceContext,
-  );
   // Tab layout is private browser state for a read-only Team viewer. Keep its
   // identity-partitioned local cache working, but only let a positively proven
   // project writer update the daemon's shared project row. Personal and legacy
@@ -2869,322 +2718,6 @@ export function ProjectView({
   const brandEmptyTranscriptRetriesRef = useRef<Map<string, number>>(new Map());
   const [chatSeed, setChatSeed] = useState<{ id: string; value: string } | null>(null);
   // Hard block from the pre-run balance gate (empty wallet or signed out);
-  // non-null renders the AmrBalanceDialog. `conversationId` remembers whose
-  // queue to resume when the dialog resolves (sign-in done / recharge landed).
-  const [amrBalanceGateBlock, setAmrBalanceGateBlock] = useState<
-    {
-      reason: 'insufficient' | 'signed_out';
-      modelId?: string | null;
-      fundingScope?: AmrBalanceGateScope;
-      /**
-       * 这一档同时唤起哪个弹窗 —— 由**身份**决定(规格 §6.V):`upgrade` 是会员
-       * 转化弹窗(owner 那两格共用同一张,T58);`ask_owner` 是「找所有者充值」
-       * 那张(所有非 owner 成员)。
-       *
-       * 决定在**拦截发生的那一刻**做完并记下来,而不是渲染时再算:身份换了
-       * (切工作区)不该把一张已经开着的弹窗换成另一张。
-       */
-      dialog: AmrBalanceBlockedDialogKind;
-      /**
-       * 那张会员转化弹窗的主按钮去哪 —— 订阅档的差别全落在这一位上(T58)。
-       * 和 `dialog` 同一刻、同一个 branch 快照算出来,免得弹窗开着的时候切了
-       * 工作区,按钮突然指向另一个工作区的账单页。
-       */
-      upgradeIntent: 'pricing' | 'auto_recharge';
-      snapshot: AmrWalletSnapshot;
-      conversationId: string;
-    } | null
-  >(null);
-  /**
-   * 余额提示卡(交付稿第 76 格)要显示的那份读数,`null` = 不提示。
-   *
-   * **告警档已经整档撤掉**(规格 T66,产品 2026-09-07 原话「这个要不先不要了,
-   * 跟产品说了一下,不要这个了」)。余额 `> 0` 现在不再产生任何 UI —— 没有卡、
-   * 没有弹窗、不挡发送。产品追问范围后确认要留的是另一头:「余额为零的那个卡片
-   * 要显示的,并且也要弹窗的」。
-   *
-   * 于是这条 state 只剩三个写入口,都和「钱真的没了」有关:
-   *
-   *   · 拦截档(`gate.kind === 'hard'` 且 `reason === 'insufficient'`)
-   *   · 空钱包但硬拦让位(`gate.kind === 'empty_not_blocked'`,T55)
-   *   · 跑到一半死在钱上(T61 的凭据,读数**可能是正数**——那是它停下来时的余额)
-   *
-   * 判定本身在 `runtime/amr-balance-gate.ts`,这只是判定结果的呈现。
-   *
-   * ## 为什么数字和锚点装在**同一个** state 里
-   *
-   * T61(产品 2026-09-07)把这张卡从「当前余额的实时读数」改成「**这一轮为什么
-   * 停下来的凭据**」,凭据必须有主 —— `anchorMessageId` 就是那个主。三个写入口
-   * 各自知道自己的主是谁:
-   *
-   *   · 空钱包但硬拦让位(`gate.kind === 'empty_not_blocked'`)
-   *     → 刚画出去的那一轮(`assistantId`),它照常跑
-   *   · 跑到一半死在钱上                  → 那条失败的助手消息
-   *   · 拦截档(`gate.kind === 'hard'`)  → **`null`**:那一轮已经被
-   *     `retractPaintedTurn` 收回,没有 run 也就没有轮次可挂
-   *
-   * 两者拆成两条 state 就会有「成对写」这条只能靠人记住的约定,而漏写任何一半
-   * 都是静默的:漏了锚点,卡退回流水末尾、跟着新一轮往下跑(T61 ② 失效);
-   * 漏了数字,那一轮的卡永远画不出来。装成一个对象之后**没有半份可写**。
-   *
-   * ⚠️ 锚点只回答「挂在谁下面」。**什么时候出现由那一轮自己的收尾状态决定**,
-   * 判据在 `ChatPane.isFinishedTurn`,这里不重复一遍。
-   */
-  const [amrBalanceCard, setAmrBalanceCard] = useState<{
-    balanceUsd: number;
-    anchorMessageId: string | null;
-  } | null>(null);
-  const amrBalanceCardUsd = amrBalanceCard?.balanceUsd ?? null;
-  const amrBalanceCardAnchorId = amrBalanceCard?.anchorMessageId ?? null;
-  /**
-   * 出这张卡时那份钱包读数的 profile。只在**没有工作区上下文**时用得到 ——
-   * 那种情况下升级链接退回 profile 兜底(和 `AmrBalanceDialog` 同一条规则)。
-   */
-  const [amrBalanceCardProfile, setAmrBalanceCardProfile] = useState<string | null>(null);
-  /**
-   * **跑到一半死在钱上的那一轮,也要点亮同一张卡。**
-   *
-   * 用户 2026-09-02 裁决:「额度不足和额度耗尽,升级卡各只有一张,不存在第二张
-   * 白色通用报错卡」。下面那两处 `setAmrBalanceCard` 都在**发送前**的余额闸门
-   * 里 —— 闸门看不出问题、run 起来了、跑到一半才耗尽的那一格,在此之前只有
-   * daemon 的 `AMR_INSUFFICIENT_BALANCE` → 通用白卡。白卡那一半已经由
-   * `amr-guidance` 的 `suppressCard` 撤掉,这里补上另一半。
-   *
-   * 判据从**消息**上读,不挂在 `onError` 回调里:错误事件是落库的,所以刷新之后
-   * 卡还在;而发送路径和重挂路径各有一个 `onError`,挂回调等于要在两处各写一遍,
-   * 漏一处就是刷新后卡消失。
-   */
-  const amrBalanceFailure = useMemo(
-    () => amrInsufficientBalanceFailure(messages),
-    [messages],
-  );
-  const amrBalanceFailureMessageId = amrBalanceFailure?.messageId ?? null;
-  /**
-   * 那一轮停下来时的余额,**已经记在那条失败事件上**的那一份(T61 ④)。
-   *
-   * 有它就不再问钱包 —— 卡上的数字是「那一轮为什么停」的凭据,不是今天的读数。
-   * 没有它(这一轮刚死、或者是这个字段存在之前落的库)才现查一次,查完写回去。
-   */
-  const amrBalanceFailureArchivedUsd = amrBalanceFailure?.archivedBalanceUsd ?? null;
-  /**
-   * **补查落空了没有。** 落空 = 报错卡那一半没人接得住,得还回去。
-   *
-   * 三态,不是两态:`false` 同时覆盖「没有这样一轮失败」和「补查还在路上」——
-   * 这两格都不该画白卡。前者本来就没有失败可说,后者画了就会先闪一下白卡再
-   * 换成升级卡,把裁决里的「一张卡」闪成两张。只有**查完了、确实没有数字**
-   * 那一格才置 true。
-   */
-  const [amrBalanceFailureWalletUnavailable, setAmrBalanceFailureWalletUnavailable] =
-    useState(false);
-  /**
-   * 补查要读**哪个钱包**。
-   *
-   * 和发送前那道闸门钉在同一个工作区身份上(`projectRunPreflightContext`)——
-   * 这一轮的钱是从那儿出的。少了这一步,补查会去读账号级的
-   * `/api/integrations/vela/wallet`,而那条请求里根本没有 workspace 参数
-   * (`daemon/src/routes/vela.ts:601`):团队项目会念出这个人**个人账号**的余额。
-   * 那不是「数字略有出入」,是整张卡说反 —— 团队钱包 $0 的那一轮会被个人的
-   * $12.50 画成橙色的「余额可能撑不完下一个任务」,而真相是「现在无法开始新任务」,
-   * 且他把个人钱包充满也救不了这个团队。
-   *
-   * 判据字符串化之后当 effect 的依赖:scope 落定得比这条失败晚时,effect 会
-   * 自己重跑一次把数字换过来,不需要额外的等待态。
-   */
-  const amrBalanceCardScope = useMemo(
-    () => amrBalanceGateScopeForWorkspaceContext(projectRunPreflightContext),
-    [projectRunPreflightContext],
-  );
-  const amrBalanceCardScopeKey = amrBalanceCardScope
-    ? `${amrBalanceCardScope.workspaceType}:${amrBalanceCardScope.workspaceId}:${amrBalanceCardScope.workspaceMemberId}`
-    : '';
-  const amrBalanceCardScopeRef = useRef(amrBalanceCardScope);
-  amrBalanceCardScopeRef.current = amrBalanceCardScope;
-  /**
-   * 把补查到的读数写进那条失败消息。**在渲染之后才会被调用**,所以装在 ref 里 ——
-   * 真正的写入要走 `updateMessageById`(落库那一半在它里面),而它在本组件里
-   * 定义得比这条 effect 晚,直接引用会撞 TDZ。填充在它旁边,见那一处的注释。
-   */
-  const archiveAmrBalanceReadingRef = useRef<
-    (messageId: string, balanceUsd: number) => void
-  >(() => undefined);
-  useEffect(() => {
-    if (!amrBalanceFailureMessageId) {
-      setAmrBalanceFailureWalletUnavailable(false);
-      return;
-    }
-    let cancelled = false;
-    // 换了一轮失败就重新查:上一轮的结论不能替这一轮回答。
-    setAmrBalanceFailureWalletUnavailable(false);
-    if (amrBalanceFailureArchivedUsd != null) {
-      // **这一轮已经存过档了 —— 不再问钱包。** 卡上的数字是「那一轮为什么停下来」
-      // 的凭据,不是当前余额的读数(T61 ④,产品 2026-09-07:「它就好像历史记录
-      // 一样,存档在当时状态了」)。再查一次就会拿今天的余额去改写当时的失败态:
-      // 充完值回来看,那一轮会写着「剩余额度 $20.00 / 余额可能撑不完下一个任务」,
-      // 数字是今天的、句子是当时的,作为凭据是错的。
-      setAmrBalanceCard({
-        balanceUsd: amrBalanceFailureArchivedUsd,
-        anchorMessageId: amrBalanceFailureMessageId,
-      });
-      return;
-    }
-    void (async () => {
-      // 存档里还没有这一轮 —— 要么它刚死、要么它落库时还没有这个字段。失败事件
-      // 本身**不带余额**(daemon 的 `classifyAmrAccountFailure` 只给出错误码),
-      // 所以第一次只能现查。有工作区身份就走闸门那条被后端证明过的工作区读数,
-      // 没有(旧的未绑定项目)才退回账号钱包 —— 那种项目花的本来就是账号的钱。
-      const snapshot = await fetchAmrBalanceCardWalletSnapshot(
-        amrBalanceCardScopeRef.current,
-      );
-      if (cancelled) return;
-      // 读不出确定的数字就**什么都不念**。这张卡把余额报给用户,编一个出来
-      // 比不出卡更糟 —— 判定用的是和闸门同一条解析规则,两处不另算。
-      //
-      // 但「不念数字」不等于「不给出路」:这一轮是死在钱上的,充值入口是它
-      // 唯一的自救口。所以这里把落空**说出来**,由 ChatPane 把白色报错卡
-      // (充值 + 重试)还回来,而不是两张卡都不画、屏幕上什么都不剩。
-      const balanceUsd = amrBalanceCardBalanceUsd(snapshot);
-      if (balanceUsd == null) {
-        setAmrBalanceFailureWalletUnavailable(true);
-        return;
-      }
-      // 这份读数是替**那条失败的助手消息**取的,卡就挂在它下面(T61)。
-      setAmrBalanceCard({ balanceUsd, anchorMessageId: amrBalanceFailureMessageId });
-      setAmrBalanceCardProfile(snapshot?.profile ?? null);
-      // 并且**记下来**:这一轮的凭据从此不再重新报价(T61 ④)。写回去之后
-      // `amrBalanceFailureArchivedUsd` 就有值了,这条 effect 会再跑一次并走上面
-      // 那条不查钱包的路,把同一个数字原样交回去 —— 幂等,不会来回改写。
-      archiveAmrBalanceReadingRef.current(amrBalanceFailureMessageId, balanceUsd);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [amrBalanceFailureMessageId, amrBalanceFailureArchivedUsd, amrBalanceCardScopeKey]);
-  /**
-   * 这一次要付钱的工作区,把这个人放进 §6.V 的哪一格。
-   *
-   * 用的是 `projectRunPreflightContext` —— 余额门查的是同一个工作区,不是环境里
-   * 恰好选中的那个;两处不同源就会出现「查 A 的钱、按 B 的身份呈现」。
-   */
-  /**
-   * 这个工作区的**套餐**,投影到要付这笔钱的那个工作区上。
-   *
-   * 不能只靠 `context.planId`:走到客户端的 collab context 是用 vela 的
-   * `/api/v1/workspaces` 目录行拼出来的,而目录行不带套餐字段 —— daemon 和 web
-   * 两侧的 `workspaceContextFromDirectoryItem` 都把 `planId` 写死成 null
-   * (`daemon/src/collab/vela-workspace-context.ts` / `collab/useWorkspaceContext.ts`)。
-   * 2026-09-04 用真账号打后端实测过:一个 `team_max` 的团队工作区,vela 自己报
-   * `planId: "team_max"`,而 `GET /api/workspace/context` 报 null。只认 context
-   * 就会把每一个团队 Max 所有者都判成非 Max,把他送去 Pricing 买他已经买过的套餐。
-   *
-   * 工作区套餐唯一的真实来源是账单快照,所以这里跟 Home(`EntryShell`)用同一个
-   * 投影函数。scope 钉在 `projectRunPreflightContext` 上,而不是环境里恰好选中的
-   * 那个工作区 —— 否则又会变成「查 A 的钱、按 B 的套餐呈现」。
-   */
-  const projectRunPreflightBillingResponse = useWorkspaceBillingResponse({
-    context: projectRunPreflightContext,
-  });
-  const projectRunPreflightBilling = useMemo(
-    () =>
-      workspaceBillingSummaryForContext(
-        projectRunPreflightBillingResponse,
-        projectRunPreflightContext,
-      ),
-    [projectRunPreflightBillingResponse, projectRunPreflightContext],
-  );
-  const amrBalanceBranch = useMemo(
-    () =>
-      resolveAmrBalanceBranch({
-        // 钱包是 `projectRunPreflightContext` 那一个工作区的;**身份**取
-        // 权威的那一份(同工作区同成员才合并),否则团队所有者会被那份拼出来
-        // 的 `role: 'member'` 判进「去找所有者」那一格 —— 而他自己就是所有者。
-        context: projectRunBillingAuthorityContext,
-        billing: projectRunPreflightBilling,
-      }),
-    [projectRunPreflightBilling, projectRunBillingAuthorityContext],
-  );
-  const amrBalanceBranchRef = useRef(amrBalanceBranch);
-  amrBalanceBranchRef.current = amrBalanceBranch;
-  /**
-   * 「找所有者充值」弹窗是从**卡上那颗按钮**点开的(而不是拦截时自动弹出的)。
-   * 拦截时自动弹出的那一份记在 `amrBalanceGateBlock.dialog` 上,两者共用同一个
-   * 组件,任一为真就渲染。
-   */
-  const [amrOwnerTopUpFromCard, setAmrOwnerTopUpFromCard] = useState(false);
-  /**
-   * 升级卡那颗按钮:**点了跳哪由身份 × 订阅决定**(规格 §6.V 的第四列)。
-   *
-   *   非 Max · owner → 现有的 Pricing 深链(和弹窗同一个落点,「卡和弹窗都直接跳 Pricing」)
-   *   Max   · owner → vela web 端 + 自动充值意图(他没有更高的套餐可买,充值才是解法)
-   *   任何非 owner  → 不外跳:账单动作 B 会拒。给他「找所有者充值」那张弹窗,
-   *                   那是他唯一真正走得通的一条路(也是 §6.Y 死胡同的出口)。
-   *
-   * 落点复用 `workspaceUpgradeUrl` / `workspaceAutoRechargeUrl` 这两个唯一决策点,
-   * 免得升级卡和账号菜单、设置面板各自长出一条不一样的链接。
-   */
-  const handleAmrBalanceCardUpgrade = useCallback(() => {
-    const branch = amrBalanceBranchRef.current;
-    const intent = amrBalanceUpgradeIntent(branch);
-    if (intent === 'ask_owner') {
-      setAmrOwnerTopUpFromCard(true);
-      return;
-    }
-    const fallbackProfile = amrBalanceCardProfile;
-    // 自动充值链接对「可读但不可写」的工作区会返回 null(权限位不同,见
-    // `workspaceAutoRechargeUrl`)。那时退回 Pricing —— 少一个功能好过一颗死按钮。
-    // 落点和上面那个 `intent` 必须问同一份上下文。分支已经按权威身份算过了,
-    // 链接这一半要是回头去问那个拼出来的 `role: 'member'`,
-    // `workspaceAutoRechargeUrl` 就会因为 `canManageAutoRecharge` 为假而返回
-    // null,把一个 Max 所有者退回套餐页 —— 而同一格的弹窗跳的是自动充值。
-    const url =
-      (intent === 'auto_recharge'
-        ? workspaceAutoRechargeUrl(projectRunBillingAuthorityContext, { fallbackProfile })
-        : null)
-      ?? workspaceUpgradeUrl(projectRunBillingAuthorityContext, null, { fallbackProfile });
-    if (!url) return;
-    const entrySource =
-      intent === 'auto_recharge'
-        ? ('chat_upgrade_card_auto_recharge' as const)
-        : ('chat_upgrade_card' as const);
-    const metricsConsent = config.telemetry?.metrics === true;
-    const attribution = recordAmrEntry(analytics.track, entrySource, new Date(), {
-      metricsConsent,
-    });
-    const deviceId = amrHandoffDeviceId({
-      metricsConsent,
-      resolvedDeviceId: getResolvedDeviceId(),
-      installationId: config.installationId,
-    });
-    window.open(
-      attributedAmrUrl(url, attribution, deviceId),
-      '_blank',
-      'noopener,noreferrer',
-    );
-  }, [
-    amrBalanceCardProfile,
-    analytics.track,
-    config.installationId,
-    config.telemetry?.metrics,
-    projectRunBillingAuthorityContext,
-  ]);
-  // Conversations with a balance-gate check currently in flight. Sends that
-  // arrive during the check queue instead of racing a duplicate run through
-  // the not-yet-busy window the gate's await opens.
-  const amrGateInFlightConversationsRef = useRef<Set<string>>(new Set());
-  // Conversations whose queue auto-drain is paused because the balance gate
-  // blocked a send. Without the pause, every unrelated re-run of the drain
-  // effect would re-hit the wallet endpoint and re-pop the dialog. Lifted by
-  // the next send that passes the gate.
-  const amrGatePausedQueueConversationsRef = useRef<Set<string>>(new Set());
-  /**
-   * 被余额硬拦下来的那一发的 `clientRequestId`(OPEND-2719)。
-   *
-   * 拦截档不再把这一发塞进待发送队列 —— 队列的语义是「等一等就能跑」,而钱包
-   * 是空的:它会一直躺在那儿,用户看到的就是单里说的「没有触发额度不足提示,
-   * 而是把消息加入待发送队列」。既然不代管,就得把正文还给输入框,而
-   * `handleSend` 只回一个布尔。用请求 id 做钥匙,`handleComposerSend` 才认得出
-   * 「回 false 的这一发正是我刚发的那一发」,而不是被一次并发的拒绝误伤。
-   */
-  const amrGateBlockedRequestRef = useRef<string | null>(null);
   /**
    * 正在等服务端确认的那一次重试(OPEND-2758)。
    *
@@ -3586,7 +3119,6 @@ export function ProjectView({
     && !currentConversationStreaming
     && !currentConversationHasProgrammaticBrandExtractionRun;
   const currentConversationSendDisabled = projectMutationReadOnly
-    || !projectRunHasBillableAmrPrincipal
     || currentConversationReadPending
     || failedMessagesConversationId === activeConversationId
     || currentConversationAwaitingActiveRunAttach;
@@ -3601,7 +3133,7 @@ export function ProjectView({
   const currentConversationActionBlockReason = resolveRecoveryActionBlockReason({
     readOnly: Boolean(projectMutationReadOnly),
     messagesUnavailable: failedMessagesConversationId === activeConversationId,
-    billingPrincipalResolved: Boolean(projectRunHasBillableAmrPrincipal),
+    billingPrincipalResolved: true,
     conversationBusy: Boolean(
       currentConversationBusy || currentConversationAwaitingActiveRunAttach,
     ),
@@ -3622,18 +3154,6 @@ export function ProjectView({
   currentConversationActionDisabledRef.current = currentConversationActionDisabled;
   // Directory and project scope may project different roles for the same
   // principal. Only defer comparison while that scope is still unresolved.
-  const amrAuthRetryAuthorityPending = Boolean(
-    projectWorkspaceScopeState.loading
-    && !projectWorkspaceScopeState.failure
-    && projectCollab.writerAuthority !== 'denied'
-    && amrAuthRetryContinuation
-    && projectRunWorkspaceContext
-    && amrAuthRetryMatchesRouteContext(amrAuthRetryContinuation, projectRunWorkspaceContext),
-  );
-  const amrAuthRetryReady = !projectWorkspaceScopeState.loading
-    && !projectWorkspaceScopeState.failure
-    && messagesAuthorityKeyRef.current === projectRunAuthorityKey
-    && !currentConversationActionDisabled;
 
   const currentConversationQueueDisabled = projectMutationReadOnly
     || currentConversationReadPending
@@ -5485,30 +5005,6 @@ export function ProjectView({
     [project.id, activeConversationId, projectRunWorkspaceContext],
   );
 
-  /**
-   * 存档写入口的实体(声明在上面的余额补查那一段,见
-   * `archiveAmrBalanceReadingRef` 的注释)。放在这里是因为写回要走
-   * `updateMessageById` —— 落库那一半在它里面,而它在本组件里定义得比那条
-   * effect 晚。
-   *
-   * 走 `updateMessageById(..., true)` 而不是自己拼一次 PUT:那条失败事件本来
-   * 就是这条路写进去的(`appendAssistantErrorEvent`),存档只是同一条事件上
-   * **晚到的一个事实**,和 `chat-events.ts` 里 `failureCategory` / `retryable`
-   * 后补进同一条 error 事件是同一个形状。另起一条写路只会让「这条消息谁在写」
-   * 多出一个答案。
-   *
-   * **一轮只写一次**由调用方保证:补查那条 effect 只在「存档里还没有这一轮」
-   * 那条分支上调它,写完之后存档就有值了,effect 重跑会走另一条路。
-   * `stampAmrBalanceUsdOnFailure` 自己再兜一层幂等 —— 已经有数字就原样返回,
-   * 所以哪怕真被叫第二次,**记下来的那个数字也不会被改写**。
-   */
-  archiveAmrBalanceReadingRef.current = (messageId, balanceUsd) => {
-    updateMessageById(
-      messageId,
-      (prev) => stampAmrBalanceUsdOnFailure(prev, balanceUsd),
-      true,
-    );
-  };
 
   const appendConversationMessage = useCallback(
     (
@@ -7619,21 +7115,6 @@ export function ProjectView({
                     });
                     if (producedArtifactToOpen) requestOpenFile(producedArtifactToOpen);
                     if (latestRunStatus?.status === 'succeeded') setError(null);
-                    if (
-                      shouldPublishRunFinishedEvent
-                      && latestRunStatus?.status === 'succeeded'
-                      && latestRunStatus.agentId === 'amr'
-                      && typeof latestRunStatus.artifactCount === 'number'
-                    ) {
-                      publishDaemonRunFinishedEvent({
-                        agentId: latestRunStatus.agentId,
-                        runId,
-                        projectId: project.id,
-                        conversationId: reattachConversationId,
-                        result: 'success',
-                        artifactCount: latestRunStatus.artifactCount,
-                      });
-                    }
                     // Unlike the recoverArtifacts sibling below, this row's
                     // endedAt was already stamped synchronously above (~4041)
                     // at disconnect time — `prev.endedAt` is never null here,
@@ -7715,20 +7196,6 @@ export function ProjectView({
                     // unrelated state change.
                     shouldRefreshConversationAfterCleanup = false;
                   } else if (latestRunStatus.status === 'succeeded') {
-                    if (
-                      shouldPublishRunFinishedEvent
-                      && latestRunStatus.agentId === 'amr'
-                      && typeof latestRunStatus.artifactCount === 'number'
-                    ) {
-                      publishDaemonRunFinishedEvent({
-                        agentId: latestRunStatus.agentId,
-                        runId,
-                        projectId: project.id,
-                        conversationId: reattachConversationId,
-                        result: 'success',
-                        artifactCount: latestRunStatus.artifactCount,
-                      });
-                    }
                     clearProjectTimeout(backoffTimer);
                     setError(null);
                     // If the resumed stream already replayed some content/events
@@ -8445,11 +7912,6 @@ export function ProjectView({
         attachments.length === 0 &&
         commentAttachments.length === 0
       ) return false;
-      // AMR must resolve this project's persisted billing principal before a
-      // run can start. Local CLI and BYOK runtimes do not consume the Vela
-      // wallet, so old daemons without this endpoint and directory outages
-      // must not disable those runtimes.
-      if (!projectRunHasBillableAmrPrincipal) return false;
       const effectiveAttachments = mergeChatAttachments(
         attachments,
         ...commentAttachments.map((attachment) =>
@@ -8513,45 +7975,6 @@ export function ProjectView({
         return true;
       }
       if (currentConversationBusy) {
-        queueChatSendForCurrentConversation({
-          conversationId: activeConversationId,
-          prompt,
-          attachments: effectiveAttachments,
-          commentAttachments,
-          meta: { ...(meta ?? {}), sessionMode: runSessionMode, taskAnalytics },
-        });
-        return meta?.acceptDurableQueue === true;
-      }
-      /*
-       * ── OPEND-2614 【不变量】本地数据画得出来的先画,要跟服务器说的话排后面 ──
-       *
-       * 「点击发送 → 消息上屏」这一段里唯一的 await 是下面那道 OpenDesign Cloud
-       * 预检。它在有工作区身份的项目上是**两条 HTTP 往返**,其中
-       * `/api/workspace/billing?…&freshness=authoritative` 会逼 daemon 向上游
-       * Vela 取一次新读数(daemon 侧翻成 `requireFresh: true`)。上屏排在它后面,
-       * 用户点完发送就要盯着 1–2 秒毫无反馈的界面 —— 报告里的「卡顿」是这一趟
-       * 网络,不是渲染慢。
-       *
-       * 预检**该不该拦这一次 run** 一个字都没变:它仍然在持久化和
-       * `POST /api/runs` 之前落定;拦下来时这一轮由 `retractPaintedTurn` 原样收回,
-       * 照旧落进发送队列,由余额卡 / 弹窗解释原因。
-       *
-       * 【前置条件】上屏之前必须走完所有**同步**的拒绝路(只排队、会话忙、预检
-       * 并发窗口)。同步就能拒的东西画出去再收回,那是白闪一下 —— 所以预检那道
-       * 并发窗口的守卫从 `try` 里提到了这里。
-       */
-      const amrGateApplies =
-        config.mode === 'daemon'
-        && config.agentId === 'amr'
-        && !meta?.amrGatePrechecked;
-      // The gate's await opens a window where the conversation is not yet
-      // marked busy. A second send arriving during that window behaves like
-      // a busy conversation: it queues instead of racing a duplicate run.
-      if (
-        amrGateApplies
-        && amrGateInFlightConversationsRef.current.has(activeConversationId)
-      ) {
-        if (retryTarget) return false;
         queueChatSendForCurrentConversation({
           conversationId: activeConversationId,
           prompt,
@@ -8710,250 +8133,6 @@ export function ProjectView({
         if (messagesConversationIdRef.current !== runConversationId) return;
         setMessages(restore);
       };
-      // OpenDesign Cloud pre-run balance gate: a definitively insufficient
-      // wallet blocks the run BEFORE any message is persisted or a daemon run
-      // spawned, surfacing the subscription dialog instead of a mid-run
-      // AMR_INSUFFICIENT_BALANCE failure. Sends the home submit already gated
-      // (amrGatePrechecked) pass straight through — the user answered there.
-      if (amrGateApplies) {
-        const gateConversationId = runConversationId;
-        amrGateInFlightConversationsRef.current.add(gateConversationId);
-        try {
-          // A persisted project Workspace is the spawn billing address even
-          // when the local membership/scope read is temporarily unavailable.
-          // In that state there is no trustworthy member-scoped wallet for a
-          // client preflight, so defer authorization and billing to the daemon
-          // and Vela backend. Passing `undefined` here would instead inspect
-          // the Personal/account wallet and could block a valid Team run (or
-          // present a Personal recharge prompt) before the backend sees the
-          // project's persisted Workspace id. An unbound project uses an exact
-          // Personal preflight only when runWorkspaceIdentity supplied the
-          // active Personal adoption witness. Team/absent witnesses skip the
-          // account preflight and let the daemon explicitly reject adoption.
-          // A resolved Personal or Team scope keeps its exact member-scoped
-          // preflight.
-          const persistedWorkspaceId = project.workspaceId?.trim() ?? '';
-          const deferAmrPreflightToDaemon =
-            !projectRunPreflightContext
-            && (
-              persistedWorkspaceId.length > 0
-              || projectWorkspaceScopeState.scope?.kind === 'unbound'
-            );
-          const amrModelId = effectiveAgentModelId(
-            agentsById.get('amr'),
-            config.agentModels?.amr,
-          );
-          const gate =
-            deferAmrPreflightToDaemon
-              ? { kind: 'allow' as const }
-              : await checkAmrBalanceGate(
-                  projectRunPreflightContext
-                    ? {
-                        workspaceType: projectRunPreflightContext.workspaceType,
-                        workspaceId: projectRunPreflightContext.workspaceId,
-                        workspaceMemberId:
-                          projectRunPreflightContext.workspaceMemberId,
-                      }
-                    : undefined,
-                  amrModelId,
-                );
-          // A send blocked by something that can still resolve on its own —
-          // a signed-out wallet, an unreadable billing read — parks in the
-          // conversation queue with its FULL payload (prompt, attachments,
-          // comment context), because those states clear and the parked send
-          // is then genuinely runnable. Retries keep their error card and
-          // queue drains already have their queue item, so both skip the
-          // re-queue. The pause keeps queued items from re-hitting the gate
-          // (and re-popping a dialog) on every unrelated state change; any
-          // later send that passes the gate lifts it, and a manual "run now"
-          // on a queued item bypasses it deliberately.
-          //
-          // ⚠️ An EXHAUSTED wallet is not one of those states — see
-          // `rejectBlockedSend` below (OPEND-2719).
-          const queueGateSend = (): boolean => {
-            // 判定拒绝 = 这一轮不会有 run。先把已经画出去的那一轮收回,再决定
-            // 它去哪儿 —— 三条拒绝路(会话切走 / 拦截 / 读不到)都经过这里,
-            // 所以收回只写一处。放行那两档(soft / allow)碰不到它。
-            retractPaintedTurn();
-            if (!retryTarget && !meta?.queueDrain) {
-              queueChatSendForCurrentConversation({
-                conversationId: gateConversationId,
-                prompt,
-                attachments: effectiveAttachments,
-                commentAttachments,
-                meta: { ...(meta ?? {}), sessionMode: runSessionMode, taskAnalytics },
-              });
-              return true;
-            }
-            return false;
-          };
-          const parkBlockedSend = (): boolean => {
-            const queued = queueGateSend();
-            amrGatePausedQueueConversationsRef.current.add(gateConversationId);
-            return queued;
-          };
-          /**
-           * 余额耗尽这一档**不代管**这一发(OPEND-2719)。
-           *
-           * 待发送队列说的是「等一等就能跑」——排在前面的那一轮跑完、或者用户
-           * 自己按〔立即发送〕。钱包空着的时候这两件事都不会发生:消息就那么躺
-           * 在队列里,而用户看到的是「没有触发额度不足提示,消息被加进了队列」。
-           *
-           * 所以这一档只做三件事:把画出去的那一轮收回、把队列暂停(免得队列里
-           * 早先的东西继续撞同一堵墙)、记下这一发的请求 id。正文由
-           * `handleComposerSend` 凭那个 id 认领回输入框 —— 队列不是保管处,输入框
-           * 才是,而且那样用户下一步该干什么(充值 / 换 agent / 改需求)都还看得见。
-           *
-           * ⚠️ 两道收窄,缺一不可:
-           * ① 只有 `insufficient`。`signed_out` 同样是硬拦,但它的出路是登录,
-           *    登录完那一发确实还能跑 —— 那一档保留原来的排队 + 恢复路径。
-           * ② 只有 `composerOwnedDraft` 打过标记的那一发,也就是**真的从输入框
-           *    发出来的**。别的调用方的正文不在输入框里,取消它们的排队等于
-           *    把消息弄丢(PR #7927 评审)。
-           */
-          const rejectBlockedSend = (): false => {
-            retractPaintedTurn();
-            amrGatePausedQueueConversationsRef.current.add(gateConversationId);
-            amrGateBlockedRequestRef.current = clientRequestId;
-            return false;
-          };
-          const acceptedDurableQueue = (queued: boolean): boolean => {
-            return queued && meta?.acceptDurableQueue === true;
-          };
-          // The await may have raced a conversation switch; re-run the entry
-          // guard before touching any state so this stale closure can't write
-          // the old conversation's messages into the now-visible view. The
-          // composer has already cleared, so keep the full payload queued for
-          // the original conversation instead of dropping it.
-          if (messagesConversationIdRef.current !== activeConversationId) {
-            return acceptedDurableQueue(queueGateSend());
-          }
-          if (gate.kind === 'hard') {
-            const recoveryActionInstanceId = `blocked:${taskAnalytics.taskExecutionId}`;
-            trackRunStartBlockedSurfaceView(analytics.track, {
-              page_name: 'chat_panel',
-              area: 'chat_composer',
-              element: 'run_start_blocked',
-              task_execution_id: taskAnalytics.taskExecutionId,
-              recovery_action_instance_id: recoveryActionInstanceId,
-              block_reason: gate.reason,
-              agent_provider_id: 'amr',
-              model_id: config.agentModels?.amr?.model?.trim() || 'default',
-            });
-            taskAnalytics = {
-              ...taskAnalytics,
-              recoveryActionType: 'manual_retry',
-              recoveryActionInstanceId,
-            };
-            // 「唤起哪张弹窗、它的主按钮去哪」是四组分支唯一的差别(规格 §6.V,
-            // 第三格见 T58)。两个问题必须问**同一个 branch 快照**,否则一次
-            // 工作区切换能让弹窗和它的按钮各说各话。
-            //
-            // 被登出不在这四组里:那一档说的是登录,不是钱,主按钮是应用内登录
-            // (`upgradeIntent` 那时根本用不上),所以它无条件走那张弹窗。
-            const blockedBranch = amrBalanceBranchRef.current;
-            setAmrBalanceGateBlock({
-              reason: gate.reason,
-              dialog:
-                gate.reason === 'signed_out'
-                  ? 'upgrade'
-                  : amrBalanceBlockedDialog(blockedBranch),
-              upgradeIntent:
-                gate.reason === 'signed_out'
-                  ? 'pricing'
-                  : amrBalanceDialogUpgradeIntent(blockedBranch),
-              snapshot: gate.snapshot,
-              modelId: amrModelId,
-              fundingScope: projectRunPreflightContext ? {
-                workspaceType: projectRunPreflightContext.workspaceType,
-                workspaceId: projectRunPreflightContext.workspaceId,
-                workspaceMemberId: projectRunPreflightContext.workspaceMemberId,
-              } : undefined,
-              conversationId: gateConversationId,
-            });
-            // 拦截档:把流水里那张卡点亮 —— 弹窗一关就什么都不剩,而人回到聊天
-            // 里仍然需要看到「为什么开不了」。
-            //
-            // 只对「余额耗尽」出卡。被登出也走这条硬拦截,但那张卡说的是钱的事,
-            // 摆一个 $0.00 去解释一次登录过期是在误导 —— 那一档交给弹窗。
-            if (gate.reason === 'insufficient') {
-              // This rejected composer Send has its own visible answer (the
-              // quota card). Restoring its pre-send transcript must not revive
-              // the previous failure's actions. Keep both history identities,
-              // including a folded task's displayed head and physical tail.
-              if (meta?.composerOwnedDraft && !retryTarget) {
-                const physicalFailure = trailingMessageIgnoringHostCards(historyBase);
-                const displayedFailure = trailingMessageIgnoringHostCards(foldStrategyTaskTurns(historyBase));
-                if (
-                  physicalFailure && displayedFailure
-                  && isRetryableAssistantTerminalFailure(physicalFailure)
-                  && isRetryableAssistantTerminalFailure(displayedFailure)
-                ) {
-                  supersedeRetriedError(runConversationId, displayedFailure.id, physicalFailure.id);
-                }
-              }
-              // **没有轮次可锚。** 这一档下面紧跟着 `rejectBlockedSend()`,而它会
-              // `retractPaintedTurn()` 把刚画出去的那一轮收回 —— 没有 run,也就
-              // 没有「那一轮」可挂。锚点给 `null`,读数照旧落在流水末尾(T61)。
-              setAmrBalanceCard(
-                amrBalanceCardCue(amrBalanceCardBalanceUsd(gate.snapshot), null),
-              );
-              setAmrBalanceCardProfile(gate.snapshot.profile ?? null);
-              // 余额耗尽 **且这一发的正文归输入框**:不进队列(OPEND-2719)。
-              // 弹窗 + 卡就是这一发的答复,正文回到输入框。别的调用方掉到
-              // 下面那条原来的排队路上,行为一个字不变。
-              if (meta?.composerOwnedDraft) return rejectBlockedSend();
-            }
-            return acceptedDurableQueue(parkBlockedSend());
-          }
-          if (gate.kind === 'unavailable') {
-            return acceptedDurableQueue(parkBlockedSend());
-          }
-          if (gate.kind === 'empty_not_blocked') {
-            /*
-             * 钱包**是空的**,但硬拦让了位(套餐档次读不出来,由 Vela 在入场时
-             * 兜底 —— T55)。让位说的只是「不拦」,不是「没事」:余额确实是 $0,
-             * 这张卡就该照说不误,只是没有弹窗、也不挡这一次发送。
-             *
-             * ⚠️ **这里不是原来的告警档换了个名字。** 告警档(余额 `> 0` 但低于
-             * 那条线)已经由产品 2026-09-07 整档撤掉 —— 原话「这个要不先不要了,
-             * 跟产品说了一下,不要这个了」,追问范围后「余额为零的那个卡片要显示
-             * 的,并且也要弹窗的」。余额 `> 0` 现在一律是 `allow`,走下面那一段
-             * 把读数撤掉,屏幕上什么都不出。见规格 **T66**。
-             */
-            /*
-             * 锚在**这一次要跑的那一轮**上(T61 ①②)。这份读数是它开跑前的余额,
-             * 卡要等它跑完才出现、出现之后就钉在它下面 —— 运行中不出现由
-             * `ChatPane.isFinishedTurn` 判,这里只负责说清「这钱是哪一轮的」。
-             *
-             * 给的是 `assistantId` 而不是「当前最后一条助手消息」:那一轮此刻已经
-             * 画出去了但还没跑完,拿「最后一条」去猜会在重试路径上指错人。
-             */
-            setAmrBalanceCard(
-              amrBalanceCardCue(amrBalanceCardBalanceUsd(gate.snapshot), assistantId),
-            );
-            setAmrBalanceCardProfile(gate.snapshot.profile ?? null);
-          }
-          /*
-           * 判定放行:撤掉读数 —— 余额已经不是问题了,**新的**轮次不该再出卡。
-           *
-           * **余额低但不为零的那一段也落在这里**(T66,产品 2026-09-07 整档撤掉
-           * 告警档)。所以「$1.20 什么都不出」不是靠哪个分支去写 `null`,而是靠
-           * 它根本就是 `allow` —— 判定层已经没有第二条线了。
-           *
-           * ⚠️ 撤的只是读数,不是已经存档的那几张卡。T61 ④:卡是「那一轮为什么
-           * 停下来」的凭据,历史不因为后来充了钱就被抹掉(产品原话「不能说我干个啥
-           * 把当时的失败态搞丢了」)。存档账本在 `ChatPane`,只增不删。
-           */
-          if (gate.kind === 'allow') {
-            setAmrBalanceCard(null);
-            setAmrBalanceCardProfile(null);
-          }
-          amrGatePausedQueueConversationsRef.current.delete(gateConversationId);
-        } finally {
-          amrGateInFlightConversationsRef.current.delete(gateConversationId);
-        }
-      }
       /*
        * 上屏提前带来的**新状态**:预检那一两秒里,这一轮已经在跑的样子摆在屏幕上,
        * 于是〔停止〕这颗按钮**第一次**在建出 run 之前可以按。按下去
@@ -9990,19 +9169,6 @@ export function ProjectView({
                 }
                 if (!latestRunStatus || isActiveRunStatus(latestRunStatus.status)) {
                 } else if (latestRunStatus.status === 'succeeded') {
-                  if (
-                    latestRunStatus.agentId === 'amr'
-                    && typeof latestRunStatus.artifactCount === 'number'
-                  ) {
-                    publishDaemonRunFinishedEvent({
-                      agentId: latestRunStatus.agentId,
-                      runId: runIdForGenericDisconnect,
-                      projectId: project.id,
-                      conversationId: runConversationId,
-                      result: 'success',
-                      artifactCount: latestRunStatus.artifactCount,
-                    });
-                  }
                   clearProjectTimeout(backoffTimer);
                   // Advance the outer endedAt so updateConversationLatestRun()
                   // below adopts this same authoritative terminal timestamp,
@@ -10223,9 +9389,7 @@ export function ProjectView({
           hasExistingArtifact,
           runtimeType: daemonByokOpenCode
             ? ('byok' as const)
-            : config.agentId === 'amr'
-              ? ('amr_cloud' as const)
-              : ('local_cli' as const),
+            : ('local_cli' as const),
           taskExecutionId: taskAnalytics.taskExecutionId,
           initialRunId: taskAnalytics.initialRunId,
           sourceRunId: taskAnalytics.sourceRunId,
@@ -10471,7 +9635,7 @@ export function ProjectView({
         );
         // Session-dimension hints on the BYOK-OpenCode path too, so
         // run_created / run_finished carry the same session-global and
-        // project-scoped run sequence on every runtime (cli / amr / byok).
+        // project-scoped run sequence on every runtime (cli / byok).
         const byokSessionTurn = claimRunTurnIndex();
         const byokProjectTurn = claimProjectTurnIndex(project.id);
         const byokHasExistingArtifact = projectFilesRef.current.some(
@@ -10676,7 +9840,6 @@ export function ProjectView({
       registerManualFileWrites,
       projectRunPreflightContext,
       projectRunWorkspaceContext,
-      projectRunHasBillableAmrPrincipal,
       projectMutationReadOnly,
       projectWorkspaceScopeState.scope,
     ],
@@ -10733,47 +9896,22 @@ export function ProjectView({
   );
 
   const handleComposerSend = useCallback(
+    /**
+     * 转发输入框消息并沿用同一次发送的请求标识。
+     */
     async (
       prompt: string,
       attachments: ChatAttachment[],
       commentAttachments: ChatCommentAttachment[],
       meta?: ChatSendMeta,
     ): Promise<ChatSendOutcome> => {
-      if (activeConversationId && cloudModelSelected) {
-        const decision = await requestAmrArtifactUpgrade({
-          projectId: project.id,
-          conversationId: activeConversationId,
-          source: 'chat_send',
-        });
-        if (decision === 'cancel') return 'restore-draft';
-      }
-      /*
-       * 等 `handleSend` 落定,好让**被余额拦下的那一发**把正文还回输入框
-       * (OPEND-2719)。以前这里是 `void handleSend(...)`:输入框立刻清空,
-       * 于是「不代管就会丢正文」变成了硬约束,拦截档只能拿队列去接。
-       *
-       * 这一等**只对 OpenDesign Cloud 有实际时长** —— 只有那一档在
-       * `POST /api/runs` 之前有一次预检往返;别的 agent 这条路上一个 await
-       * 都没有,promise 在微任务里就落定,输入框和以前一样立刻清空。
-       * 等待期间 `ChatComposer` 自己会把发送键换成「准备中」那枚不可点的
-       * 药丸(`composedSendPending`)—— 那套机制原本就是为这道预检写的,
-       * 只是在此之前没有宿主真的去等它。
-       */
       const clientRequestId = meta?.clientRequestId ?? randomUUID();
-      const started = await handleSend(prompt, attachments, commentAttachments, {
+      await handleSend(prompt, attachments, commentAttachments, {
         ...(meta ?? {}),
         clientRequestId,
-        // 这条路,而且只有这条路,的正文归输入框所有 —— 见
-        // `ProjectChatSendMeta.composerOwnedDraft`。
-        composerOwnedDraft: true,
       });
-      if (started) return;
-      // 认领必须按请求 id:同一条会话里可能有别的发送也在这段时间被拒。
-      if (amrGateBlockedRequestRef.current !== clientRequestId) return;
-      amrGateBlockedRequestRef.current = null;
-      return 'restore-draft';
     },
-    [activeConversationId, cloudModelSelected, handleSend, project.id],
+    [handleSend],
   );
 
   // Cancel every in-flight run for the current conversation (the user's own
@@ -10959,17 +10097,6 @@ export function ProjectView({
     if (startingQueuedChatSendIdRef.current) return;
     if (!activeConversationId) return;
     if (messagesConversationIdRef.current !== activeConversationId) return;
-    // Queue paused by the balance gate: don't re-drain (and re-pop the
-    // dialog) on unrelated state churn while AMR is still the agent. The
-    // manual "run now" path below bypasses this deliberately, and switching
-    // agents makes the pause irrelevant.
-    if (
-      config.mode === 'daemon' &&
-      config.agentId === 'amr' &&
-      amrGatePausedQueueConversationsRef.current.has(activeConversationId)
-    ) {
-      return;
-    }
     const next = queuedChatSendsRef.current.find(
       (item) => item.conversationId === activeConversationId,
     );
@@ -11124,60 +10251,6 @@ export function ProjectView({
   // OPEND-3205 supersedes the Settings-return automatic retry for this action.
   // Preserve the failed turn; selecting Cloud does not submit another task.
   const cloudSwitchInFlightRef = useRef(false);
-  const handleSwitchConversationToCloud = useCallback(async (
-    conversationId: string,
-    failedAssistant: ChatMessage,
-  ) => {
-    if (
-      cloudSwitchInFlightRef.current
-      || !onSwitchToCloud
-      || projectMutationReadOnly
-      || !projectRunHasBillableAmrPrincipal
-      || !conversations.some((conversation) =>
-        conversation.id === conversationId && conversation.projectId === project.id)
-      || !isRetryableAssistantTerminalFailure(failedAssistant)
-      || (conversationId === activeConversationId && currentConversationActionDisabled)
-    ) return;
-    const sourceProjectId = project.id;
-    const sourceAuthority = projectRunAuthorityKey;
-    const sourcePrimaryConversationId = activeConversationId;
-    const stillOwnsView = () => mountedRef.current
-      && projectIdRef.current === sourceProjectId
-      && projectRunAuthorityKeyRef.current === sourceAuthority
-      && activeConversationIdRef.current === sourcePrimaryConversationId;
-    cloudSwitchInFlightRef.current = true;
-    try {
-      await onSwitchToCloud();
-      if (!stillOwnsView()) return;
-      setProjectActionsToast({
-        message: t('chat.amrCard.switchedResend'), details: null, tone: 'success',
-      });
-    } catch {
-      if (!stillOwnsView()) return;
-      setProjectActionsToast({
-        message: t('settings.autosaveError'), details: null, tone: 'error',
-      });
-    } finally {
-      cloudSwitchInFlightRef.current = false;
-    }
-  }, [
-    activeConversationId, conversations, currentConversationActionDisabled,
-    onSwitchToCloud, project.id, projectMutationReadOnly, projectRunAuthorityKey,
-    projectRunHasBillableAmrPrincipal, t,
-  ]);
-  const handleSwitchToAmrAndRetry = useCallback((failedAssistant: ChatMessage) => {
-    if (!activeConversationId) return;
-    void handleSwitchConversationToCloud(activeConversationId, failedAssistant);
-  }, [activeConversationId, handleSwitchConversationToCloud]);
-  // PR #3157: Antigravity's `agy -p` cannot complete OAuth on its own,
-  // so the auth banner offers a one-click "Sign in via terminal"
-  // button that POSTs to the daemon. The daemon opens a system
-  // Terminal running `agy` (osascript / x-terminal-emulator /
-  // `cmd /c start`); the user finishes Google sign-in there and then
-  // clicks Retry to redo the chat run. We don't auto-retry because
-  // the OAuth completion happens externally with no reliable signal
-  // back to the chat — the secondary Retry button on the same banner
-  // covers the manual case.
   const handleLaunchAntigravityOauth = useCallback(async () => {
     try {
       const { launchAntigravityOauth } = await import('../providers/daemon');
@@ -12725,24 +11798,16 @@ export function ProjectView({
   const autoSendAttachmentsRef = useRef<ChatAttachment[] | null>(null);
   const autoSendContextRef = useRef<RunContextSelection | null>(null);
   const autoSendFirstMessageRef = useRef(false);
-  const autoSendAmrGateWitnessRef = useRef<AmrBalanceGateScope | undefined>(
-    undefined,
-  );
   if (autoSendSeedRef.current === null) {
     let isAutoSend = false;
-    let amrGateWitness: AmrBalanceGateScope | undefined;
     try {
       isAutoSend = Boolean(
         window.sessionStorage.getItem(autoSendFirstMessageKey(project.id)),
       );
-      amrGateWitness = readAutoSendAmrGateWitness(project.id);
     } catch {
       /* sessionStorage may be unavailable; treat as manual flow. */
     }
     autoSendFirstMessageRef.current = isAutoSend;
-    autoSendAmrGateWitnessRef.current = isAutoSend
-      ? amrGateWitness
-      : undefined;
     autoSendSeedRef.current = isAutoSend
       ? (readAutoSendPrompt(project.id) ?? project.pendingPrompt ?? '')
       : '';
@@ -13426,7 +12491,6 @@ export function ProjectView({
     // render where the state is ready but the ref has already been invalidated
     // for a fresh scoped reload.
     if (messagesConversationIdRef.current !== activeConversationId) return;
-    if (!projectRunHasBillableAmrPrincipal) return;
     // Wait for the initial listMessages DB read to land. Without this gate
     // the auto-send fires before the in-flight DB response, which then
     // arrives with `setMessages([])` and wipes the freshly-pushed user +
@@ -13479,20 +12543,11 @@ export function ProjectView({
     if (!seed && attachments.length === 0) {
       return;
     }
-    const autoSendGateStillMatches =
-      autoSendAmrGateWitnessRef.current !== undefined &&
-      amrBalanceGateScopesMatch(
-        autoSendAmrGateWitnessRef.current,
-        amrBalanceGateScopeForWorkspaceContext(projectRunPreflightContext),
-      );
     autoSendInFlightRef.current = true;
     void handleSend(seed, attachments, [], {
         ...(context ? { context } : {}),
         ...homeAutoSendIdentity(project.id),
         acceptDurableQueue: true,
-        // Only reuse Home's decision for the exact persisted project scope.
-        // A workspace/member mismatch falls through to handleSend's normal gate.
-        ...(autoSendGateStillMatches ? { amrGatePrechecked: true } : {}),
       })
       .then((accepted) => {
         if (!accepted) {
@@ -13528,7 +12583,6 @@ export function ProjectView({
     project.metadata,
     initialDraft,
     project.pendingPrompt,
-    projectRunHasBillableAmrPrincipal,
     projectRunBillingContext,
     projectRunPreflightContext,
     handleSend,
@@ -13751,15 +12805,6 @@ export function ProjectView({
                   : null
               }
               onSwitchModel={handleSwitchModel}
-              amrAuthRetryContinuation={amrAuthRetryContinuation}
-              amrAuthRetryMountId={amrAuthRetryMountIdRef.current}
-              amrAuthRetryWorkspaceIdentityKey={projectRunAuthorityKey}
-              amrAuthRetryAuthorityPending={amrAuthRetryAuthorityPending}
-              amrAuthRetryReady={amrAuthRetryReady}
-              amrAuthRetryPersonalAdoptionWitness={amrAuthRetryPersonalAdoptionWitness}
-              onArmAmrAuthRetryContinuation={onArmAmrAuthRetryContinuation}
-              onConsumeAmrAuthRetryContinuation={onConsumeAmrAuthRetryContinuation}
-              onDiscardAmrAuthRetryContinuation={onDiscardAmrAuthRetryContinuation}
               onResumeRun={handleResumeRun}
               onStop={handleStop}
               // 组件 22 · 重连 · S29:掉线时流水的最后一行。按当前会话过一道 ——
@@ -13863,10 +12908,6 @@ export function ProjectView({
               onDeleteConversation={handleDeleteConversation}
               config={config}
               onOpenSettings={onOpenSettings}
-              amrBalanceCardUsd={amrBalanceCardUsd}
-              amrBalanceCardAnchorMessageId={amrBalanceCardAnchorId}
-              amrBalanceCardUnavailable={amrBalanceFailureWalletUnavailable}
-              onAmrBalanceUpgrade={handleAmrBalanceCardUpgrade}
               showByokRecoveryAction={
                 config.mode === 'api' &&
                 daemonLive &&
@@ -13880,8 +12921,6 @@ export function ProjectView({
                 setError(null);
                 onModeChange('daemon');
               }}
-              onOpenAmrSettings={onOpenAmrSettings}
-              onSwitchToAmrAndRetry={handleSwitchToAmrAndRetry}
               onLaunchAntigravityOauth={handleLaunchAntigravityOauth}
               onOpenMcpSettings={onOpenMcpSettings}
               onBrowsePlugins={onBrowsePlugins}
@@ -14091,14 +13130,7 @@ export function ProjectView({
           githubConnected={githubConnected}
           commentPortalId={commentInspectorPortalId}
           onCommentModeChange={setCommentInspectorActive}
-          fileActionsBefore={projectCollab.enabled ? (
-            <PresenceBar
-              members={projectCollab.present}
-              selfMember={projectCollab.member}
-              resolveMember={resolvePresenceMember}
-              {...(projectCollab.member ? { selfMemberId: projectCollab.member.memberId } : {})}
-            />
-          ) : null}
+          
           chatConfig={config}
           chatAgentsById={agentsById}
           handoffAgents={agents}
@@ -14115,13 +13147,10 @@ export function ProjectView({
           onConversationSessionModeChange={handleConversationSessionModeChange}
           onNewConversation={handleNewConversation}
           activeConversationChat={activeConversationChatState}
-          onSwitchConversationToCloud={
-            onSwitchToCloud ? handleSwitchConversationToCloud : undefined
-          }
           chatRecoveryActionsBlockedReason={resolveRecoveryActionBlockReason({
             readOnly: Boolean(projectMutationReadOnly),
             messagesUnavailable: false,
-            billingPrincipalResolved: Boolean(projectRunHasBillableAmrPrincipal),
+            billingPrincipalResolved: true,
             conversationBusy: false,
           })}
           onActiveContextChange={handleActiveWorkspaceContextChange}
@@ -14129,7 +13158,6 @@ export function ProjectView({
           messages={messages}
           artifactHtml={artifact?.html}
           conversationError={error}
-          onAuthorizeAndRetry={handleSwitchToAmrAndRetry}
           onLaunchTerminalAuth={handleLaunchAntigravityOauth}
           conversationId={activeConversationId}
         />
@@ -14160,19 +13188,6 @@ export function ProjectView({
           and burn its once-ever localStorage budget outside the intended flow. */}
       {onboardingEntryRef.current && hasPreviewableArtifact && !currentConversationStreaming ? (
         <FirstArtifactHint />
-      ) : null}
-      {amrBalanceGateBlock?.dialog === 'ask_owner' || amrOwnerTopUpFromCard ? (
-        /*
-         * 非 owner 的成员。他拿不到账单动作,所以这张弹窗不外跳,而是给他一句
-         * 可以直接发给所有者的话 —— 在此之前这一档只有一颗「暂不需要」(§6.Y)。
-         */
-        <AmrOwnerTopUpDialog
-          onClose={() => {
-            setAmrOwnerTopUpFromCard(false);
-            // 和现有弹窗的「暂不需要」同义:任务留在队列里,只是不再是唯一选项。
-            setAmrBalanceGateBlock(null);
-          }}
-        />
       ) : null}
       null
       <AnimatePresence>
@@ -14659,10 +13674,6 @@ function stripQueueOnlyFromMeta(
   const {
     queueOnly: _queueOnly,
     acceptDurableQueue: _acceptDurableQueue,
-    // 一旦排过队,正文的保管方就是队列项而不是输入框了 —— 这份认领不能跟着
-    // 回放走,否则一条排过队的输入框消息在回放时被拦下,会去撤一个早就清空的
-    // 草稿,而队列里那条反而被扔掉。见 `composerOwnedDraft` 的说明。
-    composerOwnedDraft: _composerOwnedDraft,
     ...rest
   } = meta as ProjectChatSendMeta;
   return Object.keys(rest).length > 0 ? rest : undefined;
@@ -15293,127 +14304,6 @@ export function shouldClearActiveRunRefs(
   completedConversationId: string,
 ): boolean {
   return currentConversationId === completedConversationId;
-}
-
-/**
- * 升级卡要显示的余额。读数拿不准就返回 `null` —— 这张卡把数字念给用户听,
- * 念错比不念更糟(付费档的 $0.00 本来就常态,见 #7190)。
- *
- * 判定用的是 `amrWalletBalanceUsd` 同一条解析规则,两处不另算。
- */
-export function amrBalanceCardBalanceUsd(
-  snapshot: AmrWalletSnapshot | null | undefined,
-): number | null {
-  const balance = amrWalletBalanceUsd(snapshot);
-  if (balance == null) return null;
-  return Math.max(0, balance);
-}
-
-/**
- * 一份「要出升级卡」的读数,连同它属于哪一轮 —— 读不出数字就是**没有读数**。
- *
- * 数字和锚点在一个对象里,是为了让「只写了一半」在语法上不成立(T61)。读数缺席
- * 时连对象都不建:一个 `{ balanceUsd: null }` 会诱使后来人给它补一条「没有数字
- * 但有锚点」的分支,而那一格该说话的是白色报错卡,不是这张。
- */
-export function amrBalanceCardCue(
-  balanceUsd: number | null,
-  anchorMessageId: string | null,
-): { balanceUsd: number; anchorMessageId: string | null } | null {
-  if (balanceUsd == null) return null;
-  return { balanceUsd, anchorMessageId };
-}
-
-/**
- * daemon 在 run 里判定的「余额不足」错误码。写在这里而不是从 `amr-guidance`
- * 里借:那个模块导出的是**卡面映射**,不是错误码本身,而这一条要回答的是
- * 「这一轮是不是死在钱上」。
- */
-const AMR_INSUFFICIENT_BALANCE_CODE = 'AMR_INSUFFICIENT_BALANCE';
-
-/**
- * **最后一轮是不是跑到一半死在余额上** —— 是就返回那一轮,不是就 `null`。
- *
- * 这是升级卡在「跑到一半」那条路上的唯一触发点(用户 2026-09-02 裁决:钱的事
- * 只有升级卡一张,没有第二张白色通用报错卡)。发送前那道闸门是另一个触发点,
- * 两者写的是同一个 `amrBalanceCard`。
- *
- * **id 和存档读数一起返回,不分两次走。** 两者读的是**同一条失败事件**,分两个
- * 函数各走一遍这条链就给「id 取自这一条、数字取自那一条」留了缝 —— 和
- * `amrBalanceCardCue` 把数字和锚点装进同一个对象是同一条理由。
- *
- * 三条刻意的窄化:
- *
- * - **只看最后一条助手消息。** 它回答的是「**现在**要不要替某一轮把余额说出来」,
- *   不是「屏幕上该留几张卡」。上一轮缺钱、这一轮跑通了,就不再管了。
- *   ⚠️ 这不再等于「旧卡下去」—— T61 之后已经出过的卡由 `ChatPane` 按轮次存档,
- *   只增不删(产品 2026-09-07:卡是「那一轮为什么停」的凭据,是历史记录)。
- * - **只认结构化错误码**,不去猜原文。错误码由 daemon 的
- *   `classifyAmrAccountFailure` 判定,那是唯一的判据来源;web 再猜一遍就是
- *   两处各说各话。这条码本身只对 AMR 发出,所以不另加 agent 判据 ——
- *   多一道会在 agentId 没落盘的历史消息上把卡吃掉。
- * - **只认终态失败。** 还在跑的一轮不谈余额。
- */
-export function amrInsufficientBalanceFailure(
-  messages: ChatMessage[],
-): { messageId: string; archivedBalanceUsd: number | null } | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    if (!message || message.role !== 'assistant') continue;
-    if (message.runStatus !== 'failed') return null;
-    const events = message.events ?? [];
-    for (let j = events.length - 1; j >= 0; j--) {
-      const event = events[j];
-      if (event?.kind !== 'status' || event.label !== 'error') continue;
-      if (event.code !== AMR_INSUFFICIENT_BALANCE_CODE) return null;
-      return {
-        messageId: message.id,
-        archivedBalanceUsd:
-          typeof event.amrBalanceUsd === 'number' && Number.isFinite(event.amrBalanceUsd)
-            ? event.amrBalanceUsd
-            : null,
-      };
-    }
-    return null;
-  }
-  return null;
-}
-
-/**
- * 把「这一轮停下来时的余额」写进那条失败事件 —— **存档的唯一写入口**(T61 ④)。
- *
- * 失败事件本身不带余额(daemon 的 `classifyAmrAccountFailure` 只给出错误码),
- * 所以第一次得现查一次;写下来是为了**从此不必再查**。不写的话每次重开都重新
- * 报价,那一轮的卡就会念今天的数字去解释几天前的失败 —— 充完值之后写着
- * 「剩余额度 $20.00」,比卡直接消失更误导。
- *
- * 三条不变量,都是这次写回**能不能活下来**的前提:
- *
- * - **就地改那一条,不追加、不删。** 事件数组长度一个不变。daemon 的
- *   `mergeMessageWriteForDaemonBacked`(`routes/project/conversations.ts:543`)
- *   按**长度**判「这次写是不是在缩短事件」,短了就整份退回 stored。
- * - **只碰 `events`,不碰 `runStatus` / `endedAt`。** 同一处守卫按终态判回退
- *   (`:549`),状态动一下这次写就白写。
- * - **写过就不再写。** 已经有数字的那一条原样返回,连新对象都不建:
- *   调用方靠「返回的是不是同一个引用」判要不要落库,重复写只会把同一份读数
- *   反复 PUT 回去。
- */
-export function stampAmrBalanceUsdOnFailure(
-  message: ChatMessage,
-  balanceUsd: number,
-): ChatMessage {
-  if (!Number.isFinite(balanceUsd)) return message;
-  const events = message.events ?? [];
-  for (let j = events.length - 1; j >= 0; j--) {
-    const event = events[j];
-    if (event?.kind !== 'status' || event.label !== 'error') continue;
-    if (event.code !== AMR_INSUFFICIENT_BALANCE_CODE) return message;
-    if (typeof event.amrBalanceUsd === 'number') return message;
-    const nextEvents = events.slice();
-    nextEvents[j] = { ...event, amrBalanceUsd: balanceUsd };
-    return { ...message, events: nextEvents };
-  }
-  return message;
 }
 
 export function finalizeActiveAssistantMessagesOnStop(

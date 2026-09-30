@@ -79,7 +79,7 @@ interface Props {
   promptTemplates: PromptTemplateSummary[];
   defaultDesignSystemId: string | null;
   agents: AgentInfo[];
-  // Forwarded to EntryShell → OnboardingView so the AMR cloud card can show a
+  // Forwarded to EntryShell → OnboardingView so the cloud card can show a
   // detecting/skeleton state while the cold-start agent stream is in flight.
   agentsLoading?: boolean;
   // Execution / model-switching context forwarded to the EntryShell so the
@@ -151,9 +151,6 @@ interface Props {
   onPersistComposioKey: (composio: AppConfig['composio']) => Promise<void> | void;
   onOpenSettings: (section?: 'execution' | 'media' | 'composio' | 'orbit' | 'integrations' | 'mcpClient' | 'language' | 'appearance' | 'notifications' | 'pet' | 'projectLocations' | 'library' | 'about' | 'memory' | 'designSystems') => void;
   onCompleteOnboarding: () => void;
-  /** @deprecated Stage 1: AMR balance gate disabled. Retained for prop compatibility. */
-  onAmrBalanceGateBlockChange?: (block: any) => void;
-  onAmrLoginStatusChange?: (status: any) => void;
   onSignedOut?: () => void | Promise<void>;
   artifactUpgradeSlot?: ReactNode;
 }

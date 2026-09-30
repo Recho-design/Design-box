@@ -22,8 +22,8 @@ import {
   useWorkspaceContext,
   workspaceIdentityCacheKey,
 } from '../collab/useWorkspaceContext';
-import { useWorkspaceInvalidation } from '../collab/workspace-events';
-import { useWorkspaceSnapshotActivation } from '../collab/workspace-snapshot-activation';
+const useWorkspaceInvalidation = (_handlers?: Record<string, (payload: any) => void>, _options?: any) => {};
+const useWorkspaceSnapshotActivation = (_options?: any) => () => {};
 import { useI18n } from '../i18n';
 import { localizePluginDescription, localizePluginTitle } from './plugins-home/localization';
 

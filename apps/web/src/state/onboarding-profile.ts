@@ -2,10 +2,10 @@
 // use case(s), and how they heard about us.
 //
 // Onboarding collects these in component state that is discarded once the flow
-// ends. We persist a tiny copy so any later AMR entry — from the chat error
+// ends. We persist a tiny copy so any later entry — from the chat error
 // card, settings, the model switcher, etc., long after onboarding — can forward
-// the visitor's self-reported profile to AMR for paid-conversion segmentation.
-// Without this, only a visitor who jumps to AMR during onboarding itself would
+// the visitor'''s self-reported profile for segmentation.
+// Without this, only a visitor who jumps during onboarding itself would
 // carry a profile.
 //
 // Values are kept as open strings (mirroring onboarding's own open-string

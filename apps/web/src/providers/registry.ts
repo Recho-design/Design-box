@@ -106,7 +106,17 @@ import {
   workspaceAccountScopedCacheKey,
   currentWorkspaceAccountGeneration,
 } from '../collab/workspace-identity';
-import { PublicFilePublishError } from '../collab/public-file-publish';
+export class PublicFilePublishError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+    public readonly code?: string,
+    public readonly data?: any,
+  ) {
+    super(message);
+    this.name = 'PublicFilePublishError';
+  }
+}
 import { clientRequestIdHeaders, withDaemonFailure } from '../analytics/failure-detail';
 
 /**
@@ -652,7 +662,7 @@ async function materializeTeamDesignSystems(
   // picker see team shares even when the user has never opened the Design
   // Systems management tab.
   //
-  // Never replace these explicit identity headers with a daemon/Vela "active
+  // Never replace these explicit identity headers with a daemon "active
   // workspace" lookup. One account can have multiple clients open in different
   // Workspaces; a backend-global active Workspace would let either client
   // retarget the other's catalog request.

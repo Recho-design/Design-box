@@ -29,15 +29,15 @@ import type { DesignSystemSummary, Project, ProjectDisplayStatus } from '../type
 import { Icon } from './Icon';
 import type { IconName } from './Icon';
 import { RemixIcon } from './RemixIcon';
-import { InviteDialog } from './InviteDialog';
+const InviteDialog = (_props: any) => null;
 import { ProjectDeleteConfirmDialog } from './project-actions/ProjectDeleteConfirmDialog';
 import { useProjectDeleteFlow } from './project-actions/useProjectDeleteFlow';
 import { useProjectDuplicateFlow } from './project-actions/useProjectDuplicateFlow';
 import { useWorkspaceProjectMove } from './project-actions/useWorkspaceProjectMove';
 import { STATUS_LABEL_KEYS } from './DesignsTab';
 import { isDesignSystemProject, isPublishedDesignSystemProject } from './design-system-project';
-import type { SharedProjectPredicate } from '../collab/all-projects-list';
-import { useTeamMembers } from '../collab/useTeamMembers';
+type SharedProjectPredicate = (projectId: string) => boolean;
+const useTeamMembers = (_u?: any) => ({ resolve: (_id?: any) => null, members: [] });
 import {
   notifyTeamProjectsChanged,
   useWorkspaceBilling,
@@ -55,7 +55,7 @@ import {
   type WorkspaceCollabContext,
   type WorkspaceProjectSummary,
 } from '@open-design/contracts';
-import { useWorkspaceInvalidation } from '../collab/workspace-events';
+const useWorkspaceInvalidation = (_handlers?: Record<string, (payload: { projectId?: any; workspaceId?: any; [k: string]: any }) => void>, _options?: any) => {};
 import {
   THUMBNAIL_OVERSCAN_MARGIN,
   resumeThumbnailLoads,
@@ -596,8 +596,8 @@ export function RecentProjectsStrip({
         ownedBySelf: true,
       };
     }
-    const name = resolveMember(ownerMemberId)?.displayName ?? t('recentProjects.teamMemberCreator');
-    const initial = (Array.from(name.trim())[0] ?? 'T').toUpperCase();
+    const name = (resolveMember(ownerMemberId) as any)?.displayName ?? t('recentProjects.teamMemberCreator');
+    const initial = (Array.from(String(name).trim())[0] ?? 'T').toUpperCase();
     return { name, initial, avatarUrl: null, ownedBySelf: false };
   };
   const visibleProjects = useMemo(
@@ -1262,7 +1262,7 @@ export function RecentProjectsStrip({
                 className="recent-projects__invite"
                 onClick={() => {
                   trackCollection('invite_teammates');
-                  if (inviteTarget.kind === 'vela') {
+                  if (inviteTarget.kind === 'external') {
                     window.open(inviteTarget.url, '_blank', 'noopener,noreferrer');
                   } else if (inviteTarget.kind === 'local') {
                     setInviteOpen(true);

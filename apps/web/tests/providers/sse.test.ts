@@ -116,7 +116,7 @@ describe('streamViaDaemon', () => {
     });
   });
 
-  it('publishes an authoritative successful run with an artifact to the app gate', async () => {
+  it('publishes an authoritative successful run with an artifact', async () => {
     const handlers = createDaemonHandlers();
     const eventTarget = new EventTarget();
     const published: DaemonRunFinishedEventDetail[] = [];
@@ -137,7 +137,7 @@ describe('streamViaDaemon', () => {
     }));
 
     await streamViaDaemon({
-      agentId: 'amr',
+      agentId: 'codex',
       history: [{ id: '1', role: 'user', content: 'make a design' }],
       systemPrompt: '',
       signal: new AbortController().signal,
@@ -149,7 +149,7 @@ describe('streamViaDaemon', () => {
 
     expect(handlers.onArtifactCount).toHaveBeenCalledWith(2);
     expect(published).toEqual([{
-      agentId: 'amr',
+      agentId: 'codex',
       runId: 'run-artifact-success',
       projectId: 'project-1',
       conversationId: 'conversation-1',
@@ -160,7 +160,7 @@ describe('streamViaDaemon', () => {
   });
 
   it.each(['kimi', 'codex'])(
-    'does not publish a local %s artifact run to the AMR upgrade gate',
+    'publishes an authoritative successful %s artifact run',
     async (agentId) => {
       const handlers = createDaemonHandlers();
       const eventTarget = new EventTarget();
@@ -190,7 +190,14 @@ describe('streamViaDaemon', () => {
         conversationId: 'conversation-1',
       });
 
-      expect(published).toEqual([]);
+      expect(published).toEqual([{
+        agentId,
+        runId: `run-${agentId}`,
+        projectId: 'project-1',
+        conversationId: 'conversation-1',
+        result: 'success',
+        artifactCount: 1,
+      }]);
     },
   );
 
@@ -199,7 +206,7 @@ describe('streamViaDaemon', () => {
     ['failed', '{"code":1,"status":"failed","artifactCount":1}'],
     ['canceled', '{"code":null,"signal":"SIGTERM","status":"canceled","artifactCount":1}'],
     ['implicit success', '{"code":0,"artifactCount":1}'],
-  ])('does not publish a run-finished upgrade event for %s', async (_label, payload) => {
+  ])('does not publish a run-finished event for %s', async (_label, payload) => {
     const handlers = createDaemonHandlers();
     const eventTarget = new EventTarget();
     const published: DaemonRunFinishedEventDetail[] = [];

@@ -37,16 +37,15 @@ import {
   useProjectHoverCover,
 } from './entry-nav-rail/ProjectHoverPreview';
 import { DeleteMark, MoreDotsMark, RenameMark } from './entry-nav-rail/RailRecentRow';
-import { createSharedProjectPredicate } from '../collab/all-projects-list';
-import { fetchTeamProjectsCatalog } from '../collab/team-projects-catalog';
 import { projectOwnedBySelf } from './project-actions/ownership';
-import {
-  forgetOptimisticProjectOwnership,
-  type OptimisticProjectOwnershipWitnesses,
-  optimisticProjectOwnershipScopeKey,
-  projectOwnerMemberIdsWithOptimisticWitnesses,
-  recordOptimisticProjectOwnership,
-} from '../collab/optimistic-project-ownership';
+const createSharedProjectPredicate = (_options?: any) => (_id: string) => false;
+const fetchTeamProjectsCatalog = async (_options?: any): Promise<any[]> => [];
+type OptimisticProjectOwnershipWitnesses = Map<string, any>;
+const optimisticProjectOwnershipScopeKey = (..._args: any[]) => '';
+const recordOptimisticProjectOwnership = <T,>(prev: T, ..._args: any[]): T => prev;
+const forgetOptimisticProjectOwnership = <T,>(prev: T, ..._args: any[]): T => prev;
+const reconcileOptimisticProjectOwnership = <T,>(prev: T, ..._args: any[]): T => prev;
+const projectOwnerMemberIdsWithOptimisticWitnesses = (..._args: any[]) => new Map<string, string>();
 import { currentWorkspaceAccountGeneration } from '../collab/workspace-identity';
 import { ProjectDeleteConfirmDialog } from './project-actions/ProjectDeleteConfirmDialog';
 import {
@@ -153,10 +152,10 @@ interface Props {
   // tab showing Welcome in the background. This flips it back to Home.
   onboardingCompleted?: boolean;
   /**
-   * Stable "AMR account + active workspace" identity key the currently open
+   * Stable "account + active workspace" identity key the currently open
    * tabs belong to (derived in App.tsx from `amrLoginStatus` +
    * `workspaceContext` — see the comment there for the exact composition).
-   * `null` means "not resolved yet" (before the first AMR status read
+   * `null` means "not resolved yet" (before the first status read
    * completes): the bar leaves whatever it already restored from
    * localStorage untouched rather than guessing.
    *
@@ -1426,7 +1425,7 @@ export function WorkspaceTabsBar({
     });
   }, [onboardingCompleted, onboardingActive, route.kind]);
 
-  // Tab-scope enforcement: every AMR account + workspace key owns one isolated
+  // Tab-scope enforcement: every account + workspace key owns one isolated
   // snapshot. Save the outgoing state before loading the incoming state, and
   // navigate to that snapshot's active tab. The persistent registry is capped
   // (MAX_PERSISTED_TAB_SCOPES), so workspace bouncing remains recoverable
@@ -1437,7 +1436,7 @@ export function WorkspaceTabsBar({
   // during onboarding is the single pinned entry tab — there is nothing to
   // protect against yet, and forcing a close+navigate-home mid-flow would
   // eject the user from the Connect step before they finish it (a real
-  // scenario: finishing AMR sign-in mid-onboarding is exactly a scope change
+  // scenario: finishing sign-in mid-onboarding is exactly a scope change
   // per this design). The new key is still recorded via the ref so the
   // reconciliation does not re-fire the moment onboarding completes with a
   // scope that has not changed again since.

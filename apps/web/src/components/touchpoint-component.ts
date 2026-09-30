@@ -8,6 +8,8 @@ import {
 	TouchpointModuleCache,
 	type TouchpointSdk,
 	TouchpointUpdateQueue,
+	TOUCHPOINT_COMPONENT_V2_WRAPPER_VERSION,
+	TOUCHPOINT_COMPONENT_V2_SDK_VERSION,
 } from "@open-design/contracts";
 
 export type WebTouchpointContent = {
@@ -23,8 +25,8 @@ export type WebTouchpointContent = {
 	runtime: {
 		kind: "web-component";
 		apiVersion: 1;
-		wrapperVersion: "vela-touchpoint-wrapper-v1";
-		sdkVersion: "vela-touchpoint-sdk-v1";
+		wrapperVersion: typeof TOUCHPOINT_COMPONENT_V2_WRAPPER_VERSION;
+		sdkVersion: typeof TOUCHPOINT_COMPONENT_V2_SDK_VERSION;
 	};
 	buildIdentity: { fingerprint: string };
 };
@@ -169,8 +171,8 @@ export async function verifyWebTouchpoint(touchpoint: WebTouchpointContent) {
 	if (
 		touchpoint.runtime.kind !== "web-component" ||
 		touchpoint.runtime.apiVersion !== 1 ||
-		touchpoint.runtime.wrapperVersion !== "vela-touchpoint-wrapper-v1" ||
-		touchpoint.runtime.sdkVersion !== "vela-touchpoint-sdk-v1" ||
+		touchpoint.runtime.wrapperVersion !== TOUCHPOINT_COMPONENT_V2_WRAPPER_VERSION ||
+		touchpoint.runtime.sdkVersion !== TOUCHPOINT_COMPONENT_V2_SDK_VERSION ||
 		manifest.runtimeKind !== touchpoint.runtime.kind ||
 		manifest.runtimeApiVersion !== touchpoint.runtime.apiVersion ||
 		manifest.platformWrapperVersion !== touchpoint.runtime.wrapperVersion ||
@@ -285,8 +287,8 @@ export class OpenDesignTouchpointElement extends TouchpointElementBase {
 
 	/** Applies host styling only to the open ShadowRoot; it never writes global styles. */
 	private applyHostContext(context: WebTouchpointContext) {
-		this.style.setProperty("--vela-touchpoint-font-family", context.fontFamily);
-		this.style.setProperty("--vela-touchpoint-theme", context.theme);
+		this.style.setProperty("--od-touchpoint-font-family", context.fontFamily);
+		this.style.setProperty("--od-touchpoint-theme", context.theme);
 		for (const [name, value] of Object.entries(context.cssVariables)) {
 			if (
 				WEB_HOST_VARIABLES.includes(name as (typeof WEB_HOST_VARIABLES)[number])
@@ -294,13 +296,13 @@ export class OpenDesignTouchpointElement extends TouchpointElementBase {
 				this.style.setProperty(name, value);
 		}
 		let style = this.shadowRoot?.querySelector<HTMLStyleElement>(
-			"style[data-vela-touchpoint-host]",
+			"style[data-od-touchpoint-host]",
 		);
 		if (!style && this.shadowRoot) {
 			style = document.createElement("style");
-			style.dataset.velaTouchpointHost = "";
+			style.dataset.odTouchpointHost = "";
 			style.textContent =
-				":host { color-scheme: var(--vela-touchpoint-theme); font-family: var(--vela-touchpoint-font-family); color: var(--foreground); background: var(--background); } *, *::before, *::after { box-sizing: border-box; }";
+				":host { color-scheme: var(--od-touchpoint-theme); font-family: var(--od-touchpoint-font-family); color: var(--foreground); background: var(--background); } *, *::before, *::after { box-sizing: border-box; }";
 			this.shadowRoot.prepend(style);
 		}
 	}

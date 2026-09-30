@@ -18,7 +18,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import type { AmrWalletSnapshot } from '@open-design/contracts';
 import { VisuallyHidden } from '@open-design/components';
 import { useT } from '../i18n';
 import {
@@ -28,13 +27,6 @@ import {
 } from '@open-design/contracts/analytics';
 import { useAnalytics } from '../analytics/provider';
 import {
-  amrHandoffDeviceId,
-  attributedAmrUrl,
-  recordAmrEntry,
-  type AmrEntryAttribution,
-} from '../analytics/amr-attribution';
-import {
-  trackDeepSeekCampaignModelBenefitSurfaceView,
   trackExecutionSettingsPopoverClick,
 } from '../analytics/events';
 import { KNOWN_PROVIDERS } from '../state/config';
@@ -48,9 +40,6 @@ import { isVisibleLocalCliAgent } from '../utils/visibleAgents';
 import { AgentIcon } from './AgentIcon';
 import { Icon } from './Icon';
 import { modelProviderIconSrc } from './modelProviderIcon';
-import {
-  AMR_LOGIN_STARTUP_SETTLE_MS,
-} from './amrLoginPolling';
 import { orderAgentsWithOpenDesignFirst } from './agentOrdering';
 import { anchorSelectionInView } from './pickerSelectionAnchor';
 import {
@@ -69,8 +58,6 @@ import {
   providerModelsCacheKey,
   type ProviderModelsCache,
 } from './providerModelsCache';
-import { isDeepSeekV4FlashCampaignModel } from '../campaigns/deepseek-v4-flash';
-import { useDeepSeekV4FlashCampaignVisibility } from '../campaigns/use-deepseek-v4-flash-campaign';
 
 interface Props {
   config: AppConfig;
@@ -113,11 +100,11 @@ const API_PROTOCOL_TABS: Array<{ id: ApiProtocol; title: string }> = [
 
 
 function displayAgentName(agent: Pick<AgentInfo, 'id' | 'name'>): string {
-  return agent.id === 'amr' ? 'OpenDesign' : agent.name;
+  return agent.name;
 }
 
 function displayAgentChipName(agent: Pick<AgentInfo, 'id' | 'name'>): string {
-  return agent.id === 'amr' ? 'OpenDesign' : displayAgentName(agent);
+  return displayAgentName(agent);
 }
 
 export function InlineModelSwitcher({
@@ -140,7 +127,6 @@ export function InlineModelSwitcher({
   // It remains available for a real unpaid-audience signal reaching this
   // component without surfacing an unlimited-use claim in the model picker.
   const campaignNeedsUpgrade = false;
-  const campaignVisibility = useDeepSeekV4FlashCampaignVisibility();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -321,23 +307,14 @@ export function InlineModelSwitcher({
     typeof effectiveCurrentChoice.model === 'string' && effectiveCurrentChoice.model
       ? effectiveCurrentChoice.model
       : null;
-  const currentModelId =
-    currentAgent?.id === 'amr' &&
-    configuredModelId &&
-    configuredModelId !== 'default' &&
-    !currentAgentModelIds.includes(configuredModelId)
-      ? defaultAgentModelId(currentAgent)
-      : configuredModelId ?? defaultAgentModelId(currentAgent);
+  const currentModelId = configuredModelId ?? defaultAgentModelId(currentAgent);
   const currentModelOption =
     currentAgentModels.find((m) => m.id === currentModelId) ?? null;
   // `agentId` and `agentModels` intentionally retain the last local-agent
   // choice while BYOK is active so switching back restores that choice. Do
-  // not let campaign UI read that dormant AMR state: in BYOK mode the visible
+  // not let campaign UI read that dormant state: in BYOK mode the visible
   // model comes from `config.model` and usage is billed by the user's provider.
-  const deepSeekCampaignVisibleForCurrentExecution =
-    campaignVisibility.visible
-    && config.mode === 'daemon'
-    && currentAgent?.id === 'amr';
+  const deepSeekCampaignVisibleForCurrentExecution = false;
 
   useEffect(() => {
     if (!currentAgentId || !normalizedCurrentModelId) return;
@@ -363,11 +340,7 @@ export function InlineModelSwitcher({
 
   const currentModelLabel =
     currentModelOption?.label ?? null;
-  const inlineAgentModelOptions = useMemo(() => {
-    const models = currentAgentModels;
-    if (currentAgent?.id !== 'amr') return models;
-    return orderModelOptionsByAvailability(models);
-  }, [currentAgent?.id, currentAgentModels]);
+  const inlineAgentModelOptions = useMemo(() => currentAgentModels, [currentAgentModels]);
 
   /**
    * The ONLY path from a model row to `onAgentModelChange` in this component.
@@ -421,42 +394,7 @@ export function InlineModelSwitcher({
     anchorSelectionInView(compactModelListRef.current, '[aria-checked="true"]');
   }, [compactModelRows, open]);
 
-  useEffect(() => {
-    if (!open) {
-      campaignBenefitTrackedForOpenRef.current = false;
-      return;
-    }
-    if (!compact || !deepSeekCampaignVisibleForCurrentExecution
-      || campaignBenefitTrackedForOpenRef.current) {
-      return;
-    }
-    // One impression per campaign model actually on screen, not one for the
-    // popover: the campaign runs two models and product compares their reach
-    // separately, so a single row-agnostic event would make Pro and Flash
-    // indistinguishable in the funnel.
-    const visibleCampaignModelIds = compactModelRows
-      .filter(({ model }) => isDeepSeekV4FlashCampaignModel(model.id))
-      .map(({ model }) => model.id);
-    if (visibleCampaignModelIds.length === 0) return;
-    campaignBenefitTrackedForOpenRef.current = true;
-    for (const modelId of visibleCampaignModelIds) {
-      trackDeepSeekCampaignModelBenefitSurfaceView(analytics.track, {
-        page_name: 'home',
-        area: 'execution_settings_popover',
-        element: 'deepseek_v4_pro_benefit',
-        campaign_id: 'deepseek_v4_pro',
-        user_state: campaignNeedsUpgrade ? 'unpaid' : 'paid',
-        model_id: modelId,
-      });
-    }
-  }, [
-    analytics.track,
-    campaignNeedsUpgrade,
-    compact,
-    compactModelRows,
-    deepSeekCampaignVisibleForCurrentExecution,
-    open,
-  ]);
+
 
 
   const apiProtocol = config.apiProtocol ?? 'anthropic';
@@ -572,12 +510,7 @@ export function InlineModelSwitcher({
         : t('inlineSwitcher.noAgent')
       : apiProtocolLabel(apiProtocol);
   const chipModel =
-    config.mode === 'daemon'
-      ? isDeepSeekV4FlashCampaignModel(currentModelId)
-        ? currentModelLabel ?? 'DeepSeek V4 Flash'
-        : currentModelLabel && currentModelId !== 'default'
-          ? currentModelLabel
-          : t('inlineSwitcher.modelDefault')
+    config.mode === 'daemon' ? (currentModelLabel && currentModelId !== 'default' ? currentModelLabel : t('inlineSwitcher.modelDefault'))
       : config.model.trim() || t('inlineSwitcher.modelDefault');
   // Visible chip text drops the company token the way the model rows do
   // (`claude-fable-5` → `fable-5`); the aria-label/tooltip above keep the full
@@ -906,7 +839,7 @@ export function InlineModelSwitcher({
                     // never as a normal row whose click gets reverted.
                     const lockedHint = selectable
                       ? null
-                      : t('settings.amrModelUpgradeHint');
+                      : null;
                     return (
                       <div key={m.id} className="inline-switcher__agent-row">
                         <button
@@ -1049,12 +982,12 @@ export function InlineModelSwitcher({
                     getPopoverBoundary={getModelPopoverBoundary}
                     aria-label={t('inlineSwitcher.modelLabel')}
                     models={inlineAgentModelOptions}
-                    // Only AMR's catalog genuinely spans multiple model
+                    // A multi-vendor catalog genuinely spans multiple model
                     // vendors — every other agent's model list is one
                     // provider's own ids (o1/o3/o4-mini alongside gpt-*,
                     // for instance), which the company heuristic would
                     // otherwise split into misleading fake "companies".
-                    groupByCompany={currentAgent?.id === 'amr'}
+                    groupByCompany={false}
                     value={currentModelId ?? ''}
                     onChange={(nextValue) => {
                       // Same sink as the compact list — `serviceTier: undefined`
@@ -1075,7 +1008,6 @@ export function InlineModelSwitcher({
                       });
                     }}
                     additionalOptions={
-                      currentAgent.id !== 'amr' &&
                       currentModelId &&
                       !currentAgent.models.some((m) => m.id === currentModelId)
                         ? [

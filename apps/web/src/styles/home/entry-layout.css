@@ -491,7 +491,7 @@
 .entry-local-mode-tip p {
   margin: 0;
 }
-/* While the vela device-auth flow is pending the card stops being a button:
+/* While the device-auth flow is pending the card stops being a button:
    the body swaps to a progress line + cancel, so the hover lift would lie. */
 .entry-local-mode-tip.is-signing {
   cursor: default;
@@ -2392,18 +2392,7 @@
 .inline-switcher--compact .inline-switcher__chip-text {
   display: none;
 }
-.inline-switcher__amr-reminder-dot {
-  position: absolute;
-  z-index: 1;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-pill);
-  background: var(--danger, #dc2626);
-  box-shadow:
-    0 0 0 2px var(--bg-panel),
-    0 0 0 4px color-mix(in srgb, var(--danger, #dc2626) 12%, transparent);
-  pointer-events: none;
-}
+
 /* Popover */
 .inline-switcher__popover {
   position: absolute;
@@ -2621,10 +2610,7 @@
     transition: none;
   }
 }
-.inline-switcher__amr-reminder-dot--agent {
-  top: 6px;
-  left: 26px;
-}
+
 .inline-switcher__agent-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -3013,7 +2999,7 @@
   appearance: none;
   border: 0;
   /* Pinned to the bottom of the popover's scroll port: the model list can be
-     long (29 models on AMR), and this entry used to scroll away with it — the
+     long, and this entry used to scroll away with it — the
      one link out to where agent switching now lives. Opaque so rows scrolling
      underneath do not show through. */
   position: sticky;
@@ -3393,30 +3379,6 @@
 
 .onboarding-cloud__cancel:hover {
   color: var(--text-strong);
-}
-
-/* Capsule treatment for the activation-retry card on THIS view only — the
- * base `.amr-login-activation` rule (artifacts.css) stays untouched so
- * Settings/AmrLoginPill and CloudSignInTip keep their compact inline card.
- * Compound selector (not cascade order) guarantees this wins over the base
- * padding/radius regardless of stylesheet import order. */
-.amr-login-activation.onboarding-cloud__activation {
-  padding: 16px;
-  border-radius: 28px;
-}
-
-/* Keep the retry controls centered in the activation card. They deliberately
- * retain their intrinsic width instead of stretching from the left edge — the
- * primary "Open sign-in page" action should read as the card's focal CTA. */
-.onboarding-cloud__activation .amr-login-activation__actions {
-  width: 100%;
-  justify-content: center;
-  gap: 8px;
-}
-
-.onboarding-cloud__activation .amr-login-activation__open {
-  flex: 0 0 auto;
-  justify-content: center;
 }
 
 .onboarding-cloud__activation-dismiss {
@@ -4278,19 +4240,6 @@
   box-shadow: 0 18px 40px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-.onboarding-view__card--featured.onboarding-view__card--amr {
-  grid-template-columns: max-content minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  column-gap: 22px;
-  row-gap: 18px;
-  align-items: center;
-  min-height: 246px;
-  padding: 40px 34px 36px;
-  overflow: visible;
-  position: relative;
-  z-index: 3;
-}
-
 .onboarding-view__card.is-selected {
   border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
   background: color-mix(in srgb, var(--bg-panel) 94%, var(--accent) 6%);
@@ -4357,11 +4306,6 @@
   border-radius: inherit;
 }
 
-.onboarding-view__card--amr > .onboarding-view__icon {
-  grid-column: 1;
-  grid-row: 1;
-}
-
 .onboarding-view__badge {
   display: inline-flex;
   align-items: center;
@@ -4397,11 +4341,6 @@
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--bg-panel) 98%, var(--text-muted) 2%);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
-}
-
-.onboarding-view__card--amr.is-selected .onboarding-view__identity {
-  border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-  background: color-mix(in srgb, var(--bg-panel) 96%, var(--accent) 4%);
 }
 
 .onboarding-view__identity .onboarding-view__card-copy {
@@ -4478,10 +4417,6 @@
 
 .onboarding-view__card-model .onboarding-view__model-picker {
   width: min(260px, 100%);
-}
-
-.onboarding-view__card--amr .onboarding-view__model-picker {
-  width: 100%;
 }
 
 .onboarding-view__alternatives .onboarding-view__model-picker {
@@ -4696,63 +4631,714 @@
   pointer-events: none;
 }
 
-.onboarding-view__card-status .amr-account-control {
+.onboarding-view__card-action {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.onboarding-view__setup-panel {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-panel) 97%, var(--accent) 3%);
+  box-shadow: var(--shadow-xs);
+}
+
+.onboarding-view__setup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.onboarding-view__setup-head strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.onboarding-view__setup-head p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.onboarding-view__setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -2px;
+}
+
+.onboarding-view__setup-head-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.onboarding-view__mini-button,
+.onboarding-view__field-row button,
+.onboarding-view__protocol-strip button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 0;
-  max-width: 100%;
-  min-height: 20px;
-  gap: 6px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--border));
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--bg-panel) 90%, var(--accent) 10%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
-  color: currentColor;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 11px;
+  color: var(--text);
+  background: var(--bg-panel);
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
-  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
 }
 
-.onboarding-view__card-status .amr-account-control__status {
-  display: inline-flex;
+.onboarding-view__mini-button:hover,
+.onboarding-view__field-row button:hover,
+.onboarding-view__protocol-strip button:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.onboarding-view__mini-button:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.onboarding-view__mini-button.is-loading {
+  color: var(--text-muted);
+}
+
+.onboarding-view__agent-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.onboarding-view__agent-chip {
+  display: flex;
   align-items: center;
+  /* The global `button` primitive centers its flex line. These chips are
+     fixed-width grid cells, so a centered line offsets each icon+name group
+     by a different amount and the two columns read ragged. */
+  justify-content: flex-start;
+  gap: 9px;
   min-width: 0;
-  gap: 6px;
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--bg-panel);
+  text-align: left;
+  cursor: pointer;
+  animation: onboarding-agent-pop 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.onboarding-view__agent-chip.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--bg-panel) 92%, var(--accent) 8%);
+}
+
+.onboarding-view__agent-chip .agent-icon {
+  flex: 0 0 auto;
+}
+
+.onboarding-view__agent-chip span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.onboarding-view__agent-chip strong,
+.onboarding-view__agent-chip small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.onboarding-view__card-status .amr-account-control__status::before {
-  content: '';
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: currentColor;
-  opacity: 0.7;
+.onboarding-view__agent-chip strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.2;
 }
 
-.onboarding-view__card-status .amr-account-control--signed-in {
-  color: var(--success-text, #15803d);
-  border-color: color-mix(in srgb, var(--success-text, #15803d) 18%, var(--border));
-  background: color-mix(in srgb, var(--bg-panel) 88%, var(--success-text, #15803d) 12%);
+.onboarding-view__agent-chip small {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
-.onboarding-view__card-status .amr-account-control--signing-in {
-  color: var(--accent-strong);
+.onboarding-view__empty-slice {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 13px;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  font-size: 12px;
 }
 
-.onboarding-view__card-status .amr-account-control--error {
+.onboarding-view__scan-copy {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.onboarding-view__scan-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.onboarding-view__scan-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.onboarding-view__protocol-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.onboarding-view__protocol-strip button.is-selected {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--bg-panel) 90%, var(--accent) 10%);
+}
+
+.onboarding-view__inline-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.onboarding-view__inline-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  color: var(--text-strong);
+  background: var(--bg-panel);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--shadow-xs);
+}
+
+.onboarding-view__inline-field input:focus,
+.onboarding-view__inline-field input:focus-visible,
+.onboarding-view__agent-chip:focus-visible,
+.onboarding-view__mini-button:focus-visible,
+.onboarding-view__field-row button:focus-visible,
+.onboarding-view__protocol-strip button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.onboarding-view__field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.onboarding-view__field-row button {
+  min-height: 42px;
+}
+
+.onboarding-view__compact-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.onboarding-view__test-status {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.onboarding-view__test-status.is-running {
+  color: var(--text-muted);
+  background: var(--bg-panel);
+}
+
+.onboarding-view__test-status.is-success {
+  color: var(--success-text, #166534);
+  border-color: color-mix(in srgb, var(--success, #22c55e) 34%, var(--border));
+  background: color-mix(in srgb, var(--success, #22c55e) 9%, var(--bg-panel));
+}
+
+.onboarding-view__test-status.is-warn {
+  color: var(--warning-text, #92400e);
+  border-color: color-mix(in srgb, var(--warning, #f59e0b) 34%, var(--border));
+  background: color-mix(in srgb, var(--warning, #f59e0b) 10%, var(--bg-panel));
+}
+
+.onboarding-view__test-status.is-error {
   color: var(--danger-text, #991b1b);
-  border-color: color-mix(in srgb, var(--danger-text, #991b1b) 18%, var(--border));
-  background: color-mix(in srgb, var(--bg-panel) 88%, var(--danger-text, #991b1b) 12%);
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 34%, var(--border));
+  background: color-mix(in srgb, var(--danger, #ef4444) 9%, var(--bg-panel));
 }
 
-.onboarding-view__card-status .amr-account-control__error {
-  display: none;
+@keyframes onboarding-agent-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.onboarding-view__card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  width: 100%;
+  min-height: 112px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  box-shadow: var(--shadow-xs);
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1), border-color 160ms cubic-bezier(0.23, 1, 0.32, 1), transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.onboarding-view__card--featured {
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  min-height: 168px;
+  padding: 22px 24px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 13%, var(--bg-panel)) 0%,
+      var(--bg-panel) 54%
+    );
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.onboarding-view__card.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--bg-panel) 94%, var(--accent) 6%);
+}
+
+.onboarding-view__card--featured.is-selected {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 16%, var(--bg-panel)) 0%,
+      color-mix(in srgb, var(--bg-panel) 96%, var(--accent) 4%) 54%
+    );
+}
+
+.onboarding-view__card--featured:not(.is-selected) {
+  border-color: var(--border);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-xs);
+}
+
+.onboarding-view__card:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--bg-panel) 97%, var(--accent) 3%);
+  transform: translateY(-1px);
+}
+
+.onboarding-view__card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 26px;
+  margin-bottom: 0;
+}
+
+.onboarding-view__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+}
+
+.onboarding-view__card--featured .onboarding-view__icon {
+  width: 52px;
+  height: 52px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel));
+}
+
+.onboarding-view__icon.onboarding-view__icon--asset,
+.onboarding-view__card--featured .onboarding-view__icon.onboarding-view__icon--asset {
+  overflow: hidden;
+  border-color: transparent;
+  background: transparent;
+}
+
+.onboarding-view__icon--asset .onboarding-view__agent-logo {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: inherit;
+}
+
+.onboarding-view__badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.onboarding-view__badge {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-panel));
+}
+
+.onboarding-view__card-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.onboarding-view__identity {
+  grid-column: 1;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  width: fit-content;
+  padding: 10px 16px 10px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, var(--text-muted) 12%);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-panel) 98%, var(--text-muted) 2%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
+}
+
+.onboarding-view__identity .onboarding-view__card-copy {
+  align-self: center;
+  gap: 4px;
+  padding-right: 0;
+}
+
+.onboarding-view__card-model {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+  align-self: start;
+}
+
+.onboarding-view__card strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.onboarding-view__card--featured strong {
+  font-size: 20px;
+}
+
+.onboarding-view__card-meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.onboarding-view__card small {
+  display: block;
+  margin-top: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.onboarding-view__card--featured small {
+  max-width: none;
+  font-size: 13px;
+}
+
+.onboarding-view__benefit-stack {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.onboarding-view__benefit-aside {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  min-width: 0;
+  width: 100%;
+  justify-self: stretch;
+}
+
+.onboarding-view__benefit-aside .onboarding-view__benefit-stack {
+  gap: 10px;
+}
+
+.onboarding-view__model-picker {
+  display: grid;
+  gap: 8px;
+  width: min(260px, 100%);
+  cursor: default;
+}
+
+.onboarding-view__card-model .onboarding-view__model-picker {
+  width: min(260px, 100%);
+}
+
+.onboarding-view__alternatives .onboarding-view__model-picker {
+  width: 100%;
+}
+
+.onboarding-view__setup-panel .onboarding-view__model-picker,
+.onboarding-view__setup-panel .onboarding-view__setup-model-picker {
+  width: 100%;
+}
+
+.onboarding-view__model-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.onboarding-view__model-source {
+  display: inline-flex;
+  align-items: center;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+.onboarding-view__model-source::before {
+  content: "·";
+  margin: 0 5px;
+  color: var(--text-muted);
+}
+
+.onboarding-view__model-source.live,
+.onboarding-view__model-source.fallback {
+  color: inherit;
+}
+
+.onboarding-view__model-select-wrap {
+  position: relative;
+  display: block;
+}
+
+.onboarding-view__model-select-wrap select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-height: 54px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, var(--text-muted) 12%);
+  border-radius: var(--radius);
+  background-color: var(--bg-panel);
+  color: var(--text-strong);
+  padding: 0 44px 0 16px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.2;
+  box-shadow: var(--shadow-xs);
+  transition: background-color 160ms cubic-bezier(0.23, 1, 0.32, 1), border-color 160ms cubic-bezier(0.23, 1, 0.32, 1), color 160ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.onboarding-view__model-select-wrap select:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background-color: color-mix(in srgb, var(--bg-panel) 97%, var(--accent) 3%);
+}
+
+.onboarding-view__model-select-wrap select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 2px;
+}
+
+.onboarding-view__model-select-chevron {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.onboarding-view__benefits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0;
+}
+
+.onboarding-view__benefit-aside .onboarding-view__benefits {
+  flex-wrap: wrap;
+  gap: 7px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.onboarding-view__benefit-aside
+  .onboarding-view__benefits
+  > .onboarding-view__benefit {
+  min-height: 28px;
+  padding: 0 12px;
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent-strong);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 13%, var(--bg-panel)) 0%,
+      color-mix(in srgb, var(--accent) 7%, var(--bg-panel)) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent),
+    0 6px 16px color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.onboarding-view__benefit {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, transparent);
+  color: color-mix(in srgb, var(--accent-strong) 92%, var(--text));
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.onboarding-view__benefit--hero {
+  min-height: 24px;
+  padding: 0 9px;
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  color: var(--accent-strong);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 15%, var(--bg-panel)) 0%,
+      color-mix(in srgb, var(--accent) 7%, var(--bg-panel)) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent),
+    0 7px 18px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.onboarding-view__upcoming-benefits {
+  display: flex;
+  align-items: center;
+  justify-self: start;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.onboarding-view__upcoming-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  color: color-mix(in srgb, var(--text-muted) 74%, var(--text));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.onboarding-view__upcoming-label::after {
+  content: "";
+  width: 2px;
+  height: 2px;
+  margin-left: 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+}
+
+.onboarding-view__benefit--upcoming {
+  min-height: 22px;
+  padding: 0 8px;
+  border-color: color-mix(in srgb, var(--text-muted) 8%, transparent);
+  color: color-mix(in srgb, var(--text-muted) 68%, var(--text));
+  background: color-mix(in srgb, var(--text-muted) 4%, transparent);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.onboarding-view__card-status {
+  position: absolute;
+  left: 24px;
+  bottom: 18px;
+  z-index: 1;
+  display: inline-flex;
+  max-width: min(260px, calc(100% - 72px));
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .onboarding-view__card-action {
@@ -5998,21 +6584,9 @@
 }
 
 @media (max-width: 760px) {
-  .onboarding-view__card--featured.onboarding-view__card--amr {
-    grid-template-columns: 1fr;
-    gap: 14px;
-    align-items: center;
-    min-height: 190px;
-    padding: 28px 18px 32px;
-  }
-
   .onboarding-view__identity {
     grid-column: 1 / -1;
     width: 100%;
-  }
-
-  .onboarding-view__card--amr .onboarding-view__card-model {
-    grid-column: 1 / -1;
   }
 
   .onboarding-view__card--benefit-aside .onboarding-view__benefit-aside {
@@ -6036,9 +6610,9 @@
 }
 
 /* ============================================================
-   AMR cloud card — detecting / skeleton state
-   Shown while AMR availability is still being probed. Reuses the
-   featured/amr card classes (so min-height: 246px and the responsive
+   Cloud card — detecting / skeleton state
+   Shown while cloud availability is still being probed. Reuses the
+   featured card classes (so min-height: 246px and the responsive
    grid are inherited — no layout jump when the real card resolves).
    Only the probe-dependent parts shimmer; the brand stays solid.
    ============================================================ */
@@ -6091,7 +6665,7 @@
     color-mix(in srgb, var(--bg-elevated) 70%, var(--bg-muted));
 }
 
-/* Version meta placeholder (sits where "AMR v0.1.0" renders). */
+/* Version meta placeholder. */
 .onboarding-view__skeleton-line--meta {
   width: 116px;
   height: 11px;
@@ -6117,14 +6691,11 @@
 .onboarding-view__benefit-stack--skeleton
   .onboarding-view__skeleton-line--benefit:nth-child(4) { width: 58%; }
 
-/* Model picker placeholder (sits where the AMR model select renders). */
+/* Model picker placeholder. */
 .onboarding-view__skeleton-model {
   display: grid;
   gap: 8px;
   width: min(260px, 100%);
-}
-.onboarding-view__card--amr .onboarding-view__skeleton-model {
-  width: 100%;
 }
 .onboarding-view__skeleton-model-label {
   width: 96px;
@@ -8909,10 +9480,7 @@ button.entry-nav-rail__menu-credits-row:active:not(:disabled) {
   display: inline-flex;
 }
 
-.inline-switcher__amr-reminder-dot--account {
-  top: -1px;
-  right: -1px;
-}
+
 
 .inline-switcher__account-name {
   overflow: hidden;

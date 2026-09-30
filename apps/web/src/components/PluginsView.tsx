@@ -94,10 +94,8 @@ import {
   useWorkspaceContext,
   workspaceIdentityCacheKey,
 } from '../collab/useWorkspaceContext';
-import {
-  useWorkspaceInvalidation,
-} from '../collab/workspace-events';
-import { useWorkspaceSnapshotActivation } from '../collab/workspace-snapshot-activation';
+const useWorkspaceInvalidation = (_handlers?: Record<string, (payload: any) => void>, _options?: any) => {};
+const useWorkspaceSnapshotActivation = (_options?: any) => () => {};
 
 type PluginsTab = 'installed' | 'available' | 'sources' | 'team';
 
@@ -848,7 +846,7 @@ export function PluginsView({
 //   个人  → listPlugins() user kinds   fetchSkills() source==='user'
 //
 // The share-to-team action uses POST /api/workspace/:kind/:id/share. Removing
-// from the team uses DELETE on the same route, backed by Vela's resource owner
+// from the team uses DELETE on the same route, backed by the resource owner
 // permission gate.
 // ============================================================================
 

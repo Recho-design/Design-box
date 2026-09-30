@@ -26,10 +26,8 @@ import {
   workspaceResourceReadIdentityKey,
   type WorkspaceResourceReadIdentity,
 } from '../collab/workspace-identity';
-import {
-  useWorkspaceInvalidation,
-} from '../collab/workspace-events';
-import { useWorkspaceSnapshotActivation } from '../collab/workspace-snapshot-activation';
+const useWorkspaceInvalidation = (_handlers?: Record<string, (payload: any) => void>, _options?: any) => {};
+const useWorkspaceSnapshotActivation = (_options?: any) => () => {};
 import {
   workspaceContextHasTeamIdentity,
   type WorkspaceCollabContext,

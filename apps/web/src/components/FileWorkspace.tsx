@@ -134,8 +134,9 @@ import { APP_CHROME_FILE_ACTIONS_ID } from './AppChromeHeader';
 import { FileViewer, LiveArtifactViewer } from './FileViewer';
 import { useIframeKeepAlivePool } from './IframeKeepAlivePool';
 import { Icon, type IconName } from './Icon';
-import { projectIsSharedWithWorkspace } from '../collab/project-shared-status';
-import { FileSyncBadge, type FileSyncBadgeState } from '../collab/FileSyncBadge';
+const projectIsSharedWithWorkspace = async (_p?: unknown, _w?: unknown) => false;
+type FileSyncBadgeState = 'downloading' | 'uploading' | 'synced' | 'conflict' | 'error' | null;
+function FileSyncBadge(_props: { state?: FileSyncBadgeState; size?: number }) { return null; }
 import { Toast } from './Toast';
 import { TabLauncherMenu } from './workspace/TabLauncherMenu';
 import { buildLauncherActions, type LauncherContext } from './workspace/tab-launcher';
@@ -353,19 +354,14 @@ interface Props {
   onConversationSessionModeChange?: (id: string, mode: ChatSessionMode) => void;
   onNewConversation?: () => void;
   activeConversationChat?: ActiveConversationChatState;
-  onSwitchConversationToCloud?: (conversationId: string, message: ChatMessage) => void;
   chatRecoveryActionsBlockedReason?: RecoveryActionBlockReason | null;
   onActiveContextChange?: (context: WorkspaceContextItem | null) => void;
   onWorkspaceContextsChange?: (contexts: WorkspaceContextItem[]) => void;
   messages?: ChatMessage[];
   artifactHtml?: string | null;
   conversationError?: string | null;
-  // Contextual failure recovery, mirrored from the chat error card so the
-  // preview surface can offer the same one-click fix (AMR authorize, terminal
-  // sign-in) instead of a bare retry.
-  onAuthorizeAndRetry?: (message: ChatMessage) => void;
   onLaunchTerminalAuth?: () => void;
-  // Conversation id for the AMR promotion-card telemetry payload.
+  // Conversation id for the promotion-card telemetry payload.
   conversationId?: string | null;
   // Project-level actions (settings, handoff, avatar menu) rendered at the
   // right end of the Design Files tab row. The former standalone chrome header
@@ -1389,7 +1385,6 @@ export function FileWorkspace({
   onConversationSessionModeChange,
   onNewConversation,
   activeConversationChat,
-  onSwitchConversationToCloud,
   chatRecoveryActionsBlockedReason,
   onActiveContextChange,
   onWorkspaceContextsChange,
@@ -4563,7 +4558,6 @@ export function FileWorkspace({
             onSessionModeChange={onConversationSessionModeChange}
             onNewConversation={onNewConversation}
             activeConversationChat={activeConversationChat}
-            onSwitchConversationToCloud={onSwitchConversationToCloud}
             recoveryActionsBlockedReason={chatRecoveryActionsBlockedReason}
             onRequestOpenFile={openFile}
           />

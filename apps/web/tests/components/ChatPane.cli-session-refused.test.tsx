@@ -92,7 +92,7 @@ function refusedMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   } as ChatMessage;
 }
 
-function renderChat(message: ChatMessage, onSwitchToAmrAndRetry = vi.fn()) {
+function renderChat(message: ChatMessage) {
   return render(
     <ChatPane
       messages={[message]}
@@ -104,7 +104,6 @@ function renderChat(message: ChatMessage, onSwitchToAmrAndRetry = vi.fn()) {
       onSend={vi.fn()}
       onStop={vi.fn()}
       onRetry={vi.fn()}
-      onSwitchToAmrAndRetry={onSwitchToAmrAndRetry}
       conversations={[
         { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
       ]}
@@ -165,16 +164,6 @@ describe('ChatPane — ACP CLI session refusal card', () => {
     const card = container.querySelector('[data-user-action-card="run-recovery"]')!;
     expect(occurrences(card.textContent ?? '', RAW_AGENT_LINE)).toBe(0);
     expect(container.querySelector('.run-error__diagnostic')).toBeNull();
-  });
-
-  it('offers Cloud switching for the refused CLI run, without a second Retry action', () => {
-    const message = refusedMessage();
-    const onSwitchToAmrAndRetry = vi.fn();
-    renderChat(message, onSwitchToAmrAndRetry);
-
-    fireEvent.click(screen.getByRole('button', { name: 'chat.amrCard.switchCta' }));
-    expect(onSwitchToAmrAndRetry).toHaveBeenCalledExactlyOnceWith(message);
-    expect(screen.queryByRole('button', { name: 'promptTemplates.retry' })).toBeNull();
   });
 
   // The daemon may ship extra structured facts on the same event (it already

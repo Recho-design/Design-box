@@ -24,8 +24,8 @@ import {
   useWorkspaceContext,
   workspaceIdentityCacheKey,
 } from '../collab/useWorkspaceContext';
-import { useWorkspaceInvalidation } from '../collab/workspace-events';
-import { useWorkspaceSnapshotActivation } from '../collab/workspace-snapshot-activation';
+const useWorkspaceInvalidation = (_handlers?: Record<string, (payload: any) => void>, _options?: any) => {};
+const useWorkspaceSnapshotActivation = (_options?: any) => () => {};
 
 // Functional skills only — design templates render in EntryView's
 // Templates tab and are managed under their own daemon registry. See

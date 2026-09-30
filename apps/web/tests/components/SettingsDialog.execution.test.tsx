@@ -107,8 +107,6 @@ vi.mock('../../src/analytics/provider', () => ({
 import { SettingsDialog } from '../../src/components/SettingsDialog';
 import { IntegrationsView } from '../../src/components/IntegrationsView';
 import type { AgentRefreshOptions, SettingsSection } from '../../src/components/SettingsDialog';
-import { reconcileAmrModelChoice } from '../../src/components/SettingsDialog';
-import { reconcileAmrProfileEnv } from '../../src/components/SettingsDialog';
 import { providerModelsCacheKey } from '../../src/components/providerModelsCache';
 import { I18nProvider } from '../../src/i18n';
 import { LOCALES } from '../../src/i18n/types';
@@ -5244,67 +5242,6 @@ describe('SettingsDialog draft reconciliation', () => {
     );
   });
 
-  it('clears a stale AMR draft model when the external profile changes and the draft still matches the previous config', () => {
-    expect(
-      reconcileAmrModelChoice(
-        {
-          amr: {
-            model: 'prod-only-model',
-            reasoning: 'default',
-          },
-        },
-        {
-          ...baseConfig,
-          agentModels: {
-            amr: {
-              model: 'prod-only-model',
-              reasoning: 'default',
-            },
-          },
-          agentCliEnv: {
-            amr: {
-              OPEN_DESIGN_AMR_PROFILE: 'prod',
-            },
-          },
-        },
-        {
-          ...baseConfig,
-          agentModels: {},
-          agentCliEnv: {
-            amr: {
-              OPEN_DESIGN_AMR_PROFILE: 'local',
-            },
-          },
-        },
-      ),
-    ).toEqual({});
-  });
-
-  it('preserves unrelated draft env entries when reconciling the AMR profile', () => {
-    expect(
-      reconcileAmrProfileEnv(
-        {
-          codex: { CODEX_BIN: '/tmp/codex-dev' },
-          amr: {
-            OPEN_DESIGN_AMR_PROFILE: 'prod',
-            AMR_API_BASE_URL: 'https://draft.example.test',
-          },
-        },
-        {
-          amr: {
-            OPEN_DESIGN_AMR_PROFILE: 'local',
-            AMR_API_BASE_URL: 'https://daemon.example.test',
-          },
-        },
-      ),
-    ).toEqual({
-      codex: { CODEX_BIN: '/tmp/codex-dev' },
-      amr: {
-        OPEN_DESIGN_AMR_PROFILE: 'local',
-        AMR_API_BASE_URL: 'https://draft.example.test',
-      },
-    });
-  });
 });
 
 describe('SettingsDialog pets interactions', () => {

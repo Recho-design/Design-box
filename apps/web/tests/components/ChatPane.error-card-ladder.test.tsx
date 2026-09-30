@@ -97,8 +97,6 @@ function renderChat(
       onSend={vi.fn()}
       onStop={vi.fn()}
       onRetry={vi.fn()}
-      // 对应已接真实 Cloud 恢复回调的宿主；侧聊全链由独立宿主测试覆盖。
-      onSwitchToAmrAndRetry={vi.fn()}
       conversations={[
         { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
       ]}

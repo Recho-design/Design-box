@@ -1,4 +1,4 @@
-import type { SharedProjectPredicate } from '../../collab/all-projects-list';
+export type SharedProjectPredicate = (projectId: string) => boolean;
 
 /**
  * Whether the signed-in member may mutate (rename / duplicate / move / delete)

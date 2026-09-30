@@ -62,7 +62,7 @@ export interface ToolRow {
   failReason: string | null;
   /** 跑命令专用 */
   command: string | null;
-  /** 终端输出。AMR 上被安全打码 → null(D19) */
+  /** 终端输出。脱敏打码时 → null(D19) */
   terminal: string | null;
 }
 

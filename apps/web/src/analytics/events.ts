@@ -19,10 +19,7 @@ import type {
   DesignSystemsTemplatesModalSurfaceViewProps,
   AssistantFeedbackReasonPanelSurfaceViewProps,
   QuestionsFormSurfaceViewProps,
-  DeepSeekCampaignModalSurfaceViewProps,
   GoPlanSunsetModalSurfaceViewProps,
-  DeepSeekCampaignBadgeSurfaceViewProps,
-  DeepSeekCampaignModelBenefitSurfaceViewProps,
   // ui_click
   HomeNavClickProps,
   HelpPopoverClickProps,
@@ -76,13 +73,8 @@ import type {
   QuestionsFormClickProps,
   RunFailedToastClickProps,
   RunRecoveryActionClickProps,
-  AmrAuthResultProps,
-  AmrAuthStageProps,
-  AmrEntryClickProps,
   PreviewRunStatusSurfaceViewProps,
-  DeepSeekCampaignModalClickProps,
   GoPlanSunsetModalClickProps,
-  DeepSeekCampaignBadgeClickProps,
   RunFailedToastSurfaceViewProps,
   RunRecoveryActionSurfaceViewProps,
   RunStartBlockedSurfaceViewProps,
@@ -386,13 +378,6 @@ export function trackQuestionsFormSurfaceView(
   send(track, 'surface_view', props);
 }
 
-export function trackRunFailedToastGoAmrClick(
-  track: Track,
-  props: RunFailedToastClickProps,
-): void {
-  send(track, 'ui_click', props);
-}
-
 export function trackRunRecoveryActionClick(
   track: Track,
   props: RunRecoveryActionClickProps,
@@ -430,46 +415,11 @@ export function trackStudioOnboardingHintClick(
   send(track, 'ui_click', props);
 }
 
-export function trackAmrEntryClick(
-  track: Track,
-  props: AmrEntryClickProps,
-): void {
-  send(track, 'ui_click', props);
-}
-
-export function trackDeepSeekCampaignModalSurfaceView(
-  track: Track,
-  props: DeepSeekCampaignModalSurfaceViewProps,
-): void {
-  send(track, 'surface_view', props);
-}
-
 export function trackGoPlanSunsetModalSurfaceView(
   track: Track,
   props: GoPlanSunsetModalSurfaceViewProps,
 ): void {
   send(track, 'surface_view', props);
-}
-
-export function trackDeepSeekCampaignBadgeSurfaceView(
-  track: Track,
-  props: DeepSeekCampaignBadgeSurfaceViewProps,
-): void {
-  send(track, 'surface_view', props);
-}
-
-export function trackDeepSeekCampaignModelBenefitSurfaceView(
-  track: Track,
-  props: DeepSeekCampaignModelBenefitSurfaceViewProps,
-): void {
-  send(track, 'surface_view', props);
-}
-
-export function trackDeepSeekCampaignModalClick(
-  track: Track,
-  props: DeepSeekCampaignModalClickProps,
-): void {
-  send(track, 'ui_click', props);
 }
 
 export function trackGoPlanSunsetModalClick(
@@ -479,32 +429,6 @@ export function trackGoPlanSunsetModalClick(
   send(track, 'ui_click', props);
 }
 
-export function trackDeepSeekCampaignBadgeClick(
-  track: Track,
-  props: DeepSeekCampaignBadgeClickProps,
-): void {
-  send(track, 'ui_click', props);
-}
-
-// Fired exactly once per AMR sign-in attempt when the login poll settles.
-// Call sites go through analytics/amr-auth.ts, which owns the
-// begin/resolve dedupe — do not call this wrapper directly from
-// components, or concurrent pollers will double-report one attempt.
-export function trackAmrAuthResult(
-  track: Track,
-  props: AmrAuthResultProps,
-  options?: TrackOptions,
-): void {
-  send(track, 'amr_auth_result', props, options);
-}
-
-export function trackAmrAuthStage(
-  track: Track,
-  props: AmrAuthStageProps,
-  options?: TrackOptions,
-): void {
-  send(track, 'amr_auth_stage', props, options);
-}
 
 // ---- ui_click (home) -----------------------------------------------------
 

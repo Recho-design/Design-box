@@ -266,7 +266,6 @@ describe('ChatPane session switcher', () => {
     render(
       <ChatPane
         messages={[]}
-        amrBalanceCardUsd={0}
         streaming={false}
         error={null}
         projectId="project-1"

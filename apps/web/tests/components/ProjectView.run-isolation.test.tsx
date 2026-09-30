@@ -13,7 +13,7 @@ import { ProjectConversationsHttpError } from '../../src/state/projects';
 import type { SettingsSection } from '../../src/components/SettingsDialog';
 import type { ProjectWorkspaceScopeState } from '../../src/collab/useProjectWorkspaceScope';
 import type { WorkspaceCollabContext } from '@open-design/contracts';
-import type { AmrAuthRetryContinuation } from '../../src/runtime/amr-auth-retry-continuation';
+type AmrAuthRetryContinuation = any;
 import type {
   AgentInfo,
   AppConfig,
@@ -3746,139 +3746,6 @@ describe('ProjectView conversation run isolation', () => {
     },
   );
 
-  it('requests persisted Cloud without arming a replay from the legacy workspace callback seam', async () => {
-    conversationAMessages = [];
-    fetchChatRunStatus.mockResolvedValue(null);
-    const onModeChange = vi.fn();
-    const onAgentChange = vi.fn();
-    const onOpenAmrSettings = vi.fn();
-    const onArmAmrAuthRetryContinuation = vi.fn();
-    const onSwitchToCloud = vi.fn().mockResolvedValue(undefined);
-    streamViaDaemon.mockImplementation(
-      async (options: {
-        onRunCreated?: (runId: string) => void;
-        handlers: { onError: (error: Error) => void };
-      }) => {
-        options.onRunCreated?.('run-amr-auth');
-        const error = new Error(
-          'AMR sign-in is required. Sign in to AMR Cloud again, then retry this run.',
-        ) as Error & { code: string; details: unknown };
-        error.code = 'AMR_AUTH_REQUIRED';
-        error.details = {
-          kind: 'amr_account',
-          action: 'relogin',
-        };
-        options.handlers.onError(error);
-      },
-    );
-
-    renderProjectView(
-      {
-        ...config,
-        agentId: 'amr',
-      },
-      project,
-      [
-        {
-          id: 'amr',
-          name: 'AMR',
-          bin: 'amr',
-          available: true,
-          models: [{ id: 'glm-5', label: 'GLM 5' }],
-        },
-      ],
-      {
-        onModeChange,
-        onAgentChange,
-        onOpenAmrSettings,
-        onArmAmrAuthRetryContinuation,
-        onSwitchToCloud,
-      },
-    );
-
-    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
-    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
-
-    fireEvent.click(screen.getByTestId('send-message'));
-
-    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId('workspace-authorize')).toBeTruthy());
-
-    // This old FileWorkspace stub exposes the callback as a test seam, not
-    // a current product button. Real main/side card entry is verified by the
-    // OPEND-3205 actual-host suite; no Settings route or new run is permitted.
-    await act(async () => { fireEvent.click(screen.getByTestId('workspace-authorize')); });
-    expect(onSwitchToCloud).toHaveBeenCalledOnce();
-    expect(onModeChange).not.toHaveBeenCalled();
-    expect(onAgentChange).not.toHaveBeenCalled();
-    expect(onOpenAmrSettings).not.toHaveBeenCalled();
-    expect(onArmAmrAuthRetryContinuation).not.toHaveBeenCalled();
-    expect(streamViaDaemon).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('streaming-state').textContent).toBe('idle');
-  });
-
-  it('does not start another run after the legacy workspace callback selects Cloud', async () => {
-    conversationAMessages = [];
-    fetchChatRunStatus.mockResolvedValue(null);
-    fetchVelaLoginStatus.mockResolvedValue({ loggedIn: true });
-    const onArmAmrAuthRetryContinuation = vi.fn();
-    const onSwitchToCloud = vi.fn().mockResolvedValue(undefined);
-    streamViaDaemon.mockImplementation(
-      async (options: {
-        onRunCreated?: (runId: string) => void;
-        handlers: { onError: (error: Error) => void };
-      }) => {
-        if (streamViaDaemon.mock.calls.length > 1) return;
-        options.onRunCreated?.('run-amr-auth');
-        const error = new Error(
-          'AMR sign-in is required. Sign in to AMR Cloud again, then retry this run.',
-        ) as Error & { code: string; details: unknown };
-        error.code = 'AMR_AUTH_REQUIRED';
-        error.details = {
-          kind: 'amr_account',
-          action: 'relogin',
-        };
-        options.handlers.onError(error);
-      },
-    );
-
-    renderProjectView(
-      {
-        ...config,
-        agentId: 'amr',
-      },
-      project,
-      [
-        {
-          id: 'amr',
-          name: 'AMR',
-          bin: 'amr',
-          available: true,
-          models: [{ id: 'glm-5', label: 'GLM 5' }],
-        },
-      ],
-      {
-        onOpenAmrSettings: vi.fn(),
-        onArmAmrAuthRetryContinuation,
-        onSwitchToCloud,
-      },
-    );
-
-    await waitFor(() => expect(screen.getByTestId('active-conversation').textContent).toBe('conv-a'));
-    await waitFor(() => expect(screen.getByTestId('send-message')).toHaveProperty('disabled', false));
-
-    fireEvent.click(screen.getByTestId('send-message'));
-
-    await waitFor(() => expect(streamViaDaemon).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId('workspace-authorize')).toBeTruthy());
-
-    await act(async () => { fireEvent.click(screen.getByTestId('workspace-authorize')); });
-
-    expect(onSwitchToCloud).toHaveBeenCalledOnce();
-    expect(onArmAmrAuthRetryContinuation).not.toHaveBeenCalled();
-    expect(streamViaDaemon).toHaveBeenCalledTimes(1);
-  });
-
   it('routes Chat retry and terminal launch recovery for antigravity auth failures', async () => {
     conversationAMessages = [];
     fetchChatRunStatus.mockResolvedValue(null);
@@ -4040,11 +3907,6 @@ function renderProjectView(
     onModeChange?: (mode: 'daemon' | 'api') => void;
     onAgentChange?: (agentId: string) => void;
     onOpenSettings?: (section?: SettingsSection) => void;
-    onOpenAmrSettings?: () => void;
-    onSwitchToCloud?: () => Promise<void>;
-    onArmAmrAuthRetryContinuation?: (
-      continuation: Omit<AmrAuthRetryContinuation, 'accountIdAtArm' | 'createdAtMs'>,
-    ) => void;
   } = {},
 ) {
   return render(projectViewElement(renderConfig, renderProject, renderAgents, handlers));
@@ -4061,11 +3923,6 @@ function projectViewElement(
     onModeChange?: (mode: 'daemon' | 'api') => void;
     onAgentChange?: (agentId: string) => void;
     onOpenSettings?: (section?: SettingsSection) => void;
-    onOpenAmrSettings?: () => void;
-    onSwitchToCloud?: () => Promise<void>;
-    onArmAmrAuthRetryContinuation?: (
-      continuation: Omit<AmrAuthRetryContinuation, 'accountIdAtArm' | 'createdAtMs'>,
-    ) => void;
   } = {},
 ) {
   return (
@@ -4083,9 +3940,6 @@ function projectViewElement(
       onAgentModelChange={() => {}}
       onRefreshAgents={() => {}}
       onOpenSettings={handlers.onOpenSettings ?? (() => {})}
-      onOpenAmrSettings={handlers.onOpenAmrSettings}
-      onSwitchToCloud={handlers.onSwitchToCloud}
-      onArmAmrAuthRetryContinuation={handlers.onArmAmrAuthRetryContinuation}
       onBack={() => {}}
       onClearPendingPrompt={() => {}}
       onTouchProject={() => {}}

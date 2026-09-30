@@ -63,10 +63,6 @@ import { fetchMcpServers } from '../state/mcp';
 import { takeHomeComposerAssetSeed } from '../state/libraryHandoff';
 import { useI18n, useT } from '../i18n';
 import {
-  formatModelWindowRetryAt,
-  modelWindowLimitCopy,
-} from '../runtime/amr-guidance';
-import {
   localizeSkillName,
   localizeSkillPrompt,
 } from '../i18n/content';
@@ -117,8 +113,8 @@ import {
   useWorkspaceContext,
   workspaceResourceReadContext,
 } from '../collab/useWorkspaceContext';
-import { useWorkspaceInvalidation } from '../collab/workspace-events';
-import { useWorkspaceSnapshotActivation } from '../collab/workspace-snapshot-activation';
+const useWorkspaceInvalidation = (_handlers?: any, _options?: any) => {};
+const useWorkspaceSnapshotActivation = (_options?: any) => () => {};
 import {
   buildHomeMediaComposer,
   homeMediaSurfaceForChipId,
@@ -149,8 +145,7 @@ import { localizePluginDescription } from './plugins-home/localization';
 import type { Recommendation } from '../onboarding/recommendation';
 import type { OnboardingEntry } from '../onboarding/onboarding-entry';
 import { AnimatePresence } from 'motion/react';
-import { DeepSeekV4FlashCampaign } from './DeepSeekV4FlashCampaign';
-import type { DeepSeekV4FlashCampaignAudience } from '../campaigns/deepseek-v4-flash';
+
 
 export interface ActivePlugin {
   record: InstalledPluginRecord;
@@ -273,7 +268,7 @@ interface Props {
   designSystemsLoading?: boolean;
   defaultDesignSystemId?: string | null;
   // `'blocked'` means the shell refused the submit but already surfaced its
-  // own UI (e.g. the AMR balance gate dialog): keep the draft, show no error.
+  // own UI (e.g. the balance gate dialog): keep the draft, show no error.
   onSubmit: (
     payload: PluginLoopSubmit,
   ) => Promise<boolean | 'blocked' | void> | boolean | 'blocked' | void;
@@ -309,13 +304,10 @@ interface Props {
   onRecommendationDismiss?: () => void;
   executionSwitcher?: ReactNode;
   artifactUpgradeSlot?: ReactNode;
-  deepSeekV4FlashCampaignAudience?: DeepSeekV4FlashCampaignAudience;
   /** Real model switch for the campaign modal's paid 立即使用 CTA (D5).
    *  EntryShell owns the agent/model persistence callbacks; HomeView only
    *  threads them through, like the audience above. */
-  onDeepSeekV4FlashCampaignUseNow?: (agentId: string, modelId: string) => void;
-  /** Telemetry opt-in + install id for the modal's consent-gated AMR
-   *  attribution — EntryShell reads them off config, HomeView threads. */
+  /** Telemetry opt-in + install id for the modal's consent-gated attribution — EntryShell reads them off config, HomeView threads. */
   deepSeekV4FlashCampaignMetricsConsent?: boolean;
   deepSeekV4FlashCampaignInstallationId?: string | null;
   /**
@@ -518,10 +510,6 @@ export function HomeView({
   onRecommendationDismiss,
   executionSwitcher,
   artifactUpgradeSlot,
-  deepSeekV4FlashCampaignAudience = 'unknown',
-  onDeepSeekV4FlashCampaignUseNow,
-  deepSeekV4FlashCampaignMetricsConsent = false,
-  deepSeekV4FlashCampaignInstallationId = null,
   variant = 'page',
 }: Props) {
   const { locale, t } = useI18n();
@@ -534,7 +522,7 @@ export function HomeView({
   const ownsComposerDraft = variant === 'page';
   const workspaceContextState = useWorkspaceContext();
   const { context: workspaceContext } = workspaceContextState;
-  const pluginCatalogWorkspaceContext = workspaceResourceReadContext(workspaceContextState);
+  const pluginCatalogWorkspaceContext = workspaceResourceReadContext(workspaceContextState.context);
   const lastSettledLocalCatalogScopeRef = useRef<LocalCatalogScope | null>(
     localCatalogScopeFromWorkspaceContext(workspaceContext),
   );
@@ -1374,7 +1362,7 @@ export function HomeView({
   // Workspace context. Refresh only a missing value or the value previously
   // supplied by context, preserving an explicit plugin input when one exists.
   // This reads the exact context selected for this tab; it never consults or
-  // writes Vela/daemon account-level active-workspace state. That model cannot
+  // writes daemon account-level active-workspace state. That model cannot
   // represent two clients of one account open in different Workspaces.
   useEffect(() => {
     const nextWorkspaceName = workspaceContext?.workspaceName?.trim() || null;
@@ -3034,7 +3022,7 @@ export function HomeView({
         setError(t('home.createFailed'));
         return;
       }
-      // Blocked-and-handled (AMR balance gate): the shell already shows its
+      // Blocked-and-handled (balance gate): the shell already shows its
       // dialog. Keep the composer draft and staged contexts for the retry.
       if (accepted === 'blocked') return;
       // Create accepted — now it is safe to spend the one-shot marker.
@@ -3059,32 +3047,13 @@ export function HomeView({
       if (isTransportFailure) {
         setDaemonRecoveryActive(true);
         setError(t('home.daemonRecovering'));
-      } else if (
-        err instanceof ProjectCreateError
-        && err.code === 'AMR_AUTH_REQUIRED'
-      ) {
-        setError(t('entry.authExpiredBody'));
       } else {
         // A rolling model window is the one upstream failure whose own wording
         // must not reach the user: the gateway writes it in English for API
         // callers, and read literally it sounds like a charged failure rather
         // than a wait. Everything else keeps the verbatim path, where the
         // daemon's message IS the specific thing to say.
-        const windowLimit = modelWindowLimitCopy(
-          err instanceof Error ? err.message : null,
-        );
-        if (windowLimit) {
-          setError(t(
-            windowLimit.messageKey,
-            windowLimit.retryAt
-              ? { retryAt: formatModelWindowRetryAt(windowLimit.retryAt, locale) }
-              : undefined,
-          ));
-        } else {
-          setError(err instanceof Error && err.message.trim()
-            ? err.message
-            : t('home.createFailed'));
-        }
+        setError(err instanceof Error && err.message.trim() ? err.message : t('home.createFailed'));
       }
     } finally {
       setSending(false);
@@ -3110,13 +3079,7 @@ export function HomeView({
           it is a Home-page moment, and a second copy of the modal would fight
           the page one over the same dismissal state. */}
       {variant === 'dock' ? null : (
-        <DeepSeekV4FlashCampaign
-          audience={deepSeekV4FlashCampaignAudience}
-          active={isActive}
-          onUseCampaignModel={onDeepSeekV4FlashCampaignUseNow}
-          metricsConsent={deepSeekV4FlashCampaignMetricsConsent}
-          installationId={deepSeekV4FlashCampaignInstallationId}
-        />
+        null
       )}
       <HomeHero
         variant={variant}

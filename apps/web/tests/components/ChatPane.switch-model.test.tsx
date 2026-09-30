@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-/** G16 replaces the error-card model-picker/settings actions with the fixed
- * Cloud handoff for a failed local run. Model-unavailable copy remains covered.
- */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,7 +13,7 @@ vi.mock('../../src/i18n', () => ({
 
 afterEach(() => cleanup());
 
-/** 本地运行报模型下线，保留分类，但卡上仅允许固定 Cloud 入口。 */
+/** 本地运行报模型下线，保留分类，但卡上仅允许重试入口。 */
 function modelGoneTurn(): ChatMessage[] {
   return [
     { id: 'user-1', role: 'user', content: 'Build it', createdAt: 0 },
@@ -34,7 +31,8 @@ function modelGoneTurn(): ChatMessage[] {
           kind: 'status',
           label: 'error',
           detail: 'The selected model is no longer available.',
-          code: 'AMR_MODEL_UNAVAILABLE',
+          code: 'AGENT_EXECUTION_FAILED',
+          failureDetail: 'model_not_found',
         },
       ],
     } as unknown as ChatMessage,
@@ -63,25 +61,23 @@ function renderPane(extra: Record<string, unknown>) {
   );
 }
 
-describe('G16 · 模型下线卡的固定 Cloud 入口', () => {
+describe('G16 · 模型下线卡的重试入口', () => {
   it.each([true, false])('不调用旧模型选择器或设置，无论 picker 是否接线 (%s)', (withPicker) => {
     const onSwitchModel = vi.fn();
     const onOpenSettings = vi.fn();
     const onRetry = vi.fn();
-    const onSwitchToAmrAndRetry = vi.fn();
     const { container } = renderPane({
-      ...(withPicker ? { onSwitchModel } : {}), onOpenSettings, onRetry, onSwitchToAmrAndRetry,
+      ...(withPicker ? { onSwitchModel } : {}), onOpenSettings, onRetry,
     });
     const card = screen.getByTestId('chat-run-error-card');
     expect(within(card).getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
-      'chat.runError.contactSupportCta', 'chat.runError.exportLogsCta', 'chat.amrCard.switchCta',
+      'chat.runError.contactSupportCta', 'chat.runError.exportLogsCta', 'promptTemplates.retry',
     ]);
     expect(container.querySelector('[data-testid="chat-error-switch-model"]')).toBeNull();
-    fireEvent.click(within(card).getByRole('button', { name: 'chat.amrCard.switchCta' }));
-    expect(onSwitchToAmrAndRetry).toHaveBeenCalledWith(expect.objectContaining({ id: 'assistant-1', agentId: 'claude' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'promptTemplates.retry' }));
     expect(onSwitchModel).not.toHaveBeenCalled();
     expect(onOpenSettings).not.toHaveBeenCalled();
-    expect(onRetry).not.toHaveBeenCalled();
+    expect(onRetry).toHaveBeenCalledWith(expect.objectContaining({ id: 'assistant-1', agentId: 'claude' }), 'manual_retry');
   });
 });
 

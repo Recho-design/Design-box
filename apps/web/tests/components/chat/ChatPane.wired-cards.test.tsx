@@ -13,8 +13,7 @@
 //   1. 报错卡三颗动作齐(〔联系支持〕〔导出日志〕+ 主动作),且前两颗**常驻** ——
 //      连 `cpu_unsupported` 这种今天一颗按钮都没有的失败也要有。
 //   2. 点〔联系支持〕开 `SupportDialog`(组件 19 · 第 80 格)。
-//   3. OPEND-2807 / G16: Cloud 失败固定联系我们、导出日志、重试，模型不可用也不例外。
-//   4. 升级卡在**流水里**(最后一轮之后、输入框之前),两档由余额决定,且**不挡发送**。
+//   3. 支持弹窗由真实产品路径打开。
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { forwardRef } from 'react';
@@ -71,7 +70,7 @@ function failedMessage(
     createdAt: 1,
     runId: 'run-failed',
     runStatus: 'failed',
-    agentId: 'amr',
+  agentId: 'codex',
     events: [
       {
         kind: 'status',
@@ -90,7 +89,6 @@ function renderChat(opts: {
   onRetry?: (m: ChatMessage) => void;
   onOpenSettings?: (section?: string) => void;
   onSwitchModel?: () => void;
-  amrBalanceCardUsd?: number | null;
   onSend?: (...args: unknown[]) => void;
 } = {}) {
   return render(
@@ -104,7 +102,6 @@ function renderChat(opts: {
       onSend={opts.onSend ?? vi.fn()}
       onStop={vi.fn()}
       onRetry={opts.onRetry ?? vi.fn()}
-      amrBalanceCardUsd={opts.amrBalanceCardUsd ?? null}
       onOpenSettings={opts.onOpenSettings as never}
       onSwitchModel={opts.onSwitchModel}
       conversations={[
@@ -113,7 +110,7 @@ function renderChat(opts: {
       activeConversationId="conv-1"
       onSelectConversation={vi.fn()}
       onDeleteConversation={vi.fn()}
-      config={{ agentId: 'amr', agentCliEnv: {} } as unknown as AppConfig}
+      config={{ agentId: 'codex', agentCliEnv: {} } as unknown as AppConfig}
     />,
   );
 }
@@ -155,7 +152,7 @@ describe('ChatPane — 报错卡的常驻动作', () => {
   // 产品裁决:「好多都应该得有导出日志这个按钮」→ 不挑场景。
   // `cpu_unsupported` 是今天**一颗按钮都没有**的那一档(R-023「无任何按钮」),
   // 恰好是这条裁决最想覆盖的场景。
-  it('Cloud 的 cpu_unsupported 同样固定两颗次级和主重试', () => {
+  it('cpu_unsupported 同样固定两颗次级和主重试', () => {
     renderChat({
       messages: [
         failedMessage({
@@ -212,67 +209,5 @@ describe('ChatPane — 报错卡的常驻动作', () => {
       n.getAttribute('data-support-channel'),
     );
     expect(hrefs).toEqual(['feishu', 'discord']);
-  });
-});
-
-describe('ChatPane — Cloud 模型不可用也遵守 G16 固定动作', () => {
-  it('AMR_MODEL_UNAVAILABLE 显示固定三颗，不增加换模型或设置', () => {
-    renderChat({ messages: [failedMessage({ code: 'AMR_MODEL_UNAVAILABLE' })] });
-
-    const actions = screen.getByTestId('chat-run-error-card').querySelectorAll('button');
-    expect(Array.from(actions, (button) => button.dataset.testid)).toEqual([
-      'chat-error-contact-support',
-      'chat-error-export-logs',
-      'chat-error-retry',
-    ]);
-    expect(screen.getByTestId('chat-error-retry').dataset.runErrorAction).toBe('primary');
-    expect(screen.queryByTestId('chat-error-switch-model')).toBeNull();
-  });
-
-  it('点重试传回原失败消息，不打开模型选择或设置', () => {
-    const onOpenSettings = vi.fn();
-    const onSwitchModel = vi.fn();
-    const onRetry = vi.fn();
-    const message = failedMessage({ code: 'AMR_MODEL_UNAVAILABLE' });
-    renderChat({ messages: [message], onOpenSettings, onSwitchModel, onRetry });
-
-    fireEvent.click(screen.getByTestId('chat-error-retry'));
-    expect(onRetry).toHaveBeenCalledExactlyOnceWith(message, 'manual_retry');
-    expect(onOpenSettings).not.toHaveBeenCalled();
-    expect(onSwitchModel).not.toHaveBeenCalled();
-  });
-});
-
-describe('ChatPane — 升级卡接在流水里', () => {
-  it('余额 > 0 但撑不住下一轮:暖橙档,卡出现在流水里', () => {
-    const { container } = renderChat({ amrBalanceCardUsd: 1.2 });
-
-    const card = screen.getByTestId('chat-upgrade-card');
-    expect(card).toBeTruthy();
-    expect(card.getAttribute('data-out')).toBe('false');
-    expect(card.textContent).toContain('$1.20');
-    // 流水里(chat-log 内),不是钉在输入框上方的那一类。
-    expect(container.querySelector('.chat-log')?.contains(card)).toBe(true);
-  });
-
-  it('余额 = 0:红档,文案换成「现在无法开始新任务」', () => {
-    renderChat({ amrBalanceCardUsd: 0 });
-
-    const card = screen.getByTestId('chat-upgrade-card');
-    expect(card.getAttribute('data-out')).toBe('true');
-    expect(card.textContent).toContain('chat.upgrade.whyOut');
-  });
-
-  it('没有余额提示时不渲染这张卡', () => {
-    renderChat({ amrBalanceCardUsd: null });
-    expect(screen.queryByTestId('chat-upgrade-card')).toBeNull();
-  });
-
-  // D4「不阻塞」:卡在流水里,发送不受影响。
-  it('卡出现时发送依然可用(D4 不阻塞)', () => {
-    renderChat({ amrBalanceCardUsd: 0 });
-    expect(screen.getByTestId('chat-upgrade-card')).toBeTruthy();
-    // 卡本身不是遮罩/弹窗,也不带任何 aria-modal。
-    expect(document.querySelector('[aria-modal="true"]')).toBeNull();
   });
 });

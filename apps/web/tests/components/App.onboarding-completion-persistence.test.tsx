@@ -28,7 +28,7 @@ import {
   fetchPromptTemplates,
   fetchSkills,
 } from '../../src/providers/registry';
-import { fetchAmrModels } from '../../src/providers/daemon';
+const fetchAmrModels = vi.fn();
 import { listProjects, listTemplates } from '../../src/state/projects';
 
 type TestRoute = Record<string, unknown>;

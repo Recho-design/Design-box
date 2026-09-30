@@ -92,7 +92,6 @@ function failedMessage(options: FailedRunOptions): ChatMessage {
 }
 
 function renderChat(message: ChatMessage, onOpenSettings = vi.fn()) {
-  const onSwitchToAmrAndRetry = vi.fn();
   const rendered = render(
     <ChatPane
       messages={[message]}
@@ -106,7 +105,6 @@ function renderChat(message: ChatMessage, onOpenSettings = vi.fn()) {
       onStop={vi.fn()}
       onRetry={vi.fn()}
       onOpenSettings={onOpenSettings}
-      onSwitchToAmrAndRetry={onSwitchToAmrAndRetry}
       conversations={[
         { projectId: 'project-1', id: 'conv-1', title: 'Current', createdAt: 1, updatedAt: 1 },
       ]}
@@ -123,7 +121,7 @@ function renderChat(message: ChatMessage, onOpenSettings = vi.fn()) {
       }
     />,
   );
-  return { ...rendered, onOpenSettings, onSwitchToAmrAndRetry };
+  return { ...rendered, onOpenSettings };
 }
 
 const cardOf = (container: HTMLElement) =>
@@ -157,22 +155,6 @@ describe('S05 · 自带 API key 错误保留专属文案，入口按 G16 固定'
   it('上游那句英文原文不上卡面 —— 卡上只说人话', () => {
     const { container } = renderChat(failedMessage({ failureDetail: 'invalid_api_key' }));
     expect(descriptionOf(container)!.textContent ?? '').not.toContain(RAW_INVALID_KEY);
-  });
-
-  it('卡内固定为联系、导出日志和 Cloud，不再出现去设置', () => {
-    const { container } = renderChat(failedMessage({ failureDetail: 'invalid_api_key' }));
-    expect(within(cardOf(container) as HTMLElement).getAllByRole('button').map((button) => button.textContent?.trim()))
-      .toEqual(['chat.runError.contactSupportCta', 'chat.runError.exportLogsCta', 'chat.amrCard.switchCta']);
-    expect(openSettingsButtonOf(container)).toBeNull();
-  });
-
-  it('点击 Cloud 将原失败消息交给宿主，不调用旧设置入口', () => {
-    const { container, onOpenSettings, onSwitchToAmrAndRetry } = renderChat(
-      failedMessage({ failureDetail: 'invalid_api_key' }),
-    );
-    fireEvent.click(within(cardOf(container) as HTMLElement).getByRole('button', { name: 'chat.amrCard.switchCta' }));
-    expect(onSwitchToAmrAndRetry).toHaveBeenCalledWith(expect.objectContaining({ id: 'msg-failed', agentId: 'byok-opencode' }));
-    expect(onOpenSettings).not.toHaveBeenCalled();
   });
 
   // daemon 对这一格的 code 有两种写法(ACP 的 AGENT_EXECUTION_FAILED,以及
@@ -240,25 +222,23 @@ describe('评审拦截 · S05 只给 Open Design 管理的 API key', () => {
   // (`ProjectView` 的 `apiProtocolAgentId(config.apiProtocol)`)。收窄不能把
   // 它们一起关在门外 —— 它们的 key 就填在设置页那一屏。
   it.each(['anthropic-api', 'openai-api', 'bedrock-api'])(
-    '%s 保留 S05 文案，并把原失败交给固定 Cloud 入口',
+    '%s 保留 S05 文案',
     (agentId) => {
-      const { container, onOpenSettings, onSwitchToAmrAndRetry } = renderChat(
+      const { container, onOpenSettings } = renderChat(
         failedMessage({ agentId, failureDetail: 'invalid_api_key' }),
       );
       expect(titleOf(container)!.textContent).toContain(
         'chat.runError.title.apiKeyInvalid',
       );
       expect(openSettingsButtonOf(container)).toBeNull();
-      fireEvent.click(within(cardOf(container) as HTMLElement).getByRole('button', { name: 'chat.amrCard.switchCta' }));
-      expect(onSwitchToAmrAndRetry).toHaveBeenCalledWith(expect.objectContaining({ id: 'msg-failed', agentId }));
       expect(onOpenSettings).not.toHaveBeenCalled();
     },
   );
 
   // Antigravity 的登录只能在终端里做,它在 `resolveRunFailureUi` 里排在这一格
   // **之前**,本来就抢不走。钉一条,免得日后有人把这一格往上挪。
-  it('antigravity 保留 S02 文案，卡内入口改为 Cloud', () => {
-    const { container, onSwitchToAmrAndRetry } = renderChat(
+  it('antigravity 保留 S02 文案', () => {
+    const { container } = renderChat(
       failedMessage({
         agentId: 'antigravity',
         failureDetail: 'invalid_api_key',
@@ -268,8 +248,6 @@ describe('评审拦截 · S05 只给 Open Design 管理的 API key', () => {
     );
     expect(titleOf(container)!.textContent).toContain(S02_TITLE);
     expect(openSettingsButtonOf(container)).toBeNull();
-    fireEvent.click(within(cardOf(container) as HTMLElement).getByRole('button', { name: 'chat.amrCard.switchCta' }));
-    expect(onSwitchToAmrAndRetry).toHaveBeenCalledWith(expect.objectContaining({ id: 'msg-failed', agentId: 'antigravity' }));
   });
 });
 
