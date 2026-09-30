@@ -47,7 +47,6 @@ import {
 } from '../langfuse-trace.js';
 import {
   agentProviderIdForRunAnalytics,
-  amrUserIdForRunAnalytics,
   hasExplicitRequestedModelForAnalytics,
   perRequestUsageForRun,
   runtimeTypeForRunAnalytics,
@@ -408,12 +407,10 @@ export function createRunAnalyticsLifecycle(
         const detectedAgentsForAnalytics = await detectAgents(
           toJsonRecord((appCfgForAnalytics as { agentCliEnv?: unknown }).agentCliEnv),
         ).catch((): Array<{ id: string; available: boolean }> => []);
-        const velaStatusForAnalytics = null;
         const configureGlobals = deriveConfigureGlobals({
           mode: 'daemon',
           agentId: typeof reqBody.agentId === 'string' ? reqBody.agentId : null,
           agents: detectedAgentsForAnalytics,
-          amrAuthorized: false,
         });
         const promptText =
           typeof reqBody.currentPrompt === 'string'
@@ -594,7 +591,6 @@ export function createRunAnalyticsLifecycle(
             derived: configureGlobals.runtime_type,
             hint: analyticsHints.runtimeType,
           }),
-          ...amrUserIdForRunAnalytics(velaStatusForAnalytics),
           project_id: requestProjectId,
           conversation_id:
             typeof reqBody.conversationId === 'string' ? reqBody.conversationId : null,

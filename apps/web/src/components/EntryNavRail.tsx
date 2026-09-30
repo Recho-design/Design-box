@@ -101,7 +101,6 @@ const resetCloudSignInTipDismissal = () => {};
 const notifyAccountStatusChanged = (_args?: any) => {};
 const InviteDialog = (_props: any) => null;
 type SharedProjectPredicate = (projectId: string) => boolean;
-const MessageCenter = (_props: any) => null;
 const canUpgradeFromPlanTier = (_tier?: any) => false;
 const isMaxPlanTier = (_tier?: any) => false;
 const resolvePlanLabelTier = (_tier?: any) => _tier || '';
@@ -315,10 +314,6 @@ interface Props {
    *  that is not local yet still lands. */
   onOpenRecentProject?: (id: string) => void | Promise<unknown>;
   /** One-off targeted announcement coordination owned by the Home shell. */
-  priorityAnnouncementActive?: boolean;
-  onPriorityAnnouncementPendingChange?: (pending: boolean) => void;
-  priorityAnnouncementCurrentPlanId?: string | null;
-  priorityAnnouncementMetricsConsent?: boolean;
 }
 
 interface NavButtonProps {
@@ -1051,10 +1046,6 @@ interface EntryTopRightClusterProps {
   accountHost?: HTMLElement | null;
   onOpenSettings?: (section?: EntrySettingsSection) => void;
   onSignedOut?: () => void | Promise<void>;
-  priorityAnnouncementActive?: boolean;
-  onPriorityAnnouncementPendingChange?: (pending: boolean) => void;
-  priorityAnnouncementCurrentPlanId?: string | null;
-  priorityAnnouncementMetricsConsent?: boolean;
 }
 
 /**
@@ -1083,10 +1074,6 @@ export function EntryTopRightCluster({
   accountHost,
   onOpenSettings,
   onSignedOut,
-  priorityAnnouncementActive,
-  onPriorityAnnouncementPendingChange,
-  priorityAnnouncementCurrentPlanId,
-  priorityAnnouncementMetricsConsent,
 }: EntryTopRightClusterProps) {
   const { t, locale } = useI18n();
   const analytics = useAnalytics();
@@ -1215,11 +1202,6 @@ export function EntryTopRightCluster({
     },
     [],
   );
-  // Message-center panel (opened from the bell beside the identity row) and
-  // its unread count, which drives the red dot on that bell.
-  const [messageCenterOpen, setMessageCenterOpen] = useState(false);
-  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
-  const messageCenterBellRef = useRef<HTMLButtonElement | null>(null);
   // Sign-out confirm gate (recvqgMWpJZqhL): the menu item only ARMS the
   // confirmation dialog; the real logout chain runs on explicit confirm.
   const [confirmSignOut, setConfirmSignOut] = useState(false);
@@ -1700,31 +1682,6 @@ export function EntryTopRightCluster({
                       fixed slots. */}
                   <span className="entry-nav-rail__account-name">{accountName}</span>
                 </button>
-                {/* Message centre is a peer of the identity here, not a menu
-                    row: it is checked far more often than anything the menu
-                    holds, and a row hidden behind a hover menu made the unread
-                    dot on the avatar point at something two interactions
-                    away. */}
-                <button
-                  type="button"
-                  ref={messageCenterBellRef}
-                  className="entry-nav-rail__account-bell"
-                  aria-haspopup="dialog"
-                  aria-expanded={messageCenterOpen}
-                  aria-label={'Notifications'}
-                  title={'Notifications'}
-                  data-testid="entry-nav-account-message-center"
-                  onClick={() => {
-                    trackAccountAction('message_center');
-                    closeAccountMenu();
-                    setMessageCenterOpen(true);
-                  }}
-                >
-                  <Icon name="bell" size={15} />
-                  {messageUnreadCount > 0 ? (
-                    <span className="entry-nav-rail__menu-item-dot" aria-hidden />
-                  ) : null}
-                </button>
                 {/* Update-ready rocket, parked at the row's outer edge — last
                     in a fixed-slot tail so the elastic name column absorbs
                     whatever width is left. Mounted unconditionally so the
@@ -1863,25 +1820,6 @@ export function EntryTopRightCluster({
             accountHost as HTMLElement,
           )
         : null}
-      {/* Panel + unread polling live here (outside the hover menu, which
-          unmounts when closed); the bell beside the identity row just opens
-          it. Signed-out shells have no account module — `EntryNavRail` mounts
-          its own MessageCenter for that branch, so this one is context-gated
-          to keep exactly one instance (and one unread poller) alive. */}
-      {context ? (
-        <MessageCenter
-          hideTrigger
-          returnFocusRef={messageCenterBellRef}
-          open={messageCenterOpen}
-          onOpenChange={setMessageCenterOpen}
-          onUnreadCountChange={setMessageUnreadCount}
-          onOpenNotificationSettings={onOpenSettings ? () => onOpenSettings('notifications') : undefined}
-          priorityAnnouncementActive={priorityAnnouncementActive}
-          onPriorityAnnouncementPendingChange={onPriorityAnnouncementPendingChange}
-          priorityAnnouncementCurrentPlanId={priorityAnnouncementCurrentPlanId}
-          priorityAnnouncementMetricsConsent={priorityAnnouncementMetricsConsent}
-        />
-      ) : null}
     </>
   );
 }
@@ -2102,10 +2040,6 @@ export function EntryNavRail({
   recentProjectOwnerMemberIds,
   onRecentProjectShared,
   onRecentProjectShareFailed,
-  priorityAnnouncementActive,
-  onPriorityAnnouncementPendingChange,
-  priorityAnnouncementCurrentPlanId,
-  priorityAnnouncementMetricsConsent,
 }: Props) {
   const { t } = useI18n();
   const analytics = useAnalytics();
@@ -2128,13 +2062,6 @@ export function EntryNavRail({
   const canAccessInviteFlow = canAccessWorkspaceInviteFlow(context);
   const workspaceSettingsUrl = context?.workspaceSettingsUrl?.trim() || null;
 
-  // Message-center panel for the SIGNED-OUT shell only (the bell on the local
-  // account dock in the footer is the one opener there). The signed-in panel —
-  // plus the unread badge on its dock bell — lives inside
-  // `EntryTopRightCluster` with the account menu.
-  const [messageCenterOpen, setMessageCenterOpen] = useState(false);
-  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
-  const messageCenterRailRef = useRef<HTMLButtonElement | null>(null);
   const [teamOpen, setTeamOpen] = useState(false);
   useEffect(() => {
     if (!teamOpen) return;
@@ -2777,53 +2704,11 @@ export function EntryNavRail({
                 </span>
                 <span className="entry-nav-rail__account-name">{t('entry.localAccountName')}</span>
               </button>
-              <button
-                type="button"
-                ref={messageCenterRailRef}
-                className="entry-nav-rail__account-bell"
-                aria-haspopup="dialog"
-                aria-expanded={messageCenterOpen}
-                aria-label={'Notifications'}
-                title={'Notifications'}
-                data-testid="entry-nav-message-center"
-                onClick={() => {
-                  trackAccountMenuClick(analytics.track, {
-                    page_name: analyticsPage,
-                    area: 'account_menu',
-                    element: 'message_center',
-                  });
-                  setMessageCenterOpen(true);
-                }}
-              >
-                <Icon name="bell" size={15} />
-                {messageUnreadCount > 0 ? (
-                  <span className="entry-nav-rail__menu-item-dot" aria-hidden />
-                ) : null}
-              </button>
             </div>
           </div>
         </div>
       )}
       </div>
-
-      {/* Signed-out message-center panel + unread polling (the local dock's
-          bell above is its opener). Signed-in mounts move into
-          `EntryTopRightCluster` — context-gating both sides is what keeps
-          exactly one panel (and one unread poller) alive. */}
-      {context ? null : (
-        <MessageCenter
-          hideTrigger
-          returnFocusRef={messageCenterRailRef}
-          open={messageCenterOpen}
-          onOpenChange={setMessageCenterOpen}
-          onUnreadCountChange={setMessageUnreadCount}
-          onOpenNotificationSettings={onOpenSettings ? () => onOpenSettings('notifications') : undefined}
-          priorityAnnouncementActive={priorityAnnouncementActive}
-          onPriorityAnnouncementPendingChange={onPriorityAnnouncementPendingChange}
-          priorityAnnouncementCurrentPlanId={priorityAnnouncementCurrentPlanId}
-          priorityAnnouncementMetricsConsent={priorityAnnouncementMetricsConsent}
-        />
-      )}
 
       <InviteDialog
         open={inviteOpen}
@@ -2857,10 +2742,6 @@ export function EntryNavRail({
         accountHost={accountHost}
         onOpenSettings={onOpenSettings}
         onSignedOut={onSignedOut}
-        priorityAnnouncementActive={priorityAnnouncementActive}
-        onPriorityAnnouncementPendingChange={onPriorityAnnouncementPendingChange}
-        priorityAnnouncementCurrentPlanId={priorityAnnouncementCurrentPlanId}
-        priorityAnnouncementMetricsConsent={priorityAnnouncementMetricsConsent}
       />
     </nav>
   );

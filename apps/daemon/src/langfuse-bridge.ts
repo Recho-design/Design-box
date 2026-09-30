@@ -32,7 +32,7 @@ import {
   type SafeRunQualityV1,
 } from '@open-design/contracts';
 
-import { agentCliEnvForAgent, readAppConfig, type TelemetryPrefs } from './app-config.js';
+import { readAppConfig, type TelemetryPrefs } from './app-config.js';
 import type { AppVersionInfo } from './app-version.js';
 import { listMessages } from './db.js';
 import {
@@ -80,7 +80,6 @@ import {
   summarizeRunDiagnosticsForAnalytics,
   type RunDiagnosticsAnalytics,
 } from './run-diagnostics.js';
-import { projectToolExecutionLifecycleDiagnostic } from './agent-protocol/acp/tool-execution-lifecycle.js';
 import {
   classifyRunFailure,
   type RunFailureClassification,
@@ -828,10 +827,6 @@ function collectAgentEvents(
         typeof data.name === 'string' && data.name.length > 0
           ? data.name
           : 'runtime_diagnostic';
-      const toolExecutionLifecycle = diagnosticName === 'tool_execution_lifecycle'
-        ? projectToolExecutionLifecycleDiagnostic(data)
-        : null;
-      if (diagnosticName === 'tool_execution_lifecycle' && !toolExecutionLifecycle) continue;
       const index = diagnosticCounts.get(diagnosticName) ?? 0;
       diagnosticCounts.set(diagnosticName, index + 1);
       const promptBudget = promptBudgetAnalyticsFromDiagnostic(
@@ -845,7 +840,7 @@ function collectAgentEvents(
         name: `agent-diagnostic:${diagnosticName}`,
         timestamp,
         input: eventInput('diagnostic'),
-        output: toolExecutionLifecycle ?? {
+        output: {
           name: diagnosticName,
           source:
             typeof data.source === 'string' && data.source.length > 0
@@ -1569,7 +1564,6 @@ export async function reportRunCompletedFromDaemon(
       return deriveLangfuseDeliveryState(prefs, null);
     }
     const installationId = cfg.installationId ?? null;
-    const configuredAmrEnv = agentCliEnvForAgent(cfg.agentCliEnv, 'amr');
 
     const evalMode = evidenceMode(process.env.OPEN_DESIGN_EVAL_CONTRACT_V2_MODE);
     let resultDeliveryState: unknown;
@@ -1812,33 +1806,11 @@ export async function reportRunCompletedFromDaemon(
     });
     const finalTelemetryConfig = readRunTelemetrySinkConfig(
       process.env,
-      configuredAmrEnv,
     );
-    let uploadedManifests: TraceObjectUploadManifests | undefined;
-    let finalObjectManifests = registrationManifests;
-
-    if (registrationManifests && finalTelemetryConfig?.kind === 'vela') {
-      // Only Vela's signed service path can establish object authority. An
-      // anonymous relay/direct client must not create a content-free Langfuse
-      // registration trace or obtain upload permission from self-reported
-      // object metadata.
-      await reportRunCompleted(
-        buildContext(mergeTraceSafeManifests(manifests, registrationManifests)),
-        {
-          config: finalTelemetryConfig,
-          deliveryPurpose: 'object-registration',
-          ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
-        },
-      );
-      uploadedManifests = await buildTraceObjectManifests(objectManifestOptions);
-      finalObjectManifests = uploadedManifests ?? registrationManifests;
-    }
-
-    const finalManifests = mergeTraceSafeManifests(manifests, finalObjectManifests);
+    const finalManifests = mergeTraceSafeManifests(manifests, registrationManifests);
     return await reportRunCompleted(
       buildContext(finalManifests, buildTraceObjectSummary({
         traceObjectFilesRaw,
-        ...(uploadedManifests ? { uploaded: uploadedManifests } : {}),
       })),
       {
         config: finalTelemetryConfig,
@@ -1903,10 +1875,9 @@ export async function reportRunFeedbackFromDaemon(
   // Pre-resolve the sink before claiming `accepted`. Avoids advertising a
   // successful enqueue to callers when there's no Langfuse endpoint
   // configured to ship the score to.
-  const configuredAmrEnv = agentCliEnvForAgent(cfg.agentCliEnv, 'amr');
   const sink = opts.traceId
     ? readTaskTelemetrySinkConfig(process.env)
-    : readFeedbackTelemetrySinkConfig(process.env, configuredAmrEnv);
+    : readFeedbackTelemetrySinkConfig(process.env);
   if (!sink) {
     return { status: 'skipped_no_sink' };
   }
@@ -1935,7 +1906,6 @@ export async function reportRunFeedbackFromDaemon(
     ctx,
     {
       config: sink,
-      configuredEnv: configuredAmrEnv,
       ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
     },
   ).catch((err) => {

@@ -1,7 +1,7 @@
 import type http from 'node:http';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase } from '../src/db.js';
-import { startAmrTerminalReportDeliveryAfterBind, startServer } from '../src/server.js';
+import { startServer } from '../src/server.js';
 
 describe('/api/version', () => {
   let server: http.Server;
@@ -17,15 +17,6 @@ describe('/api/version', () => {
   });
 
   afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
-
-  it('starts terminal delivery only after a valid listener bind', () => {
-    const start = vi.fn();
-    expect(startAmrTerminalReportDeliveryAfterBind({ start }, null)).toBe(false);
-    expect(start).not.toHaveBeenCalled();
-
-    expect(startAmrTerminalReportDeliveryAfterBind({ start }, 7456)).toBe(true);
-    expect(start).toHaveBeenCalledOnce();
-  });
 
   it('returns current app version info', async () => {
     const res = await fetch(`${baseUrl}/api/version`);

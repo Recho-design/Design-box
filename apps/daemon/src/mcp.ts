@@ -1488,9 +1488,7 @@ function mcpFailureFacts(
   const failureStage =
     name === 'collect_brief' || name === 'confirm_brief'
       ? 'brief'
-      : name.includes('vela_login')
-        ? 'auth'
-        : name.includes('project')
+      : name.includes('project')
           ? 'project'
         : name === 'start_run'
           ? 'run_accept'
@@ -1508,9 +1506,7 @@ function mcpFailureFacts(
         ? 'open_design_daemon'
         : errorCode === 'DELIVERABLE_MISSING'
           ? 'artifact_store'
-          : message.includes('VELA_') || message.includes('AMR_')
-            ? 'vela_api'
-            : 'open_design_daemon';
+          : 'open_design_daemon';
   return {
     error_code: errorCode,
     failure_stage: failureStage,

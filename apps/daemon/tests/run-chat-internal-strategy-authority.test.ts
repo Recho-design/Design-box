@@ -113,7 +113,6 @@ describe('POST /api/chat internal strategy authority without a listening server'
         }, reconcileAssistantMessageOnRunEnd() {} },
         enforceWorkspaceProjectMutation: async () => true,
         projectStore: { getWorkspaceProject: () => null, getWorkspaceProjectByProjectId: () => null },
-        amrWorkspaceScope: { isSignedIn: () => false },
       } as unknown as Parameters<typeof registerRunRoutes>[1]);
       // The exact production-registered handler; no HTTP listener or route reimplementation.
       const route = app.router.stack.find((layer: { route?: { path?: string } }) => layer.route?.path === '/api/chat');

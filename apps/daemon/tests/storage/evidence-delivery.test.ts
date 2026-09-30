@@ -34,7 +34,6 @@ it('inherits frozen attachments only within the exact conversation and refuses a
 it('publishes late object receipts and Task summary together across every stage', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'od-late-task-receipts-'));
   vi.stubEnv('OPEN_DESIGN_TELEMETRY_RELAY_URL', 'https://telemetry.example.test/api/langfuse');
-  vi.stubEnv('OPEN_DESIGN_VELA_TELEMETRY', 'off');
   vi.stubEnv('OPEN_DESIGN_OBJECT_OUTBOX_MODE', 'send');
   try {
     await writeAppConfig(dir, { telemetry: { metrics: true, content: true, artifactManifest: true } });
@@ -62,7 +61,6 @@ it('publishes late object receipts and Task summary together across every stage'
 it('clears historical skip reasons after recovery for receivers that deep-merge metadata', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'od-task-reason-recovery-'));
   vi.stubEnv('OPEN_DESIGN_TELEMETRY_RELAY_URL', 'https://telemetry.example.test/api/langfuse');
-  vi.stubEnv('OPEN_DESIGN_VELA_TELEMETRY', 'off');
   vi.stubEnv('OPEN_DESIGN_OBJECT_OUTBOX_MODE', 'send');
   try {
     await writeAppConfig(dir, { telemetry: { metrics: true, content: true, artifactManifest: true } });

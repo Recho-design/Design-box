@@ -212,7 +212,7 @@ function orderPathCandidatesForAgent(agentId: string, candidates: string[]): str
   ];
 }
 
-export function resolveAmrOpenCodeExecutable(
+export function resolvePackagedOpenCodeExecutable(
   env: Record<string, string | undefined> = process.env,
 ): string | null {
   const resourceRoot = (
@@ -234,7 +234,7 @@ function packagedBuiltInExecutable(
   configuredEnv: Record<string, string> = {},
 ): string | null {
   if (def.id === 'byok-opencode') {
-    return resolveAmrOpenCodeExecutable({ ...process.env, ...configuredEnv });
+    return resolvePackagedOpenCodeExecutable({ ...process.env, ...configuredEnv });
   }
   return null;
 }

@@ -1,10 +1,10 @@
 import { execAgentFile } from './invocation.js';
 import { readCodexProviderEnvKey } from '../codex-config-normalize.js';
-const VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN =
+const PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN =
   /(?<![\w.-])upstream_provider_(?:unauthenticated|forbidden)(?![\w.-])/i;
 
 function reportsPlatformProviderCredentialFault(text: string): boolean {
-  return VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN.test(String(text || ''));
+  return PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN.test(String(text || ''));
 }
 import type { RuntimeAgentDef, RuntimeEnv } from './types.js';
 
@@ -391,11 +391,11 @@ const SEVERITY_LABELS = new Set([
  * Exported for that guard only.
  */
 export const OWN_AGENT_COMMAND_NAMES: ReadonlySet<string> = new Set([
-  'agy', 'aider', 'amp', 'amr', 'antigravity', 'atomcode', 'byok-opencode',
+  'agy', 'aider', 'amp', 'antigravity', 'atomcode', 'byok-opencode',
   'claude', 'codebuddy', 'codex', 'copilot', 'cursor-agent', 'deepseek',
   'deepseek-harness', 'devin', 'dsh', 'grok', 'grok-build', 'hermes', 'kilo',
   'kimi', 'kiro', 'kiro-cli', 'mimo', 'opencode', 'opencode-cli', 'pi',
-  'qoder', 'qodercli', 'qwen', 'reasonix', 'trae-cli', 'traecli', 'vela',
+  'qoder', 'qodercli', 'qwen', 'reasonix', 'trae-cli', 'traecli',
   'vibe', 'vibe-acp',
 ]);
 
@@ -405,9 +405,7 @@ export const OWN_AGENT_COMMAND_NAMES: ReadonlySet<string> = new Set([
  *
  * This is an attribution question, not a vocabulary question, and the
  * distinction is the whole point. `AGENT_AUTH_REQUIRED` means "sign in" — an
- * offer to fix a credential the daemon can reach (the agent's CLI login, or the
- * AMR Cloud session the web resolves it to,
- * `apps/web/src/runtime/amr-guidance.ts`). A run's failure text is not a clean
+ * offer to fix the agent's CLI credential. A run's failure text is not a clean
  * channel for that claim: `collectFailureText`
  * (`run-failure-classification.ts:177`) folds `stderr` events into the corpus
  * (:188), and the ACP bridge folds whatever the agent wrote into its JSON-RPC

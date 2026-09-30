@@ -799,13 +799,6 @@ function rememberDetectedLiveModels(
   rememberLiveModels(agent.id, agent.models, scope);
 }
 
-/**
- * 阶段2 摘除 AMR 主链路后，检测结果直通。
- */
-function isEnumerableAgent(_agent: DetectedAgent): boolean {
-  return true;
-}
-
 export async function detectAgents(
   configuredEnvByAgent: Record<string, Record<string, string>> = {},
 ) {
@@ -820,7 +813,7 @@ export async function detectAgents(
     if (!def) continue;
     rememberDetectedLiveModels(def, configuredEnvForAgent(configuredEnvByAgent, def.id), agent);
   }
-  return results.filter(isEnumerableAgent);
+  return results;
 }
 
 // Streaming variant: yields each agent the moment its probe settles, in
@@ -844,7 +837,6 @@ export async function* detectAgentsStream(
       tagged.filter((_, i) => pending.has(i)),
     );
     pending.delete(index);
-    if (!isEnumerableAgent(agent)) continue;
     yield agent;
   }
 }

@@ -148,25 +148,6 @@ export function spawnEnvForAgent(
   return finalizeRuntimeEnv(env, sandboxRuntime);
 }
 
-export function openDesignAmrRunAttempt(_input: {
-  cumulativeRetryAttemptCount?: number | null;
-  retryAttemptCount?: number | null;
-  manualResumeAttemptCount?: number | null;
-}): number {
-  return 0;
-}
-
-export function openDesignAmrTraceEnv(_input: {
-  agentId: string;
-  runId: string;
-  conversationId?: string | null;
-  runAttempt: number;
-  workspaceId?: string | null;
-  externalPluginAnalytics?: Record<string, unknown> | null;
-}): NodeJS.ProcessEnv {
-  return {};
-}
-
 function sandboxRuntimeConfigForBaseEnv(
   baseEnv: RuntimeEnvMap,
 ): SandboxRuntimeConfig | null {

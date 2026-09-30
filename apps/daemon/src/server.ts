@@ -139,7 +139,6 @@ import {
   resolveSafePromptImagePaths,
   resolveOdNextRequestUserPrompt,
   excludeAcpImagePathsAlreadyDeliveredAsResources,
-  selectPromptImagePaths,
 } from './runtimes/chat-prompt-inputs.js';
 import {
   recordPromptDeliveredAtSpawn,
@@ -205,7 +204,6 @@ export {
   resolveSafeProjectAttachments,
   resolveSafePromptImagePaths,
   excludeAcpImagePathsAlreadyDeliveredAsResources,
-  selectPromptImagePaths,
 } from './runtimes/chat-prompt-inputs.js';
 export {
   applyClaudeStreamJsonRunBookkeeping,
@@ -250,8 +248,6 @@ import {
   isKnownModel,
   isKnownReasoningEffort,
   isKnownServiceTier,
-  openDesignAmrRunAttempt,
-  openDesignAmrTraceEnv,
   applyAgentLaunchEnv,
   resolveAgentLaunch,
   sanitizeCustomModel,
@@ -564,7 +560,6 @@ import {
   decideSafeRunRetry,
 } from './run-retry-policy.js';
 import {
-  amrUserIdForRunAnalytics,
   createRunPerRequestUsageLedger,
   foldEventIntoPerRequestUsageLedger,
   scanRunEventsForUsageAnalytics,
@@ -2558,7 +2553,7 @@ function rewriteKnownAgentStreamError(agentId, message, failureText = '') {
   if (
     /bufio\.scanner:\s*token too long/i.test(combined) &&
     /opencode/i.test(combined) &&
-    (agentId === 'opencode' || agentId === 'mimo' || agentId === 'amr' || /json-rpc id \d+/i.test(combined))
+    (agentId === 'opencode' || agentId === 'mimo' || /json-rpc id \d+/i.test(combined))
   ) {
     return 'The run failed due to an unknown upstream streaming error. Please retry.';
   }
@@ -2585,25 +2580,6 @@ function rewriteKnownAgentStreamError(agentId, message, failureText = '') {
  */
 function agentFailureIdentity(def) {
   return { agentName: def?.name ?? null };
-}
-
-function createAmrModelUnavailablePayload(model, init = {}) {
-  const modelText = typeof model === 'string' && model.trim()
-    ? `"${model.trim()}"`
-    : 'the selected model';
-  return createSseErrorPayload(
-    'AMR_MODEL_UNAVAILABLE',
-    `AMR model ${modelText} is not available from Vela. Refresh the AMR model list, choose a supported model, and retry this run.`,
-    {
-      retryable: false,
-      details: {
-        kind: 'amr_model',
-        action: 'choose_model',
-        ...(typeof model === 'string' && model.trim() ? { model: model.trim() } : {}),
-        ...init,
-      },
-    },
-  );
 }
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -2884,15 +2860,6 @@ export interface StartServerOptions {
    * boundary; HTTP bodies, assistant prose, and raw stdout are never inputs.
    */
   odNextComplexProductionResolver?: OdNextComplexProductionResolver | null;
-}
-
-export function startAmrTerminalReportDeliveryAfterBind(
-  delivery: { start: () => void },
-  boundPort: number | null,
-): boolean {
-  if (!Number.isInteger(boundPort) || Number(boundPort) <= 0) return false;
-  delivery.start();
-  return true;
 }
 
 export interface StartServerResult {
@@ -3237,13 +3204,6 @@ export async function startServer({
   });
   const db = openDatabase(PROJECT_ROOT, { dataDir: RUNTIME_DATA_DIR });
   daemonHealth?.setStorageProbe(() => readSqlitePageStats({ db, file: db.name }));
-  const amrTerminalReportOutbox = {
-    diagnostics: () => ({ pending: 0, delivered: 0, unsupported: 0, terminalFailed: 0, oldestPendingAgeMs: null }),
-  };
-  const amrTerminalReportDelivery = {
-    start: () => {},
-    stop: () => {},
-  };
   const commentAnchorRepair = repairTeamProjectCommentAnchorConversations(db);
   if (commentAnchorRepair.created > 0) {
     console.warn(
@@ -3498,9 +3458,6 @@ export async function startServer({
    * 阶段2 摘除：云协作与团队工作区子系统接线整段移除。
    * 本地单用户环境下不依赖远端工作区权威层、presence、hub 事件订阅及后台拉取轮询。
    */
-  const configuredAmrEnv = () =>
-    agentCliEnvForAgent(readAppConfigSync(RUNTIME_DATA_DIR).agentCliEnv, 'amr');
-
   const refreshWorkspaceHubAccountIdentity = (): void => {};
 
   /** 阶段2 摘除：本地模式下设计系统处于未绑定工作区状态 */
@@ -3595,7 +3552,7 @@ export async function startServer({
   console.info(
     '[telemetry] effective run sink',
     describeRunTelemetrySink(
-      readRunTelemetrySinkConfig(process.env, configuredAmrEnv()),
+      readRunTelemetrySinkConfig(process.env),
     ),
   );
   try {
@@ -4406,7 +4363,6 @@ export async function startServer({
     isProjectRevoked: (_projectId) => false,
     isProjectUnmaterializedPlaceholder: (_projectId) => false,
     fetchWorkspaceDirectory,
-    configuredEnv: configuredAmrEnv,
     fetchProjectCreationWorkspaceDirectory,
     createWorkspaceOwnedDesignSystem: createWorkspaceOwnedDesignSystemForContext,
     pluginScope: {
@@ -6606,7 +6562,6 @@ export async function startServer({
       );
     }
     const transportSourceImages = odNextTaskInputSnapshot?.imagePaths ?? safeImages;
-    const amrStagedImages = transportSourceImages;
 
     // Project-scoped attachments: project-relative paths inside cwd. Each
     // is run through the same path-traversal guard the file CRUD endpoints
@@ -7345,7 +7300,7 @@ export async function startServer({
     // directly. Public chat requests cannot reach this branch.
     const forceInternalResume =
       pendingNativeSessionContinue != null &&
-      (runtimeResumesSessionById(def) || (def.id === 'amr' && !!pendingNativeSessionContinue.amrContinuation)) &&
+      runtimeResumesSessionById(def) &&
       pendingNativeSessionContinue.sessionId.length > 0;
     const agentResumeCtx = forceInternalResume
       ? {
@@ -7630,11 +7585,7 @@ export async function startServer({
       ? OD_NEXT_BUNDLE_ECHO_GUARD_V2
       : ECHO_GUARD;
     const includeStableForPayload = isOdNextInitialRun || includeStableInstructions;
-    const promptImagePaths = selectPromptImagePaths(
-      def.id,
-      transportSourceImages,
-      amrStagedImages,
-    );
+    const promptImagePaths = transportSourceImages;
     const acpPromptImagePaths = odNextTaskInputSnapshot
       ? excludeAcpImagePathsAlreadyDeliveredAsResources(
           promptImagePaths,
@@ -8331,7 +8282,6 @@ export async function startServer({
         ...runSideEffectsForRun(run),
         cancelRequested: !!run.cancelRequested,
       };
-      const amrContinuationRecovery = def.id === 'amr' ? acpSession?.getContinuationRecovery?.() : null;
       const liveSessionId = def.resumesSessionViaAcpLoad === true
         ? acpSession?.getDurableSessionId?.() ?? null
         : agentResumeCtx.isResuming
@@ -8346,8 +8296,7 @@ export async function startServer({
           run.nativeSessionContinueAttemptCount ?? 0,
         totalRetryAttemptCount: run.retryAttemptCount ?? 0,
         sideEffects,
-        supportsNativeSessionContinue: runtimeResumesSessionById(def) || !!amrContinuationRecovery,
-        hasVerifiedAmrContinuation: !!amrContinuationRecovery && amrContinuationRecovery.sessionId === liveSessionId,
+        supportsNativeSessionContinue: runtimeResumesSessionById(def),
         hasNativeSession: !!run.conversationId && !!liveSessionId,
       });
       if (
@@ -8391,7 +8340,6 @@ export async function startServer({
           retry_delay_ms: postToolResumeDecision.retryDelayMs,
         });
         run.nativeSessionContinuePending = {
-          amrContinuation: amrContinuationRecovery?.cursor ?? null,
           sessionId: liveSessionId,
           stablePromptHash: currentStableHash,
           stablePromptSections: currentStableSections,
@@ -8686,20 +8634,7 @@ export async function startServer({
     }
 
     // agentLaunch / resolvedBin are resolved above the resume guard (hoisted).
-    // Hoisted above the AMR catalog preflight: the empty-catalog branch
-    // below calls `sendAmrAccountFailure(...)` to surface AMR_AUTH_REQUIRED
-    // for signed-out users, and a `const` declared later in the same outer
-    // function scope would hit a TDZ ReferenceError before initialization.
-    const sendAmrAccountFailure = (failure) => {
-      send('error', createSseErrorPayload(
-        failure.code,
-        failure.message,
-        {
-          retryable: false,
-          details: failure,
-        },
-      ));
-    };
+    // Plain-streaming adapters that own a "continue most recent
 
 
 
@@ -10845,13 +10780,11 @@ export async function startServer({
         stdioMcpRemovedInVersion: def.acpStdioMcpRemovedInVersion ?? null,
         executionProfile,
         completePromptOnTurnEnd: def.acpTurnEndCompletesPrompt === true,
-        ...(def.id === 'amr' ? { modelUnavailableErrorCode: 'AMR_MODEL_UNAVAILABLE' } : {}),
         // Resume the prior upstream session (drives `session/load`) when the
         // resume-identity guard says it is safe; otherwise a fresh session/new.
         ...(def.resumesSessionViaAcpLoad === true && agentResumePromptPolicy.resumeSessionId
           ? { resumeSessionId: agentResumePromptPolicy.resumeSessionId }
           : {}),
-        nativeContinuation: forceInternalResume ? pendingNativeSessionContinue?.amrContinuation : null,
         onCliReady: () => noteCliReadyAt(),
         onSessionInit: () => noteSessionInitDoneAt(),
         onPromptComplete: () => clearFirstOutputWatchdog(),
@@ -10969,19 +10902,6 @@ export async function startServer({
         },
         ...(acpStageTimeoutMs !== undefined ? { stageTimeoutMs: acpStageTimeoutMs } : {}),
       });
-      // Publish AMR/vela child-evidence coverage at child close. Without it the
-      // ACP runtime emits no `child_evidence_coverage_v1` at all and every AMR
-      // task aggregates as `child_lifecycle_unavailable_not_zero`, which cannot
-      // tell "this run had no Child agents" from "nobody was observing".
-      //
-      // Registration order is load-bearing: `attachAcpSession` installs its own
-      // close handler above, so the session has already settled
-      // finished/fatal/aborted by the time this one reads it and the coverage
-      // reflects how the turn actually ended. A non-AMR ACP agent has no vela
-      // consumer and yields undefined, which the publisher already ignores.
-      child.on('close', () => {
-        publishRuntimeChildEvidenceCoverage(acpSession?.childEvidenceCoverage?.());
-      });
     } else if (def.streamFormat === 'dsh-profile-jsonl') {
       trackingSubstantiveOutput = true;
       acpSession = attachDshProfileSession({
@@ -11056,7 +10976,7 @@ export async function startServer({
         // This handle came from our captured agent_sessions record (or a
         // same-run daemon continuation), never from the public chat payload.
         resumeSessionOwned: agentResumeCtx.isResuming,
-        imagePaths: def.supportsImagePaths ? amrStagedImages : [],
+        imagePaths: def.supportsImagePaths ? transportSourceImages : [],
         clientVersion: design.getAppVersion?.() ?? '0.0.0',
         // Capture-style resume, same contract as `exec resume <thread_id>`:
         // the id comes off the stream, and the daemon replays it here.
@@ -11341,7 +11261,7 @@ export async function startServer({
 
       // Resume-target-missing recovery runs BEFORE the generic fatal/stream-error
       // short-circuits. The signal arrives differently per adapter: codex reports
-      // "no rollout found for thread id" as a stream `error` event, while AMR/vela
+      // "no rollout found for thread id" as a stream `error` event, while ACP
       // reports a structured `resume_failed` JSON-RPC error that the ACP bridge
       // turns into a FATAL. Either would otherwise be swallowed by the
       // `fatal_rpc_error` / `stream_error` paths below and leave the dead session
@@ -11821,7 +11741,7 @@ export async function startServer({
           publishNativeSessionRecoveryMetadata();
         }
       }
-      // ACP session/load adapters (AMR/vela) report a durable upstream handle
+      // ACP session/load adapters report a durable upstream handle
       // from the ACP session; persist it (under the resume-identity guard) so
       // the next turn resumes via session/load. A missing handle clears the row
       // (so a fresh session is opened next turn), mirroring the capture-style
@@ -12614,9 +12534,6 @@ export async function startServer({
       getWorkspaceProjectByProjectId,
       ensureWorkspaceProject,
     },
-    amrWorkspaceScope: {
-      isSignedIn: async () => false,
-    },
     authorizeProjectRequest,
   });
 
@@ -13143,7 +13060,6 @@ export async function startServer({
       void messageEventPayloadHeal?.stop();
       stopEvidenceDelivery();
       clearTerminalTelemetryFallbackTimers();
-      amrTerminalReportDelivery.stop();
       telemetry.disposeFatalHandlers();
       composioConnectorProvider.stopCatalogRefreshLoop();
       orbitService.stop();
@@ -13155,7 +13071,6 @@ export async function startServer({
       if (daemonShutdownStarted) return;
       daemonShutdownStarted = true;
       daemonShuttingDown = true;
-      amrTerminalReportDelivery.stop();
       clearTerminalTelemetryFallbackTimers();
       const shutdownGraceMs = resolveChatRunShutdownGraceMs();
       await design.runs.shutdownActive({ graceMs: shutdownGraceMs });
@@ -13213,7 +13128,6 @@ export async function startServer({
           return;
         }
         resolvedPort = boundPort;
-        startAmrTerminalReportDeliveryAfterBind(amrTerminalReportDelivery, boundPort);
         messageEventPayloadHeal ??= startMessageEventPayloadHeal({ db });
         // Only once listening: a startup-time fatal report would add lines to
         // the log tail that packaged startup telemetry samples.

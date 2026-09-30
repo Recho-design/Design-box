@@ -233,14 +233,6 @@ const COLLAB_STRING_FLAGS = new Set([
   'workspace', 'workspace-member',
 ]);
 const COLLAB_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
-const MESSAGE_CENTER_STRING_FLAGS = new Set([
-  'daemon-url',
-  'locale',
-  'filter',
-  'limit',
-  'cursor',
-]);
-const MESSAGE_CENTER_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
 const PROJECT_STRING_FLAGS = new Set([
   'daemon-url', 'name', 'skill', 'design-system', 'plugin', 'metadata-json',
   'pending-prompt', 'project', 'conversation', 'message', 'prompt',
@@ -390,7 +382,6 @@ const SUBCOMMAND_MAP = {
   media: runMedia,
   mcp: runMcp,
   collab: runCollab,
-  'message-center': runMessageCenter,
   research: runResearch,
   plugin: runPlugin,
   ui: runUi,
@@ -996,11 +987,6 @@ function printRootHelp() {
       schedule, trigger, or harvest results from a routine without
       opening the web UI.
 
-  od message-center <list|read|read-all> [args]
-      Read and acknowledge message-center inbox items through the same
-      daemon endpoints the bell UI uses.      Start Vela browser sign-in or inspect the current Vela account through
-      the local OpenDesign daemon.
-
   od memory tree <list|view|edit|move> [args]
       Inspect and edit the memory tree that is injected into agent prompts.
 
@@ -1364,169 +1350,6 @@ function readCollabPresenceSessionFlags(flags) {
   }
   return { clientId, sequence };
 }
-// Subcommand: od message-center …
-// ---------------------------------------------------------------------------
-
-async function runMessageCenter(args) {
-  const sub = args[0];
-  if (!sub || sub === 'help' || args.includes('--help') || args.includes('-h')) {
-    printMessageCenterHelp();
-    process.exit(sub === 'help' || args.includes('--help') || args.includes('-h') ? 0 : 2);
-  }
-  const rest = args.slice(1);
-  let flags;
-  try {
-    flags = parseFlags(rest, {
-      string: MESSAGE_CENTER_STRING_FLAGS,
-      boolean: MESSAGE_CENTER_BOOLEAN_FLAGS,
-    });
-  } catch (err) {
-    console.error(err.message);
-    printMessageCenterHelp();
-    process.exit(2);
-  }
-  const base = await cliDaemonBaseUrl(flags);
-  switch (sub) {
-    case 'list':
-      return runMessageCenterList(rest, flags, base);
-    case 'read':
-      return runMessageCenterRead(rest, flags, base);
-    case 'read-all':
-      return runMessageCenterReadAll(flags, base);
-    default:
-      console.error(`unknown subcommand: od message-center ${sub}`);
-      printMessageCenterHelp();
-      process.exit(2);
-  }
-}
-
-async function runMessageCenterList(rawArgs, flags, base) {
-  const limit = flags.limit == null ? 100 : Number(flags.limit);
-  if (!Number.isInteger(limit) || limit <= 0) {
-    console.error('--limit must be a positive integer');
-    process.exit(2);
-  }
-  const filter = flags.filter == null ? 'all' : String(flags.filter);
-  if (filter !== 'all' && filter !== 'unread' && filter !== 'read') {
-    console.error('--filter must be one of: all | unread | read');
-    process.exit(2);
-  }
-  const query = new URLSearchParams({
-    locale: messageCenterApiLocale(flags.locale == null ? 'en' : String(flags.locale)),
-    filter,
-    limit: String(limit),
-  });
-  if (typeof flags.cursor === 'string' && flags.cursor.length > 0) query.set('cursor', flags.cursor);
-  let resp;
-  try {
-    resp = await fetch(`${base}/api/integrations/vela/message-center/messages?${query}`);
-  } catch (err) {
-    surfaceFetchError(err, base);
-    process.exit(3);
-  }
-  if (!resp.ok) return structuredHttpFailure(resp);
-  const payload = await resp.json();
-  if (flags.json) {
-    process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
-    return;
-  }
-  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
-  if (messages.length === 0) {
-    console.log('No message-center messages.');
-    return;
-  }
-  for (const message of messages) {
-    const status = message?.readAt ? 'read' : 'unread';
-    const id = typeof message?.id === 'string' ? message.id : '(missing-id)';
-    const typeName = typeof message?.typeName === 'string' ? message.typeName : '-';
-    const publishedAt = typeof message?.publishedAt === 'string' ? message.publishedAt : '-';
-    const title = typeof message?.title === 'string' ? message.title : '';
-    console.log(`${id}\t${status}\t${typeName}\t${publishedAt}\t${title}`);
-  }
-  if (payload?.nextCursor) console.log(`nextCursor\t${payload.nextCursor}`);
-  if (typeof payload?.unreadCount === 'number') console.log(`unreadCount\t${payload.unreadCount}`);
-}
-
-async function runMessageCenterRead(rawArgs, flags, base) {
-  const id = positionalArgs(rawArgs, MESSAGE_CENTER_STRING_FLAGS)[0];
-  if (!id) {
-    console.error('Usage: od message-center read <id> [--json] [--daemon-url <url>]');
-    process.exit(2);
-  }
-  let resp;
-  try {
-    resp = await fetch(`${base}/api/integrations/vela/message-center/messages/${encodeURIComponent(id)}/read`, {
-      method: 'POST',
-    });
-  } catch (err) {
-    surfaceFetchError(err, base);
-    process.exit(3);
-  }
-  if (!resp.ok) return structuredHttpFailure(resp);
-  const bodyText = await resp.text();
-  const payload = bodyText ? safeJsonParse(bodyText) : null;
-  if (flags.json) {
-    process.stdout.write(
-      JSON.stringify(payload ?? { ok: true, id }, null, 2) + '\n',
-    );
-    return;
-  }
-  console.log(`Marked message as read\t${id}`);
-}
-
-async function runMessageCenterReadAll(flags, base) {
-  let resp;
-  try {
-    resp = await fetch(`${base}/api/integrations/vela/message-center/read-all`, {
-      method: 'POST',
-    });
-  } catch (err) {
-    surfaceFetchError(err, base);
-    process.exit(3);
-  }
-  if (!resp.ok) return structuredHttpFailure(resp);
-  const bodyText = await resp.text();
-  const payload = bodyText ? safeJsonParse(bodyText) : null;
-  if (flags.json) {
-    process.stdout.write(
-      JSON.stringify(payload ?? { ok: true }, null, 2) + '\n',
-    );
-    return;
-  }
-  console.log('Marked all message-center messages as read');
-}
-
-function printMessageCenterHelp() {
-  console.log(`Usage:
-  od message-center list [--locale <locale>] [--filter <all|unread|read>] [--limit <n>] [--cursor <token>] [--json] [--daemon-url <url>]
-  od message-center read <id> [--json] [--daemon-url <url>]
-  od message-center read-all [--json] [--daemon-url <url>]
-
-Mirrors the message-center inbox surface exposed in the web UI through the
-same /api/integrations/vela/message-center daemon routes.
-
-Options:
-  --locale <locale>     Defaults to en. Mapped to the daemon API locale shape.
-  --filter <value>      all | unread | read (default: all).
-  --limit <n>           Positive integer page size (default: 100).
-  --cursor <token>      Forward a server pagination cursor for list.
-  --json                Emit raw JSON for scripts and external agents.
-  --daemon-url <url>    OpenDesign daemon HTTP base.`);
-}
-
-function messageCenterApiLocale(locale) {
-  const mapping = { en: 'en-US', 'es-ES': 'es', 'pt-BR': 'pt' };
-  return mapping[locale] ?? locale;
-}
-
-function safeJsonParse(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Subcommand: od research …
 // ---------------------------------------------------------------------------
@@ -2162,7 +1985,7 @@ Common options:
                             create it; the daemon renders it with its pinned
                             HyperFrames runtime.
   --image <path>            Project-relative reference image; repeat up to 5
-                            times for Vela image editing or video references.
+                            times for image editing or video references.
                             The first video image is the first frame; the rest
                             are references. Existing providers still receive
                             the first image through the legacy single-image field.
@@ -7382,7 +7205,6 @@ async function runWorkspace(args) {
   od workspace projects batch-delete --workspace <id> --member <id> --project <id> [--project <id> ...] [--json]
   od workspace projects batch-move --workspace <id> --member <id> --visibility personal|team --project <id> [--project <id> ...] [--json]
   od workspace members list --workspace <id> --member <id> [--json]
-  od workspace billing [--workspace-type personal|team --workspace <id>] [--model <id>] [--json]
 
 Common options:
   --daemon-url <url>   OpenDesign daemon HTTP base.
@@ -7394,12 +7216,12 @@ Common options:
     process.exit(args.length === 0 ? 2 : 0);
   }
   const area = args[0];
-  if (!['invite', 'projects', 'members', 'billing'].includes(area)) {
+  if (!['invite', 'projects', 'members'].includes(area)) {
     console.error(`unknown subcommand: od workspace ${area}`);
     process.exit(2);
   }
   const sub = args[1] ?? 'list';
-  const rest = area === 'invite' || area === 'billing' ? args.slice(1) : args.slice(2);
+  const rest = area === 'invite' ? args.slice(1) : args.slice(2);
   const flags = parseFlags(rest, { string: WORKSPACE_STRING_FLAGS, boolean: WORKSPACE_BOOLEAN_FLAGS });
   const base = (await projectDaemonUrl(flags)).replace(/\/$/, '');
 
@@ -7445,62 +7267,6 @@ Common options:
     const results = Array.isArray(data?.results) ? data.results : [];
     for (const result of results) {
       console.log(`${result.email}\t${result.ok ? 'invited' : `failed:${result.error ?? 'unknown'}`}`);
-    }
-    return;
-  }
-
-  // Dual-track parity for the account menu's credits card. Billing scope is an
-  // explicit CLI argument, never daemon active-workspace state: account is the
-  // compatibility default; team requires both type + workspace id.
-  if (area === 'billing') {
-    const workspaceType =
-      typeof flags['workspace-type'] === 'string'
-        ? flags['workspace-type'].trim().toLowerCase()
-        : '';
-    const workspaceId =
-      typeof flags.workspace === 'string' ? flags.workspace.trim() : '';
-    if (
-      (workspaceType && workspaceType !== 'personal' && workspaceType !== 'team') ||
-      (workspaceType && !workspaceId) ||
-      (!workspaceType && workspaceId) ||
-      (flags.model && !workspaceId)
-    ) {
-      console.error(
-        'Usage: od workspace billing [--workspace-type personal|team --workspace <id>] [--model <id>] [--json]',
-      );
-      process.exit(2);
-    }
-    const billingPath =
-      workspaceType
-        ? `/api/workspace/billing?scope=workspace&workspaceId=${encodeURIComponent(workspaceId)}&includePreflight=1${typeof flags.model === 'string' ? `&modelId=${encodeURIComponent(flags.model)}` : ''}`
-        : '/api/workspace/billing?scope=account';
-    const data = await workspaceContextRequest(billingPath);
-    if (flags.json) return process.stdout.write(JSON.stringify(data, null, 2) + '\n');
-    const summary = data?.summary ?? null;
-    const workspaceBalance = data?.workspaceBalance ?? null;
-    if (!summary && !workspaceBalance) {
-      console.log('No billing summary (no vela session or CLI unavailable).');
-      return;
-    }
-    if (workspaceBalance) {
-      console.log(`Workspace:\t${workspaceBalance.workspaceId}`);
-    }
-    if (summary) {
-      console.log(`Account plan:\t${summary.membershipTier || 'free'}`);
-      console.log(`Subscription:\t${summary.subscriptionStatus || 'none'}`);
-      console.log(`Account credits:\t${summary.totalAvailableCredits}`);
-      console.log(`  Account plan credits:\t${summary.subscriptionCredits}`);
-      console.log(`  Account top-up credits:\t${summary.rechargeCredits}`);
-    }
-    if (data?.preflight) {
-      console.log(`Expected funding: ${data.preflight.funding} (gateway decides final admission)`);
-      for (const window of data.preflight.codingPlan.windows) {
-        console.log(`Coding Plan ${window.durationSeconds}s: ${window.remainingCredits}/${window.limitCredits} credits remaining; resets ${window.resetsAt ?? 'not started yet'}`);
-      }
-    }
-    const balanceUsd = workspaceBalance?.balanceUsd ?? summary?.balanceUsd;
-    if (balanceUsd != null) {
-      console.log(`${workspaceBalance ? 'Workspace' : 'Account'} balance (USD):\t${balanceUsd}`);
     }
     return;
   }

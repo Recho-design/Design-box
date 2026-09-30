@@ -44,8 +44,6 @@ import { diagnosticId } from './services/diagnostics-environment.js';
 import { daemonHealthPaths } from './services/daemon-health.js';
 
 interface ResolvedDiagnosticsAgentEnvironment {
-  amrOpenCodeHome: string | null;
-  amrConfiguredEnv: Record<string, string>;
   claudeConfigDir: string | null;
   codexHome: string | null;
   openCodeXdgDataHome: string | null;
@@ -59,8 +57,6 @@ async function resolveDiagnosticsAgentEnvironment(
   dataDir: string | null | undefined,
 ): Promise<ResolvedDiagnosticsAgentEnvironment> {
   const empty: ResolvedDiagnosticsAgentEnvironment = {
-    amrOpenCodeHome: null,
-    amrConfiguredEnv: {},
     claudeConfigDir: null,
     codexHome: null,
     openCodeXdgDataHome: null,
@@ -79,8 +75,6 @@ async function resolveDiagnosticsAgentEnvironment(
       return trimmed && trimmed.length > 0 ? trimmed : null;
     };
     return {
-      amrOpenCodeHome: clean(envFor('amr').OPENCODE_TEST_HOME),
-      amrConfiguredEnv: agentCliEnvForAgent(appConfig.agentCliEnv, 'amr'),
       claudeConfigDir: clean(envFor('claude').CLAUDE_CONFIG_DIR),
       codexHome: clean(envFor('codex').CODEX_HOME),
       // OpenCode resolves its data/log dir from XDG_DATA_HOME; sandbox mode
@@ -277,7 +271,7 @@ export async function buildAutomaticDiagnosticSources(
   if (incident.agentId) {
     const environment = await resolveDiagnosticsAgentEnvironment(options.dataDir);
     const agentSources = await buildAgentCliLogSources({ homeDir: homedir(), dataDir: options.dataDir ?? null,
-      amrOpenCodeHome: environment.amrOpenCodeHome, claudeConfigDir: environment.claudeConfigDir,
+      claudeConfigDir: environment.claudeConfigDir,
       codexHome: environment.codexHome, xdgDataHome: environment.openCodeXdgDataHome ?? null });
     sources.push(...agentSources.filter((source) => incident.agentId === '*' || source.name.startsWith(`agent-cli-logs/${incident.agentId}/`)));
   }
@@ -299,7 +293,6 @@ export function createDiagnosticsExportHandler(options: DiagnosticsHandlerOption
         ...(await buildAgentCliLogSources({
           homeDir: home,
           dataDir: options.dataDir ?? null,
-          amrOpenCodeHome: agentEnvironment.amrOpenCodeHome,
           claudeConfigDir: agentEnvironment.claudeConfigDir,
           codexHome: agentEnvironment.codexHome,
           xdgDataHome: agentEnvironment.openCodeXdgDataHome ?? process.env.XDG_DATA_HOME ?? null,

@@ -775,7 +775,7 @@
   transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out), border-color 120ms var(--ease-out);
 }
 .entry-nav-rail__btn-icon {
-  /* Anchor for the unread dot (message-center rail item). */
+  /* Anchor for menu item status dots. */
   position: relative;
   display: inline-flex;
   align-items: center;

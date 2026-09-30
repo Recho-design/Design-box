@@ -15,20 +15,14 @@ import type {
   TrackingRunTerminalTrigger,
 } from '@open-design/contracts/analytics';
 import {
-  AMR_CONTINUATION_ERROR_CODE,
-  isMembershipConcurrencyLimitFailure,
   isModelWindowLimitFailure,
 } from '@open-design/contracts';
 
-const VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN =
+const PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN =
   /(?<![\w.-])upstream_provider_(?:unauthenticated|forbidden)(?![\w.-])/i;
 
-function classifyAmrAccountFailure(_text: string): { code: string; message: string; action: string } | null {
-  return null;
-}
-
 function reportsPlatformProviderCredentialFault(text: string): boolean {
-  return VELA_PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN.test(String(text || ''));
+  return PLATFORM_PROVIDER_CREDENTIAL_CODE_PATTERN.test(String(text || ''));
 }
 import { runFailureEvidence } from './services/run-failure-evidence.js';
 import { summarizeRunToolProgress } from './run-diagnostics.js';
@@ -1013,16 +1007,6 @@ function classifyRunFailureBase(
   // signal guard below (a watchdog kill IS a signal, and the reason it was
   // killed outranks the bare signal) and the timeout branch itself.
   const daemonTimeoutVerdict = hasDaemonTimeoutVerdict(events);
-  if (input.agentId === 'amr' && events.some((event) => {
-    if (event.event !== 'error') return false;
-    const data = asObject(event.data);
-    const details = asObject(asObject(data?.error)?.details);
-    return details?.code === AMR_CONTINUATION_ERROR_CODE;
-  })) {
-    return classification('process_exit', 'continuation_incomplete',
-      inferFailureStageFromEvents(events, 'post_tool_resume'), false, 'none');
-  }
-  const amrFailure = classifyAmrAccountFailure(text);
   const byokOpenCodeProviderNotFound = isByokOpenCodeProviderNotFoundText(
     input.agentId,
     text,
@@ -1057,10 +1041,7 @@ function classifyRunFailureBase(
     );
   }
 
-  if (
-    errorCode === 'AMR_INSUFFICIENT_BALANCE' ||
-    amrFailure?.code === 'AMR_INSUFFICIENT_BALANCE'
-  ) {
+  if (errorCode === 'AMR_INSUFFICIENT_BALANCE') {
     return classification(
       'insufficient_balance',
       'amr_insufficient_balance',
@@ -1073,10 +1054,7 @@ function classifyRunFailureBase(
     );
   }
 
-  if (
-    errorCode === 'AMR_TIER_UPGRADE_REQUIRED' ||
-    amrFailure?.code === 'AMR_TIER_UPGRADE_REQUIRED'
-  ) {
+  if (errorCode === 'AMR_TIER_UPGRADE_REQUIRED') {
     return classification(
       'entitlement_required',
       'amr_tier_upgrade_required',
@@ -1092,8 +1070,7 @@ function classifyRunFailureBase(
   if (
     errorCode === 'AMR_AUTH_REQUIRED' ||
     errorCode === 'AGENT_AUTH_REQUIRED' ||
-    errorCode === 'UNAUTHORIZED' ||
-    amrFailure?.code === 'AMR_AUTH_REQUIRED'
+    errorCode === 'UNAUTHORIZED'
   ) {
     return classification(
       'auth',
@@ -1358,20 +1335,6 @@ function classifyRunFailureBase(
       'session_init',
       false,
       'login',
-    );
-  }
-
-  // Vela reports a full membership concurrency policy through an ACP fatal
-  // envelope. Claim the named policy limit before fatal close promotion. Even
-  // when the envelope says retryable, an immediate automatic replay only hits
-  // the same occupied slots, so leave retry to the user after the reset time.
-  if (input.agentId === 'amr' && isMembershipConcurrencyLimitFailure(text)) {
-    return classification(
-      'rate_limit',
-      'membership_concurrency_limit',
-      'session_init',
-      false,
-      'none',
     );
   }
 

@@ -1,8 +1,5 @@
 /** @module agent-protocol/acp/updates
- * ACP session-update classification helpers: status normalisation,
- * artifact-write detection, AMR retry/stderr failure promotion, and raw
- * event-shape diagnostics. Depends on acp/types, acp/json, and the vela-errors
- * integration; consumed exclusively by acp/session.ts.
+ * ACP 会话更新分类：状态归一化、文件写入识别与事件结构诊断。
  */
 import { isTodoWriteToolName } from '@open-design/contracts';
 import { createHash } from 'node:crypto';
@@ -94,22 +91,13 @@ export function isAcpTerminalToolStatus(update: JsonObject): boolean {
   return isAcpCompletedStatus(update) || isAcpTerminalFailureStatus(update);
 }
 /**
- * Returns `true` when the update's status is `'retry'`. Signals that the AMR
- * agent wants to restart the request; the session promoter maps this to a
- * structured error payload via `promotedAmrRetryStatusPayload`.
+ * 判断 ACP 工具状态是否为重试。
  */
 export function isAcpRetryStatus(update: JsonObject): boolean {
   return acpUpdateStatus(update) === 'retry';
 }
 /**
- * Recursively collects all text-bearing leaf values from an ACP update
- * (strings, numbers, booleans) up to 4 levels deep. Used to produce a flat
- * text corpus for `classifyAmrAccountFailure` pattern matching without
- * requiring knowledge of a specific agent's response shape.
- *
- * @param value - Any value from a parsed ACP session update.
- * @param depth - Current recursion depth (max 4); callers omit this.
- * @returns A flat array of trimmed non-empty string representations.
+ * 递归提取 ACP 更新中的诊断文本，最多深入四层。
  */
 export function acpUpdateDiagnosticText(value: unknown, depth = 0): string[] {
   if (depth > 4) return [];
@@ -140,30 +128,6 @@ export function acpUpdateDiagnosticText(value: unknown, depth = 0): string[] {
     }
   }
   return parts;
-}
-/**
- * Promotes an AMR `retry` status update into a structured OpenDesign error
- * payload when the update's diagnostic text matches a known AMR account failure
- * pattern (e.g. quota exceeded, auth failure). Returns `null` when the update
- * is not a retry or does not match a known pattern.
- *
- * @param update - A parsed ACP `session/update` params object.
- * @returns A structured error payload with `message` and `error`, or `null`.
- */
-export function promotedAmrRetryStatusPayload(_update: JsonObject) {
-  return null;
-}
-/**
- * Scans a rolling tail of AMR stderr output for known retry/session-failure
- * signals and promotes a match to a structured OpenDesign error payload.
- * Returns `null` when the chunk does not contain the expected markers or does
- * not match a known failure pattern.
- *
- * @param chunk - A tail slice of accumulated stderr bytes from the AMR subprocess.
- * @returns A structured error payload, or `null` when not applicable.
- */
-export function promotedAmrStderrPayload(_chunk: string) {
-  return null;
 }
 /**
  * Extracts and trims the `toolCallId` string from an ACP update, or returns

@@ -830,31 +830,6 @@ export interface WorkspaceBillingAuthoritativeRead {
 }
 
 /**
- * One exact workspace/member projection a renderer wants the daemon to keep
- * warm. Renderers replace their whole set atomically; the daemon owns
- * authorization, refresh, retries, upstream subscriptions, and expiry.
- */
-export interface WorkspaceBillingInterestScope {
-  workspaceId: string;
-  workspaceMemberId: string;
-}
-
-/** PUT /api/workspace/billing/interests/:clientId request body. */
-export interface WorkspaceBillingInterestRequest {
-  /** Monotonic unsigned decimal scoped to this renderer-lifetime client id. */
-  generation: string;
-  /** Full replacement set, not a delta. */
-  interests: WorkspaceBillingInterestScope[];
-}
-
-/** Successful interest declaration/renewal response. */
-export interface WorkspaceBillingInterestResponse {
-  clientId: string;
-  acceptedGeneration: string;
-  leaseExpiresAt: string;
-}
-
-/**
  * The caller's Vela account billing summary.
  *
  * `vela billing summary` remains account-scoped. The daemon must never turn it
@@ -969,65 +944,17 @@ export interface WorkspaceBillingPreflight {
   };
 }
 
-export type WorkspaceTeamBillingPlanId = 'team_plus' | 'team_pro' | 'team_max';
-
-export interface WorkspaceTeamBillingPlan {
-  planId: WorkspaceTeamBillingPlanId;
-  seatUnitAmountCents: number;
-  currency: 'usd';
-  minSeats: number;
-  status: 'active' | 'disabled';
-}
-
-/**
- * GET /api/workspace/billing/catalog. Compatibility/diagnostic shape for Vela
- * team subscription plans when A exposes them through the CLI. The local client
- * does not render pricing or own checkout; upgrade opens Vela Web and billing
- * state syncs back through `WorkspaceBillingSummary`.
- */
-export interface WorkspaceBillingCatalog {
-  workspaceId: string;
-  billingInterval: 'monthly';
-  plans: WorkspaceTeamBillingPlan[];
-}
-
-export interface WorkspaceBillingCatalogResponse {
-  catalog: WorkspaceBillingCatalog | null;
-}
-
-/**
- * Compatibility request to start a team-subscription checkout via Vela CLI.
- * The current product surface links the user to Vela Web instead of rendering
- * an in-client plan picker.
- */
-export interface WorkspaceBillingCheckoutRequest {
-  planId?: WorkspaceTeamBillingPlanId;
-  seats?: number;
-}
-
-/**
- * Result of starting a team-subscription checkout via the vela billing CLI 收口.
- * Kept as a compatibility contract; the primary C-line UI opens Vela Web.
- */
-export interface WorkspaceBillingCheckoutResponse {
-  checkoutUrl: string | null;
-}
-
 // ————————————————————————————————————————————————————————————————————————————
-// Collab cloud (C-lane §D2.5 / §D4): cross-daemon comment sync + member directory
+// Collab cloud (C-lane §D2.5 / §D4): the cross-daemon comment unit + member
+// directory entry the LOCAL daemon still stores and renders.
 // ————————————————————————————————————————————————————————————————————————————
 //
 // A member's comment on a shared project must reach the OTHER members' daemons
 // (chiefly the owner's), and members need a way to turn an opaque
-// `ownerMemberId` / `authorMemberId` into a display name + role. The collab
-// cloud is the light append-only relay + directory that carries both. Every
-// daemon talks to it as a bearer client (auth in §D4.4); a local fixture stub
-// stands in for the real vela `services/collab` until it ships.
-//
-// STUB SCOPE: the spec's identity source is B's token → {memberId, teamId,
-// role} plus B's member roster. B does not yet expose names, so the directory
-// entry carrying `displayName` (and `role`, redundantly with the token) is a
-// C-lane stub supplement to B's missing roster — not a permanent contract.
+// `ownerMemberId` / `authorMemberId` into a display name + role. The remote
+// relay that carried both has been removed with the hosted account system, so
+// only the two data shapes the local daemon still persists/renders remain:
+// {@link CollabCloudMemberDirectoryEntry} and {@link CollabCloudComment}.
 
 /**
  * One member's public directory entry: the id → {name, role} mapping the client
@@ -1039,22 +966,6 @@ export interface CollabCloudMemberDirectoryEntry {
   memberId: string;
   displayName: string;
   role: CollabMemberRole;
-}
-
-/** PUT /teams/:teamId/members/:memberId request body. Idempotent upsert. */
-export interface CollabCloudMemberRegisterRequest {
-  displayName: string;
-  role: CollabMemberRole;
-}
-
-/** PUT /teams/:teamId/members/:memberId response. */
-export interface CollabCloudMemberRegisterResponse extends OkResponse {
-  member: CollabCloudMemberDirectoryEntry;
-}
-
-/** GET /teams/:teamId/members and GET /api/workspace/members response. */
-export interface CollabCloudMembersResponse {
-  members: CollabCloudMemberDirectoryEntry[];
 }
 
 /**
@@ -1127,25 +1038,4 @@ export interface CollabCloudComment {
    * comment as it last existed and should not be re-materialized.
    */
   deleted?: boolean;
-}
-
-/** POST /teams/:teamId/projects/:projectId/comments request body. */
-export interface CollabCloudCommentPushRequest {
-  comment: CollabCloudComment;
-}
-
-/** POST /teams/:teamId/projects/:projectId/comments response. */
-export interface CollabCloudCommentPushResponse extends OkResponse {
-  /** The monotonic sequence the cloud assigned to the stored comment. */
-  seq: number;
-}
-
-/**
- * GET /teams/:teamId/projects/:projectId/comments?sinceSeq=N response. Returns
- * only comments with `seq > sinceSeq`, ascending, plus the highest `seq` seen
- * (the caller's next cursor even when `comments` is empty).
- */
-export interface CollabCloudCommentsResponse {
-  comments: CollabCloudComment[];
-  latestSeq: number;
 }

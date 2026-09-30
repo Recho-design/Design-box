@@ -5,7 +5,7 @@ import {
 } from './helpers/test-helpers.js';
 import {
   codexAppBundleCandidates,
-  resolveAmrOpenCodeExecutable,
+  resolvePackagedOpenCodeExecutable,
 } from '../../src/runtimes/executables.js';
 
 const fsTest = process.platform === 'win32' ? test.skip : test;
@@ -130,7 +130,7 @@ fsTest(
 );
 
 fsTest(
-  'resolveAmrOpenCodeExecutable prefers the selected Vela companion over a PATH wrapper',
+  'resolvePackagedOpenCodeExecutable prefers the packaged companion over a PATH wrapper',
   () => {
     const root = mkdtempSync(join(tmpdir(), 'od-amr-selected-vela-companion-'));
     try {
@@ -164,7 +164,7 @@ fsTest(
           delete process.env.VELA_OPENCODE_BIN;
 
           assert.equal(
-            resolveAmrOpenCodeExecutable(process.env),
+            resolvePackagedOpenCodeExecutable(process.env),
             selectedCompanion,
           );
         },
