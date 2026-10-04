@@ -58,7 +58,9 @@ export type RunSteeringVerdict =
  * TypeScript's weak-type check on every one of them.
  */
 type PromptInputFormatBearer = {
-  promptInputFormat?: 'text' | 'stream-json';
+  // 与 RuntimeAgentDef.promptInputFormat 保持同宽（'agy-stream-json' 是 agy
+  // 的 print 模式帧，无 mid-turn steering，谓词只认 'stream-json'）。
+  promptInputFormat?: 'text' | 'stream-json' | 'agy-stream-json';
   [key: string]: unknown;
 };
 

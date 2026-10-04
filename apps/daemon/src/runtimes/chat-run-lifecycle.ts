@@ -314,9 +314,17 @@ export function bufferedAntigravityGeminiFirstTokenAt(
  *
  * Excluded are the runtimes whose stdin carries a framed protocol instead:
  * Claude's `stream-json` input (stdin stays open for mid-turn messages),
+ * agy's `agy-stream-json` (one NDJSON user frame written to the live pipe
+ * then closed — no mid-turn steering, but the payload must still be the
+ * frame, not plain text, so it cannot ride the file-backed plain path),
  * pi-rpc, dsh-profile JSONL, ACP / Codex app-server JSON-RPC (those set
  * `promptViaStdin: false`). A frame cut short by a dying daemon does not parse,
  * so they cannot act on a partial prompt the way a plain-text reader does.
+ *
+ * 注意 steering 语义：'agy-stream-json' 在这里与 'stream-json' 相邻（都要走
+ * live pipe），但在「是否允许 mid-turn steering」上与 'text' 同侧 ——
+ * `agentSupportsMidTurnSteering`（packages/contracts）只认 `'stream-json'`，
+ * 所以 agy 的 steering 入口天然关闭，无需再改守卫。
  */
 export function runtimeReadsPlainTextPromptFromStdin(def: {
   promptViaStdin?: boolean;
@@ -328,6 +336,7 @@ export function runtimeReadsPlainTextPromptFromStdin(def: {
     && def.streamFormat !== 'pi-rpc'
     && def.streamFormat !== 'dsh-profile-jsonl'
     && (def.promptInputFormat ?? 'text') !== 'stream-json'
+    && (def.promptInputFormat ?? 'text') !== 'agy-stream-json'
   );
 }
 

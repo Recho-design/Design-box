@@ -189,9 +189,13 @@ export type RuntimeAgentDef = {
   // entire prompt buffer goes in raw, then stdin is closed). When set to
   // 'stream-json' the daemon writes a single JSONL line wrapping the prompt
   // as an Anthropic user message (so tool_result blocks can later be
-  // injected into the same stdin without re-spawning the child). Only
-  // honored for adapters that also set `promptViaStdin: true`.
-  promptInputFormat?: 'text' | 'stream-json';
+  // injected into the same stdin without re-spawning the child). When set
+  // to 'agy-stream-json' the daemon writes ONE `{"event":"user",…}` NDJSON
+  // line and immediately closes stdin: agy print 模式一行一轮，读完后自己
+  // 走到 result，没有 mid-turn 注入需求，所以 stdin 不保持打开（与
+  // 'stream-json' 的区别所在）。Both special formats are only honored for
+  // adapters that also set `promptViaStdin: true`.
+  promptInputFormat?: 'text' | 'stream-json' | 'agy-stream-json';
   eventParser?: string;
   env?: Record<string, string>;
   listModels?: RuntimeListModels;

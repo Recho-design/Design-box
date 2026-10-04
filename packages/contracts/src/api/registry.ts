@@ -165,9 +165,11 @@ export interface AgentInfo {
    * mid-turn. Undefined means `'text'`.
    *
    * Read it through `agentSupportsMidTurnSteering` rather than comparing the
-   * literal, so the rule lives in one place.
+   * literal, so the rule lives in one place. `'agy-stream-json'` means agy
+   * print mode: one NDJSON user frame written to a live pipe then closed —
+   * also not steerable.
    */
-  promptInputFormat?: 'text' | 'stream-json';
+  promptInputFormat?: 'text' | 'stream-json' | 'agy-stream-json';
 }
 
 /**
@@ -175,7 +177,9 @@ export interface AgentInfo {
  *
  * Steering writes a further JSONL `user` frame onto the agent child's stdin
  * while the turn is still running. Only a `stream-json` runtime leaves stdin
- * open past the opening prompt; for every other runtime the daemon has already
+ * open past the opening prompt (agy 的 `'agy-stream-json'` 虽然也走 NDJSON，
+ * 但一行一轮、写完即关闭，与 `'text'` 同侧 —— 无 mid-turn steering）；
+ * for every other runtime the daemon has already
  * closed it, so the write would be silently lost. UI surfaces must gate the
  * affordance on this instead of assuming every agent can be steered.
  */

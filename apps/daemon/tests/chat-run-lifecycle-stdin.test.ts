@@ -4,6 +4,7 @@ import {
   recordPromptDeliveredAtSpawn,
   runtimeReadsPlainTextPromptFromStdin,
 } from '../src/runtimes/chat-run-lifecycle.js';
+import { antigravityAgentDef } from '../src/runtimes/defs/antigravity.js';
 import { claudeAgentDef } from '../src/runtimes/defs/claude.js';
 import { codexAgentDef, withCodexTransport } from '../src/runtimes/defs/codex.js';
 import { cursorAgentDef } from '../src/runtimes/defs/cursor-agent.js';
@@ -21,10 +22,19 @@ describe('runtimeReadsPlainTextPromptFromStdin', () => {
 
   it('leaves framed stdin protocols on the pipe', () => {
     // stream-json keeps stdin open for mid-turn messages (B11 steering).
+    // agy 的 'agy-stream-json' 同样要走 live pipe —— 那一行 NDJSON user 帧
+    // 必须由 daemon 写入，不能当普通文本丢进 file-backed stdin。
     expect(runtimeReadsPlainTextPromptFromStdin(claudeAgentDef)).toBe(false);
+    expect(runtimeReadsPlainTextPromptFromStdin(antigravityAgentDef)).toBe(false);
     expect(runtimeReadsPlainTextPromptFromStdin(piAgentDef)).toBe(false);
     expect(runtimeReadsPlainTextPromptFromStdin(withCodexTransport(codexAgentDef, 'app-server'))).toBe(false);
     expect(runtimeReadsPlainTextPromptFromStdin({ promptViaStdin: true, streamFormat: 'dsh-profile-jsonl' })).toBe(false);
+    expect(
+      runtimeReadsPlainTextPromptFromStdin({
+        promptViaStdin: true,
+        promptInputFormat: 'agy-stream-json',
+      }),
+    ).toBe(false);
   });
 
   it('ignores argv/file prompt runtimes', () => {

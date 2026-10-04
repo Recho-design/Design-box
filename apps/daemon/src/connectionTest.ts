@@ -37,6 +37,7 @@ import {
 import { attachAcpSession } from './agent-protocol/index.js';
 import { attachPiRpcSession } from './agent-protocol/index.js';
 import { attachDshProfileSession } from './agent-protocol/index.js';
+import { createAgyStreamHandler, encodeAgyUserMessage } from './runtimes/agy-stream.js';
 import { createClaudeStreamHandler } from './runtimes/claude-stream.js';
 import { diagnoseClaudeCliFailure } from './claude-diagnostics.js';
 import { createCopilotStreamHandler } from './copilot-stream.js';
@@ -790,6 +791,10 @@ function formatPromptForAgentStdin(
       },
     })}\n`;
   }
+  if (promptInputFormat === 'agy-stream-json') {
+    // 与 server.ts 的 stdin 写入分支共用 encodeAgyUserMessage，帧形不漂移。
+    return encodeAgyUserMessage(prompt);
+  }
   return prompt;
 }
 
@@ -868,7 +873,9 @@ export function redactSecrets(
 }
 
 type ProviderConnectionInput = ProviderTestRequest & { signal?: AbortSignal };
-type AgentConnectionInput = AgentTestRequest & { signal?: AbortSignal };
+type AgentConnectionInput = AgentTestRequest & {
+  signal?: AbortSignal;
+};
 
 function appendVersionedApiPath(baseUrl: string, suffix: string): string {
   const url = new URL(baseUrl);
@@ -2234,6 +2241,13 @@ function attachAgentStreamHandlers(
       handler.feed(chunk);
     });
     child.on('close', () => handler.flush());
+  } else if (def.streamFormat === 'agy-stream-json') {
+    const agy = createAgyStreamHandler((ev: unknown) => send('agent', ev));
+    child.stdout?.on('data', (chunk: string) => {
+      appendRawStdout?.(chunk);
+      agy.feed(chunk);
+    });
+    child.on('close', () => agy.flush());
   } else {
     child.stdout?.on('data', (chunk: string) => send('stdout', { chunk }));
   }

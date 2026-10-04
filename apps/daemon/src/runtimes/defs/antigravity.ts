@@ -16,7 +16,7 @@ const ANTIGRAVITY_SKIP_PERMISSIONS_FLAG = '--dangerously-skip-permissions';
 
 // `agy` v1.0.3 still has no `--model` flag (upstream issue #35), but the
 // TUI's Switch-Model picker writes the choice to its settings.json, and
-// every `agy -p` invocation re-reads that file on startup — verified by
+// every `agy` print-mode invocation re-reads that file on startup — verified by
 // capturing the `--log-file` line `Propagating selected model override to
 // backend: label="<model>"`. So we can route OD's model picker through
 // settings.json: when the user picks a concrete model in Settings, the
@@ -222,22 +222,26 @@ export const antigravityAgentDef = {
         runtimeContext.antigravitySettingsPath,
       );
     }
-    // Print mode via `-p <prompt>`. Older OD used `agy -p -` and wrote the
-    // prompt on stdin, but current agy (reproduced on 1.1.13) treats `-`
-    // as the literal prompt string and ignores stdin — the model only
-    // ever sees a single dash (#7161). Passing the real prompt as the
-    // `-p` argument matches the verified working CLI form
-    // (`agy -p "say hello"`).
+    // agy ≥ 1.2.13（本轮实测）：改走 stream-json stdin 通道。历史演变——
+    // 最早 OD 用 `agy -p -`（print 模式 + stdin 哨兵），但 1.1.x 之后 agy
+    // 把 `-` 当成字面 prompt、直接忽略 stdin(#7161)；于是改为把完整
+    // prompt 以 `-p <prompt>` 拼进 argv。这在 Windows 上踩中 CreateProcess
+    // 的 32K 命令行上限 —— 组合提示词一长 spawn 直接报 ENAMETOOLONG，
+    // 子进程根本起不来。1.2.13 的 `--input-format stream-json` + 空值
+    // `--print=` 重新打通了 stdin：daemon 把整个 prompt 作为一行 NDJSON
+    // user 帧写入 stdin 后立刻 end()，prompt 全程不进 argv。
+    //
+    // `--print=` 的空值是必需的：`--print` 会贪婪吞掉下一个参数，
+    // 所以必须放最后。其余 flag 的既有顺序保留不动。
     const args: string[] = [];
     // Always opt into `--log-file` when the daemon supplied a path so
     // it can post-exit grep for the actual upstream failure shape
     // (auth missing vs quota reached vs upstream error) — without it
-    // the chat surfaces a generic "empty response" because print mode
-    // never echoes those errors on stdout. See server.ts empty-output
-    // guard for the consumer.
+    // the chat surfaces a generic "empty response". See server.ts
+    // empty-output guard for the consumer.
     //
-    // Flag order is load-bearing on agy: put `--log-file` before `-p`
-    // so diagnostics (model override / auth / quota) land in the log.
+    // Flag order is load-bearing on agy: put `--log-file` first so
+    // diagnostics (model override / auth / quota) land in the log.
     if (runtimeContext.agentLogFilePath) {
       args.push('--log-file', runtimeContext.agentLogFilePath);
     }
@@ -245,11 +249,12 @@ export const antigravityAgentDef = {
     if (agentCapabilities.get('antigravity')?.skipPermissions) {
       args.push(ANTIGRAVITY_SKIP_PERMISSIONS_FLAG);
     }
-    args.push('-p', prompt);
+    args.push('--input-format', 'stream-json', '--output-format', 'stream-json', '--print=');
     return args;
   },
-  promptViaStdin: false,
-  streamFormat: 'plain',
+  promptViaStdin: true,
+  promptInputFormat: 'agy-stream-json',
+  streamFormat: 'agy-stream-json',
   installUrl: 'https://antigravity.google/cli',
   docsUrl: 'https://antigravity.google/docs/cli-overview',
 } satisfies RuntimeAgentDef;

@@ -492,6 +492,7 @@ import {
 import { readOpenCodeServiceFailure } from './runtimes/opencode-log.js';
 import { applyOpenCodeEventPlugin } from './runtimes/opencode-event-plugin.js';
 
+import { createAgyStreamHandler, encodeAgyUserMessage } from './runtimes/agy-stream.js';
 import { createQoderStreamHandler } from './runtimes/qoder-stream.js';
 import { subscribe as subscribeFileEvents } from './project-watchers.js';
 import { importFigmaFromBytes } from './figma/figma-import.js';
@@ -11044,6 +11045,16 @@ export async function startServer({
           code === 0 && signal === null && !run.cancelRequested && !agentStreamError,
         ));
       });
+    } else if (def.streamFormat === 'agy-stream-json') {
+      // agy ≥ 1.2.13 的 NDJSON 事件流。这里刻意不设 trackingSubstantiveOutput：
+      // close 处理器的 agy 空输出 / auth 守卫（读 --log-file 诊断 quota /
+      // auth）靠 `!trackingSubstantiveOutput` 生效，保持 false 与历史
+      // plain 路径完全一致；真正的失败经 result ERROR 帧 → error 事件 →
+      // sendAgentEvent 的 auth/quota 分类器输出。首轮无增量的短回复由
+      // 解析器在 result 帧补发 text_delta。
+      const agy = createAgyStreamHandler(sendAgentEvent);
+      child.stdout.on('data', (chunk) => agy.feed(chunk));
+      child.on('close', () => agy.flush());
     } else if (def.id === 'antigravity') {
       // Buffer stdout until close so the auth-prompt guard can suppress
       // the OAuth URL before forwarding it to the client as assistant
@@ -12296,6 +12307,22 @@ export async function startServer({
           if (err && err.code !== 'EPIPE') throw err;
         }
         run.stdinOpen = true;
+      } else if (promptInputFormat === 'agy-stream-json') {
+        // agy ≥ 1.2.13 stream-json stdin 通道：把组合好的 prompt 作为一行
+        // NDJSON user 帧写入 stdin 后立刻 end()。agy print 模式一行一轮，
+        // 收到 EOF 后自己走到 result 帧，没有 claude 那种 mid-turn 注入
+        // 需求，因此 stdinOpen 不置 true（steering 判据依赖它保持关闭，
+        // `agentSupportsMidTurnSteering` 也只认 'stream-json'）。
+        const userMessage = encodeAgyUserMessage(composed);
+        try {
+          const accepted = child.stdin.write(userMessage, 'utf8', markStdinWriteEnd);
+          run.stdinBackpressure = accepted === false;
+        } catch (err) {
+          // 同 stream-json 分支：快速退出的子进程已把失败路由进
+          // stderr / exit 处理器，这里只需吞掉 EPIPE。
+          if (err && err.code !== 'EPIPE') throw err;
+        }
+        child.stdin.end();
       }
     }
   };
