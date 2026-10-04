@@ -35,6 +35,7 @@ import { isSafeId as isSafeProjectId } from '../projects.js';
 import { projectKindToTracking } from '@open-design/contracts/analytics';
 import { proxyDispatcherRequestInit, validateUserProviderBaseUrl } from '../connectionTest.js';
 import { isKnownReasoningEffort, resolveModelForServiceTier } from '../runtimes/models.js';
+import { proxyEnvFromPrefs } from '../runtimes/env.js';
 import { googleStreamGenerateContentUrl } from '../integrations/google-models.js';
 import { createRoleMarkerGuard } from '../role-marker-guard.js';
 import { authorizeReasoningEgress, sendReasoningEgressDenial } from '../reasoning-egress.js';
@@ -391,6 +392,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
               body.agentCliEnv && typeof body.agentCliEnv === 'object'
                 ? body.agentCliEnv
                 : undefined,
+            proxyEnv: proxyEnvFromPrefs(appConfig.proxyPrefs),
             signal: controller.signal,
           });
           return res.json(result);

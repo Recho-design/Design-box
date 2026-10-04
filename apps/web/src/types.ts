@@ -62,6 +62,7 @@ import type {
   Project,
   ProjectLocationPrefs,
   ProjectPlatform,
+  ProxyPrefs,
   ProjectBrowserWorkspaceTab,
   ProjectTabsState,
   PreviewCommentMember,
@@ -431,6 +432,7 @@ export interface AppConfig {
   // Per-agent marker that says an API key was saved as an explicit Local CLI
   // environment override, not as an older proxy-only credential.
   agentCliEnvIntent?: AgentCliEnvIntentConfig;
+  proxyPrefs?: ProxyPrefs;
   // Caps the upstream completion length in API mode. Defaults to 8192 when
   // unset; raise it for providers (e.g. MiMo) that allow longer responses.
   maxTokens?: number;

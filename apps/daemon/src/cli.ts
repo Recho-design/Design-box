@@ -9990,6 +9990,7 @@ async function runConfig(args) {
   od config set <key> <value>         Set a top-level key (string / number / boolean).
   od config set <key> --value-json '<json>'
                                        Set a key to a JSON value.
+                                       Example: od config set proxyPrefs --value-json '{"enabled":true,"url":"http://127.0.0.1:7890"}'
   od config unset <key>               Remove a top-level key.
 
 Common options:

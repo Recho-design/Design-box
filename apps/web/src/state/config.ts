@@ -1,4 +1,4 @@
-import type { AppConfigPrefs } from '@open-design/contracts';
+import type { AppConfigPrefs, ProxyPrefs } from '@open-design/contracts';
 import { MEDIA_PROVIDERS } from '../media/models';
 import { isOpenAICompatible } from '../providers/openai-compatible';
 import type {
@@ -98,6 +98,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   agentModels: {},
   agentCliEnv: {},
   agentCliEnvIntent: {},
+  proxyPrefs: { enabled: false, url: '', noProxy: '' },
   pet: DEFAULT_PET,
   notifications: DEFAULT_NOTIFICATIONS,
   orbit: DEFAULT_ORBIT,
@@ -595,6 +596,20 @@ function normalizeOrbit(input: Partial<OrbitConfig> | undefined): OrbitConfig {
   return { ...DEFAULT_ORBIT, ...(input ?? {}), time };
 }
 
+/**
+ * 规范化本地存储里的全局代理偏好：字段逐个 coerce，未知形状回退到
+ * 关闭态而不是丢弃整键，避免一次坏写入就清掉用户已填的代理地址。
+ */
+function normalizeProxyPrefs(input: unknown): ProxyPrefs | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const raw = input as Record<string, unknown>;
+  return {
+    enabled: raw.enabled === true,
+    url: typeof raw.url === 'string' ? raw.url : '',
+    noProxy: typeof raw.noProxy === 'string' ? raw.noProxy : '',
+  };
+}
+
 function isValidOrbitTime(time: string): boolean {
   const match = /^(\d{2}):(\d{2})$/.exec(time);
   if (!match) return false;
@@ -713,6 +728,7 @@ export function loadConfig(): AppConfig {
       agentModels: { ...(parsed.agentModels ?? {}) },
       agentCliEnv: { ...(parsed.agentCliEnv ?? {}) },
       agentCliEnvIntent: { ...(parsed.agentCliEnvIntent ?? {}) },
+      proxyPrefs: normalizeProxyPrefs(parsed.proxyPrefs),
       accentColor: normalizeAccentColor(parsed.accentColor) ?? DEFAULT_CONFIG.accentColor,
       // Coerce on read, not just on default: the theme setting is gone, but
       // 'dark' / 'system' is still on disk in every install that ever used it.
@@ -1114,6 +1130,9 @@ export function mergeDaemonConfig(
   }
   next.agentCliEnv = daemonConfig.agentCliEnv ?? {};
   next.agentCliEnvIntent = daemonConfig.agentCliEnvIntent ?? {};
+  if (daemonConfig.proxyPrefs !== undefined) {
+    next.proxyPrefs = daemonConfig.proxyPrefs ? { ...daemonConfig.proxyPrefs } : undefined;
+  }
   if (daemonConfig.disabledSkills !== undefined) {
     next.disabledSkills = daemonConfig.disabledSkills;
   }
@@ -1292,6 +1311,7 @@ export async function syncConfigToDaemon(
     agentModels: config.agentModels,
     agentCliEnv: config.agentCliEnv,
     agentCliEnvIntent: config.agentCliEnvIntent,
+    proxyPrefs: config.proxyPrefs,
     skillId: config.skillId,
     designSystemId: config.designSystemId,
     disabledSkills: config.disabledSkills,

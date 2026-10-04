@@ -72,6 +72,7 @@ import {
   applyAgentLaunchEnv,
   getAgentDef,
   resolveAgentLaunch,
+  proxyEnvFromPrefs,
   spawnEnvForAgent,
 } from './agents.js';
 import { agentCliEnvForAgent, readAppConfig } from './app-config.js';
@@ -966,9 +967,11 @@ async function callLocalCli(provider, system, user, options) {
   }
 
   let configuredAgentEnv = {};
+  let runProxyPrefs;
   try {
     const appConfig = options?.dataDir ? await readAppConfig(options.dataDir) : {};
     configuredAgentEnv = agentCliEnvForAgent(appConfig.agentCliEnv, def.id);
+    runProxyPrefs = appConfig.proxyPrefs;
   } catch {
     configuredAgentEnv = {};
   }
@@ -1038,6 +1041,7 @@ async function callLocalCli(provider, system, user, options) {
       configuredAgentEnv,
       undefined,
       { resolvedBin: launch.selectedPath },
+      proxyEnvFromPrefs(runProxyPrefs),
     ),
     launch,
   );

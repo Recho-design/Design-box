@@ -542,6 +542,12 @@ export const zhCN: Dict = {
   "settings.modelPickerLiveCatalogOnlyHint": "模型列表来自这个 CLI。",
   "settings.modelPickerFallbackHint":
     "正在显示内置默认值。点击“重新扫描”可从 CLI 拉取实时模型。",
+  "settings.proxyTitle": "网络代理",
+  "settings.proxyHint": "所有 CLI 与服务端请求将通过该代理发出。",
+  "settings.proxyEnable": "启用网络代理",
+  "settings.proxyUrl": "代理地址",
+  "settings.proxyNoProxy": "不走代理的地址 (NO_PROXY)",
+  "settings.proxyUrlInvalid": "请输入有效的 HTTP(S) 代理地址（例如 http://127.0.0.1:7890）",
   "settings.cliEnvTitle": "高级：代理与自定义路径",
   "settings.cliEnvHint":
     "用于覆盖所选 CLI 的底层环境变量：API key、代理 base URL、自定义 home 或非标准可执行文件路径。不填 base URL 时，CLI 会使用自己的默认接口地址。密钥只保存在本地应用配置中，并且只传给所选 CLI。",

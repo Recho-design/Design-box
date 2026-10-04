@@ -2737,6 +2737,51 @@ button.agent-group-rescan-btn:hover:not(:disabled) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+/* 网络代理区块（SettingsDialog 的 proxyPrefs，已迁入 General 区）：
+   checkbox 行复用 field 布局（checkbox 打成固定 14px 原生样式，参照
+   .settings-about-toggle），错误提示沿用 byok 的 field-label-error 视觉
+   （其既有规则只作用于 byok 区块）。 */
+.settings-general-block .settings-proxy-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+  min-width: 0;
+}
+.settings-general-block .settings-proxy-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  cursor: pointer;
+}
+.settings-general-block .settings-proxy-toggle input {
+  appearance: auto;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+.settings-general-block .settings-proxy-toggle .field-label {
+  margin-bottom: 0;
+}
+.settings-general-block .settings-proxy-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-12);
+}
+.settings-general-block .field-label-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
 .status-dot {
   width: 8px; height: 8px;
   border-radius: 50%;

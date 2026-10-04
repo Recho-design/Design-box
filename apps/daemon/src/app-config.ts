@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import path from 'node:path';
-import type { OdNextRolloutMode } from '@open-design/contracts';
+import type { OdNextRolloutMode, ProxyPrefs } from '@open-design/contracts';
 
 import { expandHomePrefix } from './home-expansion.js';
 
@@ -113,6 +113,8 @@ export interface AppConfigPrefs {
   agentModels?: Record<string, AgentModelPrefs>;
   agentCliEnv?: AgentCliEnvPrefs;
   agentCliEnvIntent?: AgentCliEnvIntentPrefs;
+  // 全局代理设置（见 contracts 的 ProxyPrefs）。缺省 / enabled=false 时不注入任何代理环境。
+  proxyPrefs?: ProxyPrefs;
   skillId?: string | null;
   designSystemId?: string | null;
   disabledSkills?: string[];
@@ -148,6 +150,7 @@ const ALLOWED_KEYS: ReadonlySet<keyof AppConfigPrefs> = new Set([
   'agentModels',
   'agentCliEnv',
   'agentCliEnvIntent',
+  'proxyPrefs',
   'skillId',
   'designSystemId',
   'disabledSkills',
@@ -343,6 +346,28 @@ function validateOrbit(raw: unknown): OrbitConfigPrefs | undefined {
   }
 
   return orbit;
+}
+
+/**
+ * 校验用户保存的全局代理偏好（PUT /api/app-config 的 proxyPrefs 键）。
+ *
+ * 规则：整值必须为对象；enabled 必须 boolean；url 必须非空字符串，且
+ * enabled=true 时必须 http(s):// 开头；noProxy 可选非空字符串。整体不合法时
+ * 返回 undefined 由调用方丢弃该键，保持语义为"未配置"。
+ */
+export function validateProxyPrefs(raw: unknown): ProxyPrefs | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.enabled !== 'boolean') return undefined;
+  const enabled = obj.enabled;
+  const url = typeof obj.url === 'string' ? obj.url.trim() : '';
+  if (!url) return undefined;
+  if (enabled && !/^https?:\/\//i.test(url)) return undefined;
+  const prefs: ProxyPrefs = { enabled, url };
+  const noProxy = typeof obj.noProxy === 'string' ? obj.noProxy.trim() : '';
+  if (noProxy) prefs.noProxy = noProxy;
+  return prefs;
 }
 
 function normalizeLocationId(raw: string, fallback: string): string {
@@ -554,6 +579,14 @@ function applyConfigValue(
   }
   if (key === 'agentCliEnvIntent') {
     const validated = validateAgentCliEnvIntent(value);
+    if (validated !== undefined) {
+      target[key] = validated;
+    } else {
+      delete target[key];
+    }
+  }
+  if (key === 'proxyPrefs') {
+    const validated = validateProxyPrefs(value);
     if (validated !== undefined) {
       target[key] = validated;
     } else {

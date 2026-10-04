@@ -565,6 +565,16 @@ function codexPathStrings(locale: Locale) {
   };
 }
 
+export function isProxyUrlValid(url: string | undefined): boolean {
+  if (!url || !url.trim()) return false;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeHttpsUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
   try {
@@ -1051,28 +1061,31 @@ export function resolveSettingsAutosavePayload(
   active: AppConfig,
   intent: { commitClearedActiveApiKey?: boolean } = {},
 ): AppConfig {
-  if (draft.mode !== 'api') return draft;
-  if (byokPreflightBlockReason(draft) === null) {
-    if (!draft.byokPendingProviderKey) return draft;
-    return { ...draft, byokPendingProviderKey: undefined };
+  const effectiveDraft = draft.proxyPrefs?.enabled && !isProxyUrlValid(draft.proxyPrefs.url)
+    ? { ...draft, proxyPrefs: active.proxyPrefs }
+    : draft;
+  if (effectiveDraft.mode !== 'api') return effectiveDraft;
+  if (byokPreflightBlockReason(effectiveDraft) === null) {
+    if (!effectiveDraft.byokPendingProviderKey) return effectiveDraft;
+    return { ...effectiveDraft, byokPendingProviderKey: undefined };
   }
 
-  const draftKey = byokProviderKeyForConfig(draft);
+  const draftKey = byokProviderKeyForConfig(effectiveDraft);
   const clearsActiveApiKey =
     intent.commitClearedActiveApiKey === true
     && active.mode === 'api'
     && draftKey === byokProviderKeyForConfig(active)
     && active.apiKey.trim() !== ''
-    && draft.apiKey.trim() === '';
+    && effectiveDraft.apiKey.trim() === '';
   if (clearsActiveApiKey) {
-    if (!draft.byokPendingProviderKey) return draft;
-    return { ...draft, byokPendingProviderKey: undefined };
+    if (!effectiveDraft.byokPendingProviderKey) return effectiveDraft;
+    return { ...effectiveDraft, byokPendingProviderKey: undefined };
   }
 
   const withCurrentDraft = persistByokProviderConfigDraft(
-    draft,
+    effectiveDraft,
     draftKey,
-    currentApiProtocolConfig(draft),
+    currentApiProtocolConfig(effectiveDraft),
   );
   return {
     ...withCurrentDraft,
@@ -5226,6 +5239,96 @@ export function SettingsDialog({
                   <h3>{t('settings.projectLocations')}</h3>
                 </div>
                 <ProjectLocationsSection cfg={cfg} setCfg={setCfg} onProjectsRefresh={onProjectsRefresh} />
+              </div>
+
+              <div className="settings-general-block">
+                <div className="settings-general-block-head">
+                  <h3>{t('settings.proxyTitle')}</h3>
+                  <p className="hint">{t('settings.proxyHint')}</p>
+                </div>
+                {/*
+                  网络代理（proxyPrefs）从 Local CLI 区迁入：开启开关 + URL/NO_PROXY
+                  两个字段，autosave 守卫在 resolveSettingsAutosavePayload（URL 非
+                  法时以 active 的 proxyPrefs 覆盖草稿），字段与迁移前完全一致。
+                */}
+                {(() => {
+                  const proxyEnabled = Boolean(cfg.proxyPrefs?.enabled);
+                  const proxyUrl = cfg.proxyPrefs?.url ?? '';
+                  const proxyUrlInvalid = proxyEnabled && !isProxyUrlValid(proxyUrl);
+                  return (
+                    <div className="settings-proxy-fields" data-testid="settings-proxy">
+                      <label className="field settings-proxy-toggle">
+                        <input
+                          type="checkbox"
+                          checked={proxyEnabled}
+                          onChange={(e) => {
+                            const enabled = e.target.checked;
+                            setCfg((c) => ({
+                              ...c,
+                              proxyPrefs: {
+                                enabled,
+                                url: c.proxyPrefs?.url ?? '',
+                                noProxy: c.proxyPrefs?.noProxy ?? '',
+                              },
+                            }));
+                          }}
+                        />
+                        <span className="field-label">
+                          {t('settings.proxyEnable')}
+                        </span>
+                      </label>
+                      <div className="settings-proxy-grid">
+                        <label className="field">
+                          <span className="field-label">{t('settings.proxyUrl')}</span>
+                          <input
+                            type="text"
+                            value={proxyUrl}
+                            placeholder="http://127.0.0.1:7890"
+                            spellCheck={false}
+                            autoComplete="off"
+                            onChange={(e) => {
+                              const url = e.target.value;
+                              setCfg((c) => ({
+                                ...c,
+                                proxyPrefs: {
+                                  enabled: c.proxyPrefs?.enabled ?? false,
+                                  url,
+                                  noProxy: c.proxyPrefs?.noProxy ?? '',
+                                },
+                              }));
+                            }}
+                          />
+                          {proxyUrlInvalid ? (
+                            <span className="field-label-error" role="alert">
+                              {t('settings.proxyUrlInvalid')}
+                            </span>
+                          ) : null}
+                        </label>
+                        <label className="field">
+                          <span className="field-label">{t('settings.proxyNoProxy')}</span>
+                          <input
+                            type="text"
+                            value={cfg.proxyPrefs?.noProxy ?? ''}
+                            placeholder="localhost,127.0.0.1,.local"
+                            spellCheck={false}
+                            autoComplete="off"
+                            onChange={(e) => {
+                              const noProxy = e.target.value;
+                              setCfg((c) => ({
+                                ...c,
+                                proxyPrefs: {
+                                  enabled: c.proxyPrefs?.enabled ?? false,
+                                  url: c.proxyPrefs?.url ?? '',
+                                  noProxy,
+                                },
+                              }));
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="settings-general-block">

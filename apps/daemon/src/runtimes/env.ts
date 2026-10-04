@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { ProxyPrefs } from '@open-design/contracts';
 import { mergeProxyAwareEnv, resolveSystemProxyEnv } from '@open-design/platform';
 import { resolveProjectRelativePath } from '../home-expansion.js';
 import { expandConfiguredEnv } from './paths.js';
@@ -36,6 +37,11 @@ const RUNTIME_MODULE_PROJECT_ROOT = resolveProjectRootFromNestedModule(
 //    override, so it wins over inherited env, including API-key variables.
 //    BASE_URL is optional: when omitted, the underlying CLI uses its own
 //    official default endpoint.
+// 4. `userProxyEnv` carries the global proxy setting (app-config proxyPrefs)
+//    via proxyEnvFromPrefs. It is merged LAST so it outranks both the
+//    inherited env and configuredEnv. Caller contract: pass {} (or omit) when
+//    the global proxy is disabled — enabled=false must leave the spawn env
+//    exactly as without this feature.
 // When the daemon launches the vela (amr) CLI, forward this installation's id
 // so vela's analytics can be correlated back to it. spawnEnvForAgent is
 // synchronous, so this uses readAppConfigSync — the synchronous mirror of
@@ -73,12 +79,33 @@ function applyClaudeTaskToolEnv(env: NodeJS.ProcessEnv): void {
   env.CLAUDE_CODE_ENABLE_TODO_TOOLS = '1';
 }
 
+/**
+ * 从全局代理偏好推出代理环境变量（canonical 大写拼写；大小写/别名规范交给
+ * mergeProxyAwareEnv）。enabled 非 true 或 url 非 http(s):// 开头时返回空字典，
+ * 即完全不注入。
+ */
+export function proxyEnvFromPrefs(
+  prefs: ProxyPrefs | undefined,
+): Record<string, string> {
+  if (!prefs || prefs.enabled !== true) return {};
+  const url = typeof prefs.url === 'string' ? prefs.url.trim() : '';
+  if (!/^https?:\/\//i.test(url)) return {};
+  return {
+    HTTP_PROXY: url,
+    HTTPS_PROXY: url,
+    ALL_PROXY: url,
+    NODE_USE_ENV_PROXY: '1',
+    ...(prefs.noProxy?.trim() ? { NO_PROXY: prefs.noProxy.trim() } : {}),
+  };
+}
+
 export function spawnEnvForAgent(
   agentId: string,
   baseEnv: RuntimeEnvMap,
   configuredEnv: unknown = {},
   systemProxyEnv: RuntimeEnvMap = resolveSystemProxyEnv(),
   _options: SpawnEnvOptions = {},
+  userProxyEnv: Record<string, string> = {},
 ): NodeJS.ProcessEnv {
   const sandboxRuntime = sandboxRuntimeConfigForBaseEnv(baseEnv);
   const expandedConfiguredEnv = expandConfiguredEnv(configuredEnv);
@@ -87,6 +114,7 @@ export function spawnEnvForAgent(
     systemProxyEnv,
     baseEnv,
     expandedConfiguredEnv,
+    userProxyEnv,
   );
   
   if (agentId === 'claude') {

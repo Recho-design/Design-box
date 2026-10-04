@@ -12,7 +12,7 @@ import type {
 
 import { agentCliEnvForAgent, readAppConfig } from './app-config.js';
 import { detectAgent } from './runtimes/detection.js';
-import { spawnEnvForAgent } from './runtimes/env.js';
+import { proxyEnvFromPrefs, spawnEnvForAgent } from './runtimes/env.js';
 import { execAgentFile } from './runtimes/invocation.js';
 import { applyAgentLaunchEnv, resolveAgentLaunch } from './runtimes/launch.js';
 import { getAgentDef } from './runtimes/registry.js';
@@ -221,7 +221,14 @@ async function installDeepSeekHarnessCompanionOnce(options: {
     );
   }
   const childEnv = applyAgentLaunchEnv(
-    spawnEnvForAgent(DSH_AGENT_ID, process.env, configuredEnv),
+    spawnEnvForAgent(
+      DSH_AGENT_ID,
+      process.env,
+      configuredEnv,
+      undefined,
+      {},
+      proxyEnvFromPrefs(appConfig.proxyPrefs),
+    ),
     launch,
   );
   const profileWasPresent = hasOpenDesignProfile(childEnv);

@@ -543,6 +543,12 @@ export const zhTW: Dict = {
   "settings.modelPickerLiveCatalogOnlyHint": "模型列表來自這個 CLI。",
   "settings.modelPickerFallbackHint":
     "正在顯示內建預設值。點擊「重新掃描」可從 CLI 拉取即時模型。",
+  "settings.proxyTitle": "網路代理",
+  "settings.proxyHint": "所有 CLI 與伺服器端請求將透過該代理發出。",
+  "settings.proxyEnable": "啟用網路代理",
+  "settings.proxyUrl": "代理位址",
+  "settings.proxyNoProxy": "不走代理的位址 (NO_PROXY)",
+  "settings.proxyUrlInvalid": "請輸入有效的 HTTP(S) 代理位址（例如 http://127.0.0.1:7890）",
   "settings.cliEnvTitle": "進階：代理與自訂路徑",
   "settings.cliEnvHint":
     "用於覆蓋所選 CLI 的底層環境變數：API key、代理 base URL、自訂 home 或非標準可執行檔路徑。不填 base URL 時，CLI 會使用自己的預設端點。密鑰只保存在本機應用設定中，且只傳給所選 CLI。",

@@ -691,6 +691,8 @@ import { AutomaticDiagnostics } from './services/automatic-diagnostics.js';
 import { createDiagnosticRunObserver, diagnosticFaultFromApi, diagnosticFaultFromLifecycle } from './services/diagnostic-faults.js';
 import { diagnosticRelayUrl } from './integrations/diagnostic-relay.js';
 import { automaticDiagnosticsConsent, observeAppConfig } from './app-config.js';
+import { applyProxyPrefsToProcess, snapshotInheritedProxyEnv } from './services/proxy-apply.js';
+import { proxyEnvFromPrefs } from './runtimes/env.js';
 import { observeApiFailures } from './http/api-failure-journal.js';
 import { configureDiagnosticsEvidence } from './services/diagnostics-evidence.js';
 import { beginDaemonHealthSession } from './services/daemon-health.js';
@@ -3437,6 +3439,13 @@ export async function startServer({
   // Warm agent-capability probes (e.g. whether the installed Claude Code
   // build advertises --include-partial-messages) so the first /api/chat
   // hits a populated cache even if /api/agents hasn't been called yet.
+  // 全局代理设置：启动时先快照继承的代理 env，再按用户偏好应用到本进程出站。
+  snapshotInheritedProxyEnv();
+  try {
+    applyProxyPrefsToProcess(readAppConfigSync(RUNTIME_DATA_DIR).proxyPrefs);
+  } catch {
+    // 配置不可读时保持继承的代理环境，与未配置时行为一致。
+  }
   void readAppConfig(RUNTIME_DATA_DIR)
     .then((config) => {
       orbitService.configure(config.orbit);
@@ -7240,6 +7249,8 @@ export async function startServer({
     } catch {
       configuredAgentEnv = {};
     }
+    // 全局代理设置：enabled 时注入子进程代理 env，disabled/无效时为空字典。
+    const runProxyEnv = proxyEnvFromPrefs(appConfigForRun?.proxyPrefs);
     const requestedLiveModelScope = null;
     const configuredModel =
       typeof appConfigForRun?.agentModels?.[def.id]?.model === 'string'
@@ -8704,6 +8715,7 @@ export async function startServer({
         configuredAgentEnv,
         undefined,
         { resolvedBin: agentLaunch.selectedPath },
+        runProxyEnv,
       );
       await normalizeCodexConfigFile(codexConfigEnv);
 
@@ -9373,6 +9385,7 @@ export async function startServer({
       configuredAgentSpawnEnv,
       undefined,
       { resolvedBin: agentLaunch.selectedPath },
+      runProxyEnv,
     );
 
     const odMediaEnv = createOpenDesignToolEnv({

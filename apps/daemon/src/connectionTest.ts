@@ -873,8 +873,11 @@ export function redactSecrets(
 }
 
 type ProviderConnectionInput = ProviderTestRequest & { signal?: AbortSignal };
+// proxyEnv 由路由层从 app-config 的 proxyPrefs 推出（proxyEnvFromPrefs），
+// 不进入对外契约：contracts 的 AgentTestRequest 保持不变。
 type AgentConnectionInput = AgentTestRequest & {
   signal?: AbortSignal;
+  proxyEnv?: Record<string, string>;
 };
 
 function appendVersionedApiPath(baseUrl: string, suffix: string): string {
@@ -2633,6 +2636,7 @@ async function testAgentConnectionInternal(
       configuredAgentEnv,
       undefined,
       { resolvedBin: executableResolution.selectedPath },
+      input.proxyEnv ?? {},
     );
     const liveModelScope = null;
     const mmdRouteLaunchEnv = input.agentId === 'claude'

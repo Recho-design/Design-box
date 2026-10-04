@@ -39,6 +39,7 @@ import { scaffoldHyperFramesComposition } from '../media/hyperframes-scaffold.js
 import { assignMediaTaskBatches } from '../media/task-batches.js';
 import { mediaTaskErrorFromFailure } from '../media/task-error.js';
 import { normalizePersistedAutomationWorkspaceScope } from '../automations/workspace-scope.js';
+import { applyProxyPrefsToProcess } from '../services/proxy-apply.js';
 
 const LONG_MEDIA_PROXY_TIMEOUT_MS = 10 * 60 * 1000;
 const MEDIA_FILE_MTIME_TOLERANCE_MS = 1;
@@ -848,6 +849,10 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
         }
       }
       const config = await writeAppConfig(RUNTIME_DATA_DIR, req.body);
+      // 全局代理设置：本轮写入触及 proxyPrefs 时同步本进程代理环境。
+      if (Object.hasOwn(req.body ?? {}, 'proxyPrefs')) {
+        applyProxyPrefsToProcess(config.proxyPrefs);
+      }
       orbitService.configure(config.orbit);
       onAppConfigWritten?.(config);
       res.json({ config });

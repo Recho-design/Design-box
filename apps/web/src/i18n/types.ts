@@ -509,6 +509,12 @@ export interface Dict {
   'settings.modelPickerLiveHint': string;
   'settings.modelPickerLiveCatalogOnlyHint': string;
   'settings.modelPickerFallbackHint': string;
+  'settings.proxyTitle': string;
+  'settings.proxyHint': string;
+  'settings.proxyEnable': string;
+  'settings.proxyUrl': string;
+  'settings.proxyNoProxy': string;
+  'settings.proxyUrlInvalid': string;
   'settings.cliEnvTitle': string;
   'settings.cliEnvHint': string;
   'settings.cliEnvClaudeConfigDir': string;

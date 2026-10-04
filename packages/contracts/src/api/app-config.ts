@@ -9,6 +9,19 @@ export interface AgentModelPrefs {
 export type AgentCliEnvPrefs = Record<string, Record<string, string>>;
 export type AgentCliEnvIntentPrefs = Record<string, { apiKeyOverride?: boolean }>;
 
+/**
+ * User-configured global proxy. `enabled: false` (or absent) means no
+ * injection anywhere — behavior identical to a build without this field.
+ */
+export interface ProxyPrefs {
+  /** Master switch. Only `true` injects proxy env into CLI spawns and the daemon's own outbound calls. */
+  enabled: boolean;
+  /** Proxy endpoint, e.g. `http://127.0.0.1:7890`. Must be a http(s) URL when enabled. */
+  url: string;
+  /** Optional comma-separated NO_PROXY list. */
+  noProxy?: string;
+}
+
 export interface TelemetryPrefs {
   metrics?: boolean;
   content?: boolean;
@@ -45,6 +58,8 @@ export interface AppConfigPrefs {
   agentModels?: Record<string, AgentModelPrefs>;
   agentCliEnv?: AgentCliEnvPrefs;
   agentCliEnvIntent?: AgentCliEnvIntentPrefs;
+  /** User-configured global proxy for CLI spawns + daemon outbound. Opt-in; absent = off. */
+  proxyPrefs?: ProxyPrefs;
   skillId?: string | null;
   designSystemId?: string | null;
   disabledSkills?: string[];
