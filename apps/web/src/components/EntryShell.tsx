@@ -136,8 +136,10 @@ import {
   workspaceProjectHeaders,
 } from '../collab/useWorkspaceContext';
 const useWorkspaceInvalidation = (_handlers?: Record<string, (payload: any) => void>, _options?: any) => {};
-const buildAllProjectsList = (all: any) => all;
-const buildDraftsList = (all: any) => all;
+// 团队共享链路摘除后的折叠：无共享目录时「草稿」与「全部项目」都收敛为
+// 本地项目列表（见下方 OPEND-3140 注释），忽略残留的 workspace 入参。
+const buildAllProjectsList = (input: { projects: Project[]; [k: string]: any }): Project[] => input.projects;
+const buildDraftsList = (input: { projects: Project[]; [k: string]: any }): Project[] => input.projects;
 const createSharedProjectPredicate = (_options?: any) => (_id: string) => false;
 const reconcileSharedProjectCatalogFields = (input: { projects: Project[]; [k: string]: any }): Project[] => input.projects;
 const forgetOptimisticProjectOwnership = <T,>(prev: T, ..._args: any[]): T => prev;
@@ -165,6 +167,7 @@ import {
   type PluginShareProjectOutcome,
 } from '../state/projects';
 import { TasksView } from './TasksView';
+import { GenerateView } from './GenerateView';
 import {
   API_KEY_PLACEHOLDERS,
   API_PROTOCOL_TABS,
@@ -492,6 +495,8 @@ function navElementForView(
       return 'design_systems';
     case 'integrations':
       return 'integrations';
+    case 'generate':
+      return 'home';
     default:
       return null;
   }
@@ -1795,6 +1800,12 @@ export function EntryShell({
             ) : null}
             {view === 'workspace-settings' ? (
               <TeamSlotPlaceholder icon="settings" title={t('entry.navWorkspaceSettings')} />
+            ) : null}
+            {view === 'generate' ? (
+              <GenerateView
+                initialProjectId={route.kind === 'home' ? route.generateProjectId : undefined}
+                projects={projects}
+              />
             ) : null}
           </div>
         </main>

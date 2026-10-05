@@ -112,6 +112,11 @@ export const API_ERROR_CODES = [
   'MEDIA_EXECUTION_DISABLED',
   'MEDIA_SURFACE_DENIED',
   'MEDIA_MODEL_DENIED',
+  // Media Playground:该 generation 行仍在 `running`，此刻不可删除（409）。
+  // 同步批次在 HTTP 请求内 settle，运行窗口就是请求窗口；允许删除会让
+  // 「删行之后 settle 更新落空 + 渲染器照常写出孤儿文件」同时发生。客户端
+  // 应当等这一行进入终态再重试删除，而不是重试同一次请求。
+  'GENERATION_RUNNING',
   // Live artifact validation, storage, preview, and refresh failures.
   'LIVE_ARTIFACT_NOT_FOUND',
   'LIVE_ARTIFACT_INVALID',

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-nocheck
-import { readFileSync, writeFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 import { runDaemonCliStartup, startDaemonRuntime } from './daemon-startup.js';
 import { runLiveArtifactsMcpServer } from './mcp-live-artifacts-server.js';
 import { runArtifactsCli } from './artifacts-cli.js';
@@ -68,12 +68,14 @@ const MEDIA_GENERATE_STRING_FLAGS = new Set([
   'workspace-member',
   'surface',
   'model',
+  'model-override',
   'prompt',
   'prompt-file',
   'output',
   'aspect',
   'quality',
   'resolution',
+  'count',
   'length',
   'duration',
   'prompt-influence',
@@ -88,6 +90,9 @@ const MEDIA_GENERATE_BOOLEAN_FLAGS = new Set([
   'help',
   'h',
   'loop',
+  // Accepted for consistency with `media scaffold`: generate output is always
+  // one JSON line per result, so the flag is a no-op that must still parse.
+  'json',
 ]);
 const MEDIA_SCAFFOLD_STRING_FLAGS = new Set([
   'project',
@@ -97,6 +102,44 @@ const MEDIA_SCAFFOLD_STRING_FLAGS = new Set([
   'daemon-url',
 ]);
 const MEDIA_SCAFFOLD_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+
+// `od media playground` 的白名单，与 MEDIA_GENERATE_* 同一个 TDZ 理由留在模块
+// 顶部：`od media playground …` 会在模块求值期经由 SUBCOMMAND_MAP 直接跑到
+// runMediaPlayground，而这些 Set 是它第一步就要读的东西。
+const MEDIA_PLAYGROUND_STRING_FLAGS = new Set([
+  'project',
+  'model',
+  'model-override',
+  'prompt',
+  'prompt-file',
+  'aspect',
+  'quality',
+  'count',
+  'image',
+  'target',
+  'limit',
+  'before',
+  'slot',
+  'out',
+  'daemon-url',
+]);
+const MEDIA_PLAYGROUND_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+
+// 同上：子命令白名单在 runMediaPlayground 的**第一个 await 之前**就被读，而那个
+// 函数是模块求值期被调用的。留在文件中部会是一个 `Cannot access ... before
+// initialization`（只有 `--help` 那条路径碰巧读不到它）。
+const PLAYGROUND_SUBCOMMANDS = new Set([
+  'generate',
+  'upload',
+  'list',
+  'download',
+  'transfer',
+  'delete',
+]);
+
+/** 一次 `download` 最多翻多少页历史去找那一行（见 findPlaygroundGeneration）。 */
+const PLAYGROUND_LOOKUP_MAX_PAGES = 50;
+const PLAYGROUND_PAGE_SIZE = 200;
 
 const MCP_STRING_FLAGS = new Set([
   'daemon-url',
@@ -1440,7 +1483,7 @@ async function runMedia(args) {
     printMediaHelp();
     return;
   }
-  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold') {
+  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold' && sub !== 'playground') {
     console.error(`unknown subcommand: od media ${sub}`);
     printMediaHelp();
     process.exit(1);
@@ -1448,6 +1491,7 @@ async function runMedia(args) {
 
   const idx = args.indexOf(sub);
   const subArgs = [...args.slice(0, idx), ...args.slice(idx + 1)];
+  if (sub === 'playground') return runMediaPlayground(subArgs);
   if (sub === 'wait') return runMediaWait(subArgs);
   if (sub === 'scaffold') return runMediaScaffold(subArgs);
   return runMediaGenerate(subArgs);
@@ -1572,10 +1616,17 @@ async function runMediaGenerate(rawArgs) {
     images,
     language: flags.language,
   };
+  // Custom Image API only: the wire model the endpoint serves, named per
+  // request. The daemon lets it win over the provider's configured model, so
+  // the same Settings → Media entry the workbench uses also works from the CLI.
+  if (flags['model-override'] != null) body.modelOverride = flags['model-override'];
   if (flags.length != null) body.length = Number(flags.length);
   if (flags.duration != null) body.duration = Number(flags.duration);
   if (flags['prompt-influence'] != null) body.promptInfluence = Number(flags['prompt-influence']);
   if (flags.loop === true) body.loop = true;
+  // The daemon owns the loop semantics (N parallel single-image calls, one
+  // derived output name each) so UI and CLI cannot drift; the CLI only asks.
+  if (flags.count != null) body.count = Number(flags.count);
 
   const url = token
     ? `${daemonUrl.replace(/\/$/, '')}/api/tools/media/generate`
@@ -1602,6 +1653,14 @@ async function runMediaGenerate(rawArgs) {
   }
   const accepted = await resp.json();
   const { taskId } = accepted;
+  // A multi-image batch is already rendered when the daemon answers: every slot
+  // has settled, so there is no task left to poll. Print the whole batch as one
+  // JSON line — a caller that asked for N files must see N results, not `count`
+  // polls that each claim to be the answer.
+  if (Array.isArray(accepted.files)) {
+    process.stdout.write(`${JSON.stringify(accepted)}\n`);
+    return;
+  }
   if (!taskId) {
     console.error('daemon did not return a taskId');
     process.exit(4);
@@ -1693,6 +1752,294 @@ async function runMediaWait(rawArgs) {
       ? { authorization: `Bearer ${token}` }
       : workspaceHeadersFromExplicitFlags(flags) ?? {},
   });
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: od media playground …
+//
+// Playground 的双轨补齐：UI 能做的（生成 / 传参考图 / 列表 / 下载 / 转存 /
+// 删除）CLI 同形可达。退出码沿用 media 惯例：2 = 用法错误，3 = 连不上 daemon，
+// 4 = daemon 拒绝（stderr 是嵌套 `{error:{code,message,nextStep}}`）。
+//
+// `PLAYGROUND_SUBCOMMANDS` / `PLAYGROUND_LOOKUP_MAX_PAGES` 在模块顶部：这个
+// handler 是模块求值期被调用的（见那里的注释）。
+// ---------------------------------------------------------------------------
+
+async function runMediaPlayground(rawArgs) {
+  const sub = rawArgs.find((a) => !a.startsWith('-')) || '';
+  if (sub === '' || sub === 'help' || sub === '-h' || sub === '--help') {
+    printMediaPlaygroundHelp();
+    return;
+  }
+  if (!PLAYGROUND_SUBCOMMANDS.has(sub)) {
+    console.error(`unknown subcommand: od media playground ${sub}`);
+    printMediaPlaygroundHelp();
+    process.exit(2);
+  }
+  const idx = rawArgs.indexOf(sub);
+  const rest = [...rawArgs.slice(0, idx), ...rawArgs.slice(idx + 1)];
+  let flags;
+  try {
+    flags = parseFlags(rest, {
+      string: MEDIA_PLAYGROUND_STRING_FLAGS,
+      boolean: MEDIA_PLAYGROUND_BOOLEAN_FLAGS,
+    });
+  } catch (err) {
+    console.error(err.message);
+    printMediaPlaygroundHelp();
+    process.exit(2);
+  }
+  if (flags.help || flags.h) {
+    printMediaPlaygroundHelp();
+    return;
+  }
+  const positional = positionalArgs(rest, MEDIA_PLAYGROUND_STRING_FLAGS);
+  if (sub === 'generate') return runPlaygroundGenerate(flags, rest);
+  if (sub === 'upload') return runPlaygroundUpload(flags, positional);
+  if (sub === 'list') return runPlaygroundList(flags);
+  if (sub === 'download') return runPlaygroundDownload(flags, positional);
+  if (sub === 'transfer') return runPlaygroundTransfer(flags, positional);
+  return runPlaygroundDelete(flags, positional);
+}
+
+/**
+ * 统一的 daemon 请求：连不上 exit 3，非 2xx 走嵌套信封 → exit 4。
+ *
+ * 返回 `any` 是因为失败路径以 `process.exit` 收场，调用方拿到的永远是成功的
+ * 响应；这里如实表达这一点，而不是编一个假的返回类型。
+ */
+async function playgroundRequest(daemonUrl, requestPath, init = {}) {
+  let resp;
+  try {
+    resp = await fetch(`${daemonUrl.replace(/\/$/, '')}${requestPath}`, init);
+  } catch (err) {
+    surfaceFetchError(err, daemonUrl);
+    return await flushStreamsAndExit(3);
+  }
+  if (!resp.ok) return await exitWithMediaHttpFailure(resp);
+  return resp;
+}
+
+async function runPlaygroundGenerate(flags, rawArgs) {
+  const daemonUrl = await cliDaemonUrl(flags);
+  if (!flags.model) {
+    console.error('--model required. v1 accepts: custom-image');
+    process.exit(2);
+  }
+  const prompt = await readPromptFromFlags(flags);
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    console.error('--prompt or --prompt-file <path|-> required');
+    process.exit(2);
+  }
+  const images = repeatableFlagValues(rawArgs, 'image');
+  const body = {
+    surface: 'image',
+    model: flags.model,
+    prompt,
+    ...(flags.project ? { targetProjectId: flags.project } : {}),
+    ...(flags['model-override'] ? { modelOverride: flags['model-override'] } : {}),
+    ...(flags.aspect ? { aspect: flags.aspect } : {}),
+    ...(flags.quality ? { quality: flags.quality } : {}),
+    ...(flags.count != null ? { count: Number(flags.count) } : {}),
+    ...(images.length > 0 ? { images } : {}),
+  };
+  const resp = await playgroundRequest(daemonUrl, '/api/media/playground/generate', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const generation = await resp.json();
+  // 响应永远是完整的一行（含 per-slot 失败）——包括全部槽位都失败时。所以先
+  // 把这一行交给调用方，再在失败时用退出码与 stderr 的嵌套信封补上"所以呢"。
+  process.stdout.write(`${JSON.stringify(generation)}\n`);
+  if (generation?.status === 'failed') {
+    await exitWithMediaError({
+      code: 'MEDIA_GENERATION_FAILED',
+      message: firstGenerationError(generation) ?? 'image generation failed',
+      retryable: true,
+    }, 4);
+  }
+}
+
+async function runPlaygroundUpload(flags, positional) {
+  if (positional.length === 0) {
+    console.error('Usage: od media playground upload <file>... [--project <id>]');
+    process.exit(2);
+  }
+  const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
+  // 一次请求一个文件：端点契约就是 `{name}`，多个文件就是多行。
+  for (const localPath of positional) {
+    const bytes = readFileSync(localPath);
+    const form = new FormData();
+    if (flags.project) form.append('targetProjectId', flags.project);
+    form.append('file', new Blob([bytes]), basename(localPath));
+    const resp = await playgroundRequest(base, '/api/media/playground/uploads', {
+      method: 'POST',
+      body: form,
+    });
+    const payload = await resp.json();
+    process.stdout.write(flags.json ? `${JSON.stringify(payload)}\n` : `${payload.name}\n`);
+  }
+}
+
+async function runPlaygroundList(flags) {
+  const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
+  const query = new URLSearchParams();
+  if (flags.limit != null) query.set('limit', String(flags.limit));
+  if (flags.target) query.set('target', flags.target);
+  if (flags.before) query.set('before', flags.before);
+  const suffix = query.toString() ? `?${query}` : '';
+  const resp = await playgroundRequest(base, `/api/media/playground/generations${suffix}`);
+  const page = await resp.json();
+  if (flags.json) return process.stdout.write(`${JSON.stringify(page)}\n`);
+  for (const generation of page.generations ?? []) {
+    const target = generation.targetProjectId ?? 'scratch';
+    const files = Array.isArray(generation.files) ? generation.files.length : 0;
+    console.log(
+      `${generation.id}\t${generation.status}\t${target}\t${files}\t${promptSnippet(generation.prompt)}`,
+    );
+  }
+}
+
+async function runPlaygroundDownload(flags, positional) {
+  const generationId = positional[0];
+  if (!generationId) {
+    console.error('Usage: od media playground download <generationId> [--slot n] [--out <path>]');
+    process.exit(2);
+  }
+  const slot = flags.slot != null ? Number(flags.slot) : 0;
+  if (!Number.isInteger(slot) || slot < 0) {
+    console.error('--slot must be a non-negative integer');
+    process.exit(2);
+  }
+  const daemonUrl = await cliDaemonUrl(flags);
+  const generation = await findPlaygroundGeneration(daemonUrl, generationId);
+  if (!generation) {
+    await exitWithMediaError({
+      code: 'NOT_FOUND',
+      message: `generation not found: ${generationId}`,
+    }, 4);
+  }
+  const file = generation.files?.[slot];
+  if (!file || file.error) {
+    await exitWithMediaError({
+      code: 'FILE_NOT_FOUND',
+      message: `generation ${generationId} has no artifact in slot ${slot}`,
+    }, 4);
+  }
+  const bytes = await readPlaygroundArtifact(daemonUrl, generation, file.name, slot);
+  const outPath = resolvePlaygroundOutPath(flags.out, file.name);
+  writeFileSync(outPath, bytes);
+  if (flags.json) process.stdout.write(`${JSON.stringify({ path: outPath })}\n`);
+  else console.log(outPath);
+}
+
+/**
+ * 从 scratch 目录或**实际项目根**读回产物字节。
+ *
+ * 项目行不能走 `/api/media/playground/files/…`：那个端点刻意只服务 scratch
+ * （否则同一份字节会有两条权限路径）。项目产物一律走既有项目文件服务。
+ */
+async function readPlaygroundArtifact(daemonUrl, generation, name, slot) {
+  const base = daemonUrl.replace(/\/$/, '');
+  const requestPath = generation.targetProjectId
+    ? `/api/projects/${encodeURIComponent(generation.targetProjectId)}/files/${encodePlaygroundRelPath(name)}`
+    : `/api/media/playground/files/${encodeURIComponent(generation.id)}/${slot}`;
+  const resp = await playgroundRequest(base, requestPath);
+  return Buffer.from(await resp.arrayBuffer());
+}
+
+async function runPlaygroundTransfer(flags, positional) {
+  const generationId = positional[0];
+  if (!generationId || !flags.project) {
+    console.error('Usage: od media playground transfer <generationId> --project <id>');
+    process.exit(2);
+  }
+  const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
+  const resp = await playgroundRequest(
+    base,
+    `/api/media/playground/generations/${encodeURIComponent(generationId)}/transfer`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId: flags.project }),
+    },
+  );
+  const payload = await resp.json();
+  if (flags.json) return process.stdout.write(`${JSON.stringify(payload)}\n`);
+  for (const name of payload.transferredFiles ?? []) console.log(name);
+}
+
+async function runPlaygroundDelete(flags, positional) {
+  const generationId = positional[0];
+  if (!generationId) {
+    console.error('Usage: od media playground delete <generationId>');
+    process.exit(2);
+  }
+  const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
+  const resp = await playgroundRequest(
+    base,
+    `/api/media/playground/generations/${encodeURIComponent(generationId)}`,
+    { method: 'DELETE' },
+  );
+  const payload = await resp.json();
+  if (flags.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
+  else console.log(`deleted ${generationId}`);
+}
+
+/**
+ * 按 id 找回一行历史。
+ *
+ * 端点面刻意只有六个（没有 `GET /generations/:id`，而 `/files/:id/:slot` 只服务
+ * scratch 行），所以这里按复合游标往前翻页查找，翻页上限保证它不会变成一次
+ * 无界扫描。行的 id 就是它自己的一页，绝大多数调用在第一页命中。
+ */
+async function findPlaygroundGeneration(daemonUrl, generationId) {
+  const base = daemonUrl.replace(/\/$/, '');
+  let before = '';
+  for (let page = 0; page < PLAYGROUND_LOOKUP_MAX_PAGES; page += 1) {
+    const query = new URLSearchParams({ limit: String(PLAYGROUND_PAGE_SIZE) });
+    if (before) query.set('before', before);
+    const resp = await playgroundRequest(base, `/api/media/playground/generations?${query}`);
+    const payload = await resp.json();
+    const found = (payload.generations ?? []).find((row) => row.id === generationId);
+    if (found) return found;
+    if (!payload.nextBefore) return null;
+    before = payload.nextBefore;
+  }
+  return null;
+}
+
+/** `--out` 缺省落当前目录，用产物 basename；给了目录就放进目录里。 */
+function resolvePlaygroundOutPath(out, name) {
+  if (typeof out === 'string' && out.trim()) {
+    const target = resolve(out.trim());
+    return statIsDirectory(target) ? resolve(target, basename(name)) : target;
+  }
+  return resolve(basename(name));
+}
+
+function statIsDirectory(candidate) {
+  try {
+    return statSync(candidate).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function encodePlaygroundRelPath(rel) {
+  return String(rel).split('/').map(encodeURIComponent).join('/');
+}
+
+function firstGenerationError(generation) {
+  const files = Array.isArray(generation?.files) ? generation.files : [];
+  const failed = files.find((file) => typeof file?.error === 'string' && file.error);
+  return failed?.error ?? generation?.error ?? null;
+}
+
+function promptSnippet(prompt) {
+  const flat = String(prompt ?? '').replace(/\s+/g, ' ').trim();
+  return flat.length > 40 ? `${flat.slice(0, 40)}…` : flat;
 }
 
 // Flush stdout and stderr before exiting. process.exit() terminates the
@@ -1945,7 +2292,13 @@ async function cliDaemonBaseUrl(flags) {
 function printMediaHelp() {
   console.log(`Usage: od media scaffold --composition-dir .hyperframes-cache/<id> [opts]
        od media generate --surface <image|video|audio> --model <id> [opts]
+       od media playground <generate|upload|list|download|transfer|delete> [opts]
        "$OD_NODE_BIN" "$OD_BIN" media generate --surface <image|video|audio> --model <id> [opts]
+
+Playground:
+  Playground 是全局生图工作台（临时 scratch 或某个项目）的命令行一面，
+  与本地 UI 同一批端点、同一份历史。子命令帮助见
+  \`od media playground --help\`。
 
 Scaffold:
   Creates hyperframes.json, meta.json, and index.html without running
@@ -1969,6 +2322,19 @@ Common options:
                             (gpt-image-2 accepts low|medium|high). Omit to let the
                             model's own default tier decide — tiers are priced
                             differently, so this is a billing choice.
+  --count <1-10>            Render this many files in one request (default 1).
+                            Values are clamped to 1-10. Above 1 the daemon runs
+                            N parallel single-image calls and answers once with
+                            {"taskId","status","startedAt","files":[{name,size,
+                            mime,error?}]} — no task poll, and a slot that
+                            failed carries its own error while its siblings are
+                            still reported. With --output, names are derived as
+                            <stem>-<n>.<ext>; without it, from the auto-name.
+  --model-override <model>  Custom Image API (\`--model custom-image\`) only: the
+                            model name the configured endpoint serves, sent with
+                            this request. Wins over the default model set in
+                            Settings → Media, so an endpoint whose model is not
+                            filled in there still renders.
   --resolution <res>        OpenDesign Cloud images only: published output resolution
                             (e.g. 1K, 2K). Must name a resolution the model publishes
                             for --aspect. Omit to use the model's default profile.
@@ -2018,7 +2384,65 @@ parse JSON with python3, not jq):
 
 Skills should call this and then reference the returned filename in their
 artifact / message body. The daemon writes the bytes into the project's
-files folder so the FileViewer can preview them immediately.`);
+files folder so the FileViewer can preview it immediately.`);
+}
+
+/**
+ * `od media playground` 的帮助。
+ *
+ * 目标模型只有一句话要说清楚：**不传 `--project` 就是临时（scratch）**，传了
+ * 就是那个项目的实际工作区。参考图与产物都按同一个目标基目录解析。
+ */
+function printMediaPlaygroundHelp() {
+  console.log(`Usage:
+  od media playground generate [--project <id>] --model custom-image
+      --model-override <name> [--count n] [--aspect 16:9] [--quality high]
+      [--image <ref> ...] --prompt-file <path|-> | --prompt "<text>"
+  od media playground upload <file>... [--project <id>]
+  od media playground list [--json] [--limit n] [--target scratch|<pid>]
+  od media playground download <generationId> [--slot n] [--out <path>]
+  od media playground transfer <generationId> --project <id>
+  od media playground delete <generationId>
+
+Target:
+  --project <id>  Omit for the temporary scratch inbox; pass a project id to
+                  write into that project's real workspace (a folder-imported
+                  project uses its own folder, so Design Files sees it).
+
+generate:
+  --model            v1 accepts custom-image only. The wire model name is
+                     --model-override; an endpoint with no configured model
+                     fails the run and says so instead of sending a placeholder.
+  --count <1-10>     Clamped. One request renders N files and answers once;
+                     a failed slot carries its own error, its siblings are
+                     still reported. Artifacts are <generationId>-<n>.<ext>.
+  --image <ref>      Reference image, repeatable. A target-relative path: the
+                     name printed by 'playground upload' ('uploads/x.png' for
+                     scratch, 'x.png' for a project), or an artifact file name.
+  Output: one JSON line — the full generation row ({id,status,files:[...],…}).
+  Exit 4 when every slot failed (the row is still printed).
+
+upload:
+  Sends local files into the target directory and prints the reference name to
+  pass to --image. 16MB per file; png/jpeg/webp/gif bytes only — the format is
+  read from the bytes, never trusted from the file name.
+
+list:
+  Newest first. --target scratch or a project id filters; --before is the
+  'createdAt:id' cursor from a previous page's nextBefore.
+
+download:
+  Writes one artifact's bytes to --out (default ./<artifact name>) and prints
+  the path. Scratch rows come from the playground directory, project rows from
+  the project's own workspace.
+
+transfer:
+  Copies every artifact of a generation into a project, never overwriting (a
+  collision gets a -1 suffix). Repeating it for the same project is a no-op
+  that returns the files already copied there.
+
+Exit codes: 2 = usage, 3 = daemon unreachable, 4 = daemon refused (stderr
+carries {"error":{"code","message","nextStep"}}).`);
 }
 
 // ---------------------------------------------------------------------------

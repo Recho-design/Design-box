@@ -121,4 +121,17 @@ describe('parseRoute / buildPath (issue #1505)', () => {
     expect(roundTrip({ kind: 'collab-demo', projectId: null })).toEqual({ kind: 'collab-demo', projectId: null });
     expect(roundTrip({ kind: 'collab-demo', projectId: 'p-9' })).toEqual({ kind: 'collab-demo', projectId: 'p-9' });
   });
+  it('parses and round-trips generate routes with and without projectId', () => {
+    expect(parseRoute('/generate')).toEqual({ kind: 'home', view: 'generate' });
+    expect(parseRoute('/generate/proj-123')).toEqual({ kind: 'home', view: 'generate', generateProjectId: 'proj-123' });
+    expect(parseRoute('/generate/proj%20abc')).toEqual({ kind: 'home', view: 'generate', generateProjectId: 'proj abc' });
+    expect(roundTrip({ kind: 'home', view: 'generate' })).toEqual({ kind: 'home', view: 'generate' });
+    expect(roundTrip({ kind: 'home', view: 'generate', generateProjectId: 'proj-123' })).toEqual({
+      kind: 'home',
+      view: 'generate',
+      generateProjectId: 'proj-123',
+    });
+    expect(buildPath({ kind: 'home', view: 'generate' })).toBe('/generate');
+    expect(buildPath({ kind: 'home', view: 'generate', generateProjectId: 'proj 123' })).toBe('/generate/proj%20123');
+  });
 });

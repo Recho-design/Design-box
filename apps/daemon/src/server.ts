@@ -870,6 +870,7 @@ import { registerDeliverableSyntaxToolRoutes } from './routes/deliverable-syntax
 import { registerDesignSystemToolRoutes } from './routes/design-system-tool.js';
 import { registerDeployRoutes, registerDeploymentCheckRoutes } from './routes/deploy.js';
 import { registerMediaRoutes } from './routes/media.js';
+import { registerMediaPlaygroundRoutes } from './routes/media-playground.js';
 import {
   registerProjectRoutes,
   registerProjectArtifactRoutes,
@@ -989,6 +990,7 @@ import {
 import { createOpenDesignPublicMetadataService } from './services/open-design-public-metadata.js';
 import { createWhatsNewService } from './services/whats-new.js';
 import { execCommandViaLoginShell } from './services/login-shell.js';
+import { uniqueFileName } from './services/unique-file-name.js';
 import {
   OFFICIAL_MARKETPLACE_ID,
   createMarketplaceSeedHelpers,
@@ -2696,27 +2698,11 @@ const projectUpload = multer({
       const reserved = (req as any)._uploadReservedNames instanceof Set
         ? (req as any)._uploadReservedNames
         : ((req as any)._uploadReservedNames = new Set());
-      cb(null, uniqueUploadFileName(uploadDir, safe, reserved));
+      cb(null, uniqueFileName(uploadDir, safe, reserved));
     },
   }),
   limits: { fileSize: 200 * 1024 * 1024 },  // 200MB — covers the largest design assets we expect (PPTX/PDF/raw images)
 });
-
-function uniqueUploadFileName(uploadDir, safeName, reserved) {
-  const parsed = path.parse(safeName);
-  const base = parsed.name || parsed.base || 'file';
-  const ext = parsed.ext || '';
-  for (let index = 0; index < 10_000; index += 1) {
-    const candidate = index === 0 ? safeName : `${base}-${index}${ext}`;
-    if (reserved.has(candidate)) continue;
-    if (uploadDir && fs.existsSync(path.join(uploadDir, candidate))) continue;
-    reserved.add(candidate);
-    return candidate;
-  }
-  const fallback = `${base}-${Date.now().toString(36)}${ext}`;
-  reserved.add(fallback);
-  return fallback;
-}
 
 function handleProjectUpload(req, res, next) {
   projectUpload.array('files', 12)(req, res, (err) => {
@@ -4740,6 +4726,20 @@ export async function startServer({
     research: researchDeps,
     authorizeProjectRequest,
     authorizeProjectToolRequest,
+  });
+
+  // Media Playground：全局生图工作台的卡片历史与文件端点。平行于 agent 的
+  // `POST /api/media/generate`（无 media_tasks、无 Run、无快照关联）。
+  registerMediaPlaygroundRoutes(app, {
+    db,
+    design,
+    http: httpDeps,
+    paths: pathDeps,
+    ids: idDeps,
+    media: mediaDeps,
+    appConfig: appConfigDeps,
+    projectStore: projectStoreDeps,
+    projectFiles: projectFileDeps,
   });
 
 

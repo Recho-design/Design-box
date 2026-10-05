@@ -4,13 +4,13 @@ import type {
   HyperFramesScaffoldRequest,
   HyperFramesScaffoldResponse,
   MediaExecutionPolicy,
-  MediaGenerationResultProps,
   ProjectFile,
   ProjectMediaTaskFile,
 } from '@open-design/contracts';
 import type { AnalyticsContext } from '../analytics.js';
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
 import { formatMediaTaskDiagnostic } from '../media/diagnostics.js';
+import { autoOutputName } from '../media/index.js';
 import {
   findMediaModel,
   isMediaProviderOffered,
@@ -37,15 +37,47 @@ import {
 import { associateLateRunProducedFile } from '../runtimes/run-produced-files.js';
 import { scaffoldHyperFramesComposition } from '../media/hyperframes-scaffold.js';
 import { assignMediaTaskBatches } from '../media/task-batches.js';
+import { generateMediaBatch } from '../media/generate-media-batch.js';
+import {
+  captureMediaGenerationResult,
+  resolveMediaAnalyticsContext,
+} from '../media/generation-analytics.js';
 import { mediaTaskErrorFromFailure } from '../media/task-error.js';
 import { normalizePersistedAutomationWorkspaceScope } from '../automations/workspace-scope.js';
 import { applyProxyPrefsToProcess } from '../services/proxy-apply.js';
 
 const LONG_MEDIA_PROXY_TIMEOUT_MS = 10 * 60 * 1000;
 const MEDIA_FILE_MTIME_TOLERANCE_MS = 1;
+// Upper bound for one direct-image request. Ten images is already a slow,
+// expensive provider call; a larger number is a runaway loop, not an intent.
+const MEDIA_GENERATE_MAX_COUNT = 10;
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 计算一次生成请求要出几张图，夹取到 [1, 10]。
+ *
+ * 缺省或非数字一律视为 1:现有调用方都不传 count，"不传"必须继续等于"一张";
+ * 而 `count: 0`(或字符串)也不能静默变成空响应。
+ */
+export function clampMediaGenerateCount(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
+  return Math.min(Math.max(Math.trunc(value), 1), MEDIA_GENERATE_MAX_COUNT);
+}
+
+/**
+ * 派生多图批次里第 N 个文件名:`poster.png` → `poster-2.png`。
+ *
+ * 每张图必须各占一个文件,名字只能按序号派生:并行调用若各自走自动命名,
+ * 同一毫秒会算出同一个路径而互相覆盖。
+ */
+export function deriveBatchOutputName(base: string, index: number): string {
+  const dot = base.lastIndexOf('.');
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  const ext = dot > 0 ? base.slice(dot) : '';
+  return `${stem}-${index}${ext}`;
 }
 
 /**
@@ -263,35 +295,13 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
   const mediaAnalyticsContext = async (
     req: any,
     grant: ToolTokenGrant | null,
-  ): Promise<AnalyticsContext | null> => {
-    const requestContext = design.readAnalyticsContext(req);
-    if (requestContext) return requestContext;
-
-    const runContext = grant?.runId
-      ? design.runs.get(grant.runId)?.analyticsContext ?? null
-      : null;
-    if (runContext) return runContext;
-
-    // Standalone `od media generate` requests do not carry browser analytics
-    // headers or a parent run. Match the updater's daemon-internal identity
-    // fallback, but only after explicit metrics consent; capture() re-checks
-    // the same consent before sending.
-    const appConfig = await readAppConfig(RUNTIME_DATA_DIR).catch(() => null);
-    const installationId =
-      appConfig?.telemetry?.metrics === true
-      && typeof appConfig.installationId === 'string'
-      && appConfig.installationId
-        ? appConfig.installationId
-        : null;
-    if (!installationId) return null;
-    return {
-      deviceId: installationId,
-      sessionId: installationId,
-      clientType: 'desktop',
-      locale: 'en',
-      requestId: null,
-    };
-  };
+  ): Promise<AnalyticsContext | null> => resolveMediaAnalyticsContext({
+    req,
+    design,
+    runId: grant?.runId,
+    readAppConfig,
+    runtimeDataDir: RUNTIME_DATA_DIR,
+  });
 
   const handleGenerate = async (
     req: any,
@@ -310,6 +320,9 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     if (!model) {
       return sendApiError(res, 400, 'BAD_REQUEST', 'model is required');
     }
+    // One image unless the caller asked for a batch. Clamped here, at the
+    // request boundary, so every downstream path sees the same number.
+    const requestedCount = clampMediaGenerateCount(req.body?.count);
 
     const policy = mediaPolicyForGrant(options.grant);
     if (!policy.ok) {
@@ -434,7 +447,7 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       // answers the narrower collaboration question and excludes it.
       const workspaceId =
         getWorkspaceProjectByProjectId(db, projectId)?.workspaceId?.trim() || undefined;
-      generateMedia({
+      const baseArgs = {
         projectRoot: PROJECT_ROOT,
         projectsRoot: PROJECTS_DIR,
         projectId,
@@ -445,6 +458,12 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
         aspect: req.body?.aspect,
         quality: typeof req.body?.quality === 'string' ? req.body.quality : undefined,
         resolution: typeof req.body?.resolution === 'string' ? req.body.resolution : undefined,
+        // The direct-image workbench names the model its own endpoint serves.
+        // Wins over the provider config and the catalog alias inside the
+        // renderer; absent for every other caller.
+        modelOverride: typeof req.body?.modelOverride === 'string'
+          ? req.body.modelOverride
+          : undefined,
         length:
           typeof req.body?.length === 'number' ? req.body.length : undefined,
         duration:
@@ -493,14 +512,91 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
         onProviderRequestSettled: (summary: ImageGenerationRequestSummary & { providerId: string }) => {
           providerRequestSummary = summary;
         },
-      })
+      };
+
+      // Multi-image request: N parallel single-image calls, answered once every
+      // slot has settled. The caller asked for files, not for N tasks, so this
+      // path reports per-file outcomes instead of a task to poll.
+      if (requestedCount > 1) {
+        const outputBase =
+          typeof req.body?.output === 'string' && req.body.output.trim()
+            ? req.body.output.trim()
+            : autoOutputName(surface, model);
+        const outputNames = Array.from(
+          { length: requestedCount },
+          (_, index) => deriveBatchOutputName(outputBase, index + 1),
+        );
+        const batch = await generateMediaBatch(baseArgs, outputNames, generateMedia);
+        // `providerRequestSummary` is written from inside the provider callback
+        // below, which control-flow analysis cannot follow to this point. The
+        // assertion reads it at its declared type, exactly like the async
+        // `.then` path does, instead of the `null` it was initialised with.
+        const settledProvider = providerRequestSummary as
+          | (ImageGenerationRequestSummary & { providerId: string })
+          | null;
+        task.status = batch.metas.length > 0 ? 'done' : 'failed';
+        if (batch.metas.length > 0) task.file = batch.metas[0];
+        else {
+          task.error = mediaTaskErrorFromFailure(
+            new Error(batch.files[0]?.error ?? 'image generation failed'),
+            { model },
+          );
+        }
+        task.endedAt = Date.now();
+        persistMediaTask(task);
+        if (analyticsContext && settledProvider && batch.metas.length > 0) {
+          captureMediaGenerationResult(design, {
+            analyticsContext,
+            durationMs: task.endedAt - task.startedAt,
+            meta: batch.metas[0],
+            model,
+            projectId,
+            providerRequestSummary: settledProvider,
+            ...(options.grant?.runId ? { runId: options.grant.runId } : {}),
+            surface,
+            taskId,
+          });
+        }
+        notifyTaskWaiters(task);
+        console.error(formatMediaTaskDiagnostic({
+          ...diagnosticContext,
+          event: task.status === 'done' ? 'done' : 'failed',
+          providerId: batch.metas[0]?.providerId ?? settledProvider?.providerId ?? requestedProviderId,
+          status: task.status,
+          elapsedMs: task.endedAt - task.startedAt,
+          fileSize: typeof batch.metas[0]?.size === 'number' ? batch.metas[0].size : undefined,
+          mime: typeof batch.metas[0]?.mime === 'string' ? batch.metas[0].mime : undefined,
+          error: task.error?.message,
+        }));
+        await proxyDispatcher.close();
+        for (const meta of batch.metas) await attachLateOutputToRunMessage(meta);
+        if (batch.metas.length === 0) {
+          // Same invariant as the single-image failure path: a run that asked
+          // for these images must not report itself complete without them.
+          if (task.error) reportFailureToRun(taskId, task.error);
+          return sendApiError(
+            res,
+            502,
+            'MEDIA_GENERATION_FAILED',
+            batch.files[0]?.error ?? 'image generation failed',
+          );
+        }
+        return res.status(200).json({
+          taskId,
+          status: task.status,
+          startedAt: task.startedAt,
+          files: batch.files,
+        });
+      }
+
+      generateMedia(baseArgs)
         .then(async (meta: any) => {
           task.status = 'done';
           task.file = meta;
           task.endedAt = Date.now();
           persistMediaTask(task);
           if (analyticsContext && providerRequestSummary) {
-            captureMediaGenerationResult({
+            captureMediaGenerationResult(design, {
               analyticsContext,
               durationMs: task.endedAt - task.startedAt,
               meta,
@@ -535,7 +631,7 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
           task.endedAt = Date.now();
           persistMediaTask(task);
           if (analyticsContext && providerRequestSummary) {
-            captureMediaGenerationResult({
+            captureMediaGenerationResult(design, {
               analyticsContext,
               durationMs: task.endedAt - task.startedAt,
               model,
@@ -618,62 +714,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     return res.status(201).json(result);
   };
 
-  const captureMediaGenerationResult = (input: {
-    analyticsContext: AnalyticsContext;
-    durationMs: number;
-    meta?: { providerError?: string | null; usedStubFallback?: boolean };
-    model: string;
-    projectId: string;
-    providerRequestSummary: ImageGenerationRequestSummary & { providerId: string };
-    runId?: string;
-    surface: 'image' | 'video' | 'audio';
-    taskId: string;
-  }) => {
-    const summary = input.providerRequestSummary;
-    const props = {
-      page_name: 'studio',
-      area: 'media_generation',
-      project_id: input.projectId,
-      task_id: input.taskId,
-      ...(input.runId ? { run_id: input.runId } : {}),
-      surface: input.surface,
-      provider_id: summary.providerId,
-      model_id: input.model,
-      result: input.meta && !input.meta.providerError && !input.meta.usedStubFallback
-        ? 'success'
-        : 'failed',
-      ...(summary.initialResponseStatus !== undefined
-        ? { initial_response_status: summary.initialResponseStatus }
-        : {}),
-      ...(summary.responseStatus !== undefined
-        ? { response_status: summary.responseStatus }
-        : {}),
-      attempt_count: summary.attemptCount,
-      retry_count: summary.retryCount,
-      ...(summary.retryReason ? { retry_reason: summary.retryReason } : {}),
-      ...(summary.retryAfterMs !== undefined
-        ? { retry_after_ms: summary.retryAfterMs }
-        : {}),
-      ...(summary.retryDelayMs !== undefined
-        ? { retry_delay_ms: summary.retryDelayMs }
-        : {}),
-      retry_final_result: summary.retryFinalResult,
-      duration_ms: Math.max(0, input.durationMs),
-      used_stub_fallback: input.meta?.usedStubFallback === true,
-    } satisfies MediaGenerationResultProps;
-
-    try {
-      design.analytics.capture({
-        eventName: 'media_generation_result',
-        context: input.analyticsContext,
-        appVersion: design.getAppVersion(),
-        properties: props,
-        insertId: `media_generation_result:${input.taskId}`,
-      });
-    } catch {
-      // Analytics is best-effort and must not change the media task outcome.
-    }
-  };
   app.get('/api/media/models', (_req, res) => {
     // 阶段1：不再指向 vela 云的媒体模型/ provider 不进入目录，前端选择器
     // 与 CLI 帮助因此看不到它们（`offeredModelsForSurface` 是那条唯一规则）。

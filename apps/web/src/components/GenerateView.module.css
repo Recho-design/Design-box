@@ -1,0 +1,410 @@
+/* ============================================================
+   GenerateView — Studio Media Workbench
+   Designed with Vercel Web Interface Guidelines + Impeccable Polish
+   ============================================================ */
+
+.generateView {
+  display: flex; flex-direction: column;
+  height: 100%; width: 100%; max-width: 1280px; margin: 0 auto;
+  position: relative; overflow: hidden; box-sizing: border-box;
+  background: var(--bg);
+}
+
+/* ── 1. Top Studio Bar ── */
+.topBar {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px; padding: 0 24px; border-bottom: 1px solid var(--border-soft);
+  gap: 16px; flex-shrink: 0; background: var(--bg);
+}
+
+.targetSelector { display: flex; align-items: center; gap: 10px; }
+
+.targetIconBadge {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: var(--radius-sm);
+  background: var(--bg-subtle); border: 1px solid var(--border-soft);
+  color: var(--text-strong); flex-shrink: 0;
+}
+
+.targetLabel { font-size: 13px; font-weight: 500; color: var(--text-muted); user-select: none; }
+
+/* 后代选择器抬高特异性以覆盖共享皮肤（.control 的 8px 纵向 padding 与
+   强制高度叠加会把文字顶出可视区）；白底去灰填充，边框/圆角/焦点仍走共享皮肤 */
+.targetSelector .targetSelect {
+  width: auto;
+  height: 30px;
+  font-size: 12px;
+  padding: 0 28px 0 10px;
+  line-height: 28px;
+  background: var(--bg);
+}
+
+.topBarMeta { display: flex; align-items: center; gap: 12px; }
+
+.historyCount {
+  font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
+  color: var(--text-muted); background: var(--bg-subtle); padding: 3px 10px;
+  border-radius: var(--radius-pill); border: 1px solid var(--border-soft); user-select: none;
+}
+
+/* ── 2. Card Stream & Empty State ── */
+.cardStream {
+  flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column;
+  gap: 20px; min-height: 0; scrollbar-gutter: stable;
+}
+
+.emptyState {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  margin: auto; padding: 40px 24px; text-align: center; width: 100%;
+}
+
+.emptyFrame {
+  max-width: 440px; width: 100%; padding: 44px 32px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-2xl);
+  background: var(--bg-panel); display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+
+.emptyIconBadge {
+  width: 52px; height: 52px; border-radius: var(--radius-xl);
+  background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  display: flex; align-items: center; justify-content: center; color: var(--text-strong); margin-bottom: 4px;
+}
+
+.emptyTitle { font-size: 17px; font-weight: 600; color: var(--text-strong); letter-spacing: -0.01em; }
+.emptyDesc { font-size: 13px; line-height: 1.6; color: var(--text-muted); max-width: 320px; }
+
+/* ── 3. Generation Card ── */
+.card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xl);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 14px;
+  box-shadow: var(--shadow-xs); animation: cardEnter 200ms var(--ease-out) forwards;
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+.card:hover { border-color: var(--border-selected); box-shadow: var(--shadow-sm); }
+
+@keyframes cardEnter {
+  from { opacity: 0; transform: scale(0.98) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.cardHeader {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+
+.cardPromptBox { flex: 1 1 280px; min-width: 0; }
+.cardPrompt {
+  margin: 0; font-size: 14px; font-weight: 500; line-height: 1.5;
+  color: var(--text-strong); overflow-wrap: anywhere;
+}
+
+.cardMeta {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+  gap: 6px; flex-shrink: 0;
+}
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 500;
+  height: 22px; padding: 0 8px; border-radius: var(--radius-pill); background: var(--bg-panel);
+  color: var(--text-muted); border: 1px solid var(--border-soft); white-space: nowrap;
+  user-select: none; font-variant-numeric: tabular-nums;
+}
+
+.badgeRunning { background: var(--blue-bg); color: var(--blue); border-color: var(--blue-border); font-weight: 600; }
+.badgeFailed { background: var(--red-bg); color: var(--red); border-color: var(--red-border); font-weight: 600; }
+
+.pulseDot {
+  width: 6px; height: 6px; border-radius: var(--radius-circular);
+  background: currentColor; animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* ── 4. Media Grid & Slots ── */
+.cardGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.cardGridSingle { grid-template-columns: 1fr; max-width: 560px; }
+
+.slotWrapper {
+  aspect-ratio: 1; border-radius: var(--radius-lg); overflow: hidden; position: relative;
+  background: var(--bg-subtle); border: 1px solid var(--border-soft);
+  display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-xs);
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+.slotWrapper:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+
+.slotImg {
+  width: 100%; height: 100%; object-fit: cover; cursor: pointer; display: block;
+  transition: transform 180ms var(--ease-out);
+}
+
+.slotWrapper:hover .slotImg { transform: scale(1.02); }
+
+.slotPreviewBtn {
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm);
+  background: var(--glass-regular); backdrop-filter: var(--glass-backdrop);
+  -webkit-backdrop-filter: var(--glass-backdrop); border: 1px solid var(--border);
+  color: var(--text-strong); opacity: 0; cursor: pointer; box-shadow: var(--shadow-xs);
+  transition: opacity 140ms var(--ease-out), transform 100ms var(--ease-out), background-color 140ms var(--ease-out);
+}
+
+.slotWrapper:hover .slotPreviewBtn,
+.slotPreviewBtn:focus-visible { opacity: 1; }
+.slotPreviewBtn:hover { background: var(--bg); transform: scale(1.06); }
+.slotPreviewBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Running state with architectural ritual */
+.slotRunning {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; width: 100%; height: 100%; min-height: 180px; position: relative;
+  background: var(--bg-panel); overflow: hidden;
+}
+
+.slotRunning::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--accent) 3%, transparent) 50%, transparent 100%);
+  transform: translateY(-100%); animation: scanline 2.4s ease-in-out infinite; pointer-events: none;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  50% { transform: translateY(100%); }
+  100% { transform: translateY(-100%); }
+}
+
+.runningAperture {
+  position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-circular); background: var(--bg); border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs); z-index: 1;
+}
+
+.runningRings {
+  position: absolute; inset: -4px; border-radius: var(--radius-circular);
+  border: 1px dashed var(--border-selected); animation: ringRotate 8s linear infinite;
+}
+
+@keyframes ringRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.runningIcon { color: var(--text-strong); animation: iconPulse 2s ease-in-out infinite; }
+
+@keyframes iconPulse {
+  0%, 100% { opacity: 0.65; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+.runningMeta { display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 1; }
+.runningTitle { font-size: 12px; font-weight: 500; color: var(--text-strong); letter-spacing: 0.02em; }
+
+.runningPulseBar {
+  width: 32px; height: 2px; background: var(--border-soft);
+  border-radius: var(--radius-pill); overflow: hidden; position: relative;
+}
+
+.runningPulseBar::after {
+  content: ''; position: absolute; top: 0; left: 0; height: 100%; width: 50%;
+  background: var(--accent); border-radius: var(--radius-pill); animation: pulseBarMove 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulseBarMove {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(150%); }
+}
+
+.slotFailed {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 16px; text-align: center; gap: 8px; width: 100%; height: 100%;
+  background: var(--red-bg); border: 1px dashed var(--red-border); color: var(--red); font-size: 12px;
+}
+
+/* ── 5. Card Actions ── */
+.cardActions {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  padding-top: 10px; border-top: 1px solid var(--border-soft); gap: 8px 12px;
+}
+
+.actionGroup { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.cardActions > .actionGroup:last-child { margin-inline-start: auto; }
+
+.btnDanger { color: var(--text-soft); }
+.btnDanger:hover:not(:disabled) { border-color: var(--red-border); background: var(--red-bg); color: var(--red); }
+.btnDanger:focus-visible { outline: 2px solid var(--red); outline-offset: 1px; }
+
+.loadMore { align-self: center; margin: 12px 0; }
+
+/* ── 6. Bottom Studio Composer Bar ── */
+/* footer 自身不再上色/描边：玻璃填充是「盒级」涂料，作用在拥有 24px 左右、
+   16/20px 上下 padding 的整条 footer 上，会在白色画布上涂出一块
+   1046×152.5 的 rgba(250,250,250,.66) 灰矩形，只有中间 998px 宽的白色 console
+   卡把它盖住，四周那一圈 padding 便读作一条悬浮灰带（卡片流之上/之下各 17px/20px）。
+   console 卡自带边框 + 阴影，已足以成为唯一视觉单元，故 footer 完全透明、
+   也不画贯通全宽的分隔线（那条线同样会在卡片两侧露出无意义的短线）。 */
+.inputBar {
+  padding: 16px 24px 20px 24px;
+  background: transparent; border-top: none;
+  flex-shrink: 0; display: flex; flex-direction: column; align-items: center; z-index: 10;
+}
+
+.composerConsole {
+  width: 100%; max-width: 1020px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column;
+  transition: border-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out);
+}
+
+.composerConsole:focus-within {
+  border-color: var(--border-strong); box-shadow: 0 0 0 1px var(--selected-soft), var(--shadow-md);
+}
+
+.referenceChips {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px 14px 0 14px;
+}
+
+.refChip {
+  display: inline-flex; align-items: center; gap: 5px; background: var(--bg-subtle);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 2px 8px 2px 10px;
+  font-size: 11px; font-weight: 500; color: var(--text-strong); max-width: 220px; min-width: 0;
+}
+
+.refChipName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+.refChipRemove {
+  background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0;
+  width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-circular); transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out);
+}
+
+.refChipRemove:hover { color: var(--text-strong); background: var(--bg-muted); }
+.refChipRemove:focus-visible { outline: 2px solid var(--accent); }
+
+.promptRow { padding: 12px 14px 4px 14px; }
+
+/* display:block 消除 textarea 作为 inline-block 坐在基线上时留下的行盒下沉空间：
+   该幻影 4.5px 会让 .promptRow 高出其真实内容（12+48+4=64px）而变成 68.5px，
+   从而在工具行坐标上被 elementFromPoint 命中（盒子越界但与工具行零视觉重叠）。 */
+.promptTextarea {
+  display: block;
+  min-height: 48px; max-height: 160px;
+  background: transparent; border: none; padding: 0; box-shadow: none;
+}
+.promptTextarea:focus { border: none; box-shadow: none; }
+
+.composerToolbar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 8px 12px; padding: 8px 12px; border-top: 1px solid var(--border-soft);
+  border-bottom-left-radius: var(--radius-xl); border-bottom-right-radius: var(--radius-xl);
+}
+
+.paramGroup { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.fileInputHidden { display: none; }
+.toolbarDivider { width: 1px; height: 16px; background: var(--border-soft); margin: 0 2px; }
+
+.paramItem { display: flex; align-items: center; gap: 6px; }
+.paramLabel { font-size: 11px; font-weight: 500; color: var(--text-soft); white-space: nowrap; user-select: none; }
+
+/* 同 .targetSelector .targetSelect：高度收窄时同步收 padding，line-height 对齐
+   内容盒（28 - 2px 边框 = 26px），文字垂直居中不被截断；透明底消除灰带 */
+.composerToolbar .paramSelect {
+  width: auto;
+  height: 28px;
+  font-size: 11px;
+  padding: 0 26px 0 8px;
+  line-height: 26px;
+  background: var(--bg);
+}
+.composerToolbar .paramInput {
+  width: 140px;
+  height: 28px;
+  font-size: 11px;
+  padding: 0 8px;
+  line-height: 26px;
+  background: var(--bg);
+}
+.paramInputCount { width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.submitGroup { display: flex; align-items: center; gap: 10px; margin-inline-start: auto; }
+.shortcutKbd { display: inline-flex; align-items: center; gap: 3px; user-select: none; }
+
+.kbdKey {
+  display: inline-block; padding: 2px 5px; font-family: inherit; font-size: 10px; font-weight: 600;
+  line-height: 1; color: var(--text-soft); background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-xs); box-shadow: 0 1px 0 var(--border);
+}
+
+/* ── 7. Lightbox Modal ── */
+.lightbox {
+  position: fixed; inset: 0; z-index: 1000; background: rgba(18, 18, 18, 0.88);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  display: flex; align-items: center; justify-content: center; padding: 32px;
+  animation: lightboxEnter 200ms var(--ease-out) forwards;
+}
+
+@keyframes lightboxEnter {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.lightboxStage {
+  position: relative; max-width: 90vw; max-height: 90vh;
+  display: flex; flex-direction: column; align-items: center;
+}
+
+.lightboxImg {
+  max-width: 100%; max-height: 85vh; object-fit: contain;
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+}
+
+.lightboxClose {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+/* ── 8. Transfer Scratch -> Project Modal ── */
+.transferDialogBackdrop {
+  position: fixed; inset: 0; z-index: 1500;
+  background: var(--scrim-tint, rgba(0, 0, 0, 0.6));
+  backdrop-filter: var(--scrim-backdrop); -webkit-backdrop-filter: var(--scrim-backdrop);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.transferDialog {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xl);
+  padding: 24px; width: 380px; max-width: 90vw; display: flex; flex-direction: column;
+  gap: 18px; box-shadow: var(--shadow-lg); animation: dialogEnter 200ms var(--ease-out) forwards;
+}
+
+@keyframes dialogEnter {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.transferTitle { font-size: 16px; font-weight: 600; color: var(--text-strong); letter-spacing: -0.01em; }
+.transferField { display: flex; flex-direction: column; gap: 8px; }
+.transferLabel { font-size: 12px; font-weight: 500; color: var(--text-muted); display: block; }
+
+/* 弹窗内保持产品标准灰填充，只修高度/padding 叠加导致的文字截断 */
+.transferDialog .transferSelect {
+  width: 100%;
+  height: 34px;
+  font-size: 13px;
+  padding: 0 28px 0 10px;
+  line-height: 32px;
+}
+
+.transferActions {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 4px;
+}
+
+/* ── 9. Reduced Motion & Overrides ── */
+@media (prefers-reduced-motion: reduce) {
+  .card, .lightbox, .transferDialog { animation: none; }
+  .slotRunning::after, .runningRings, .runningIcon, .pulseDot, .runningPulseBar::after { animation: none; }
+}

@@ -529,6 +529,135 @@ describe('OpenAI-compatible media providers', () => {
     expect(bytes.length).toBeGreaterThan(0);
   });
 
+  it('sends every reference image and the requested quality tier to the custom edits endpoint', async () => {
+    await writeConfig({
+      providers: {
+        'custom-image': {
+          apiKey: 'proxy-test-key',
+          baseUrl: 'https://images.example.test/v1',
+          model: 'acme-image-edit-model',
+        },
+      },
+    });
+    const projectDir = path.join(projectsRoot, 'project-1');
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(path.join(projectDir, 'ref-a.png'), Buffer.from(PNG_BASE64, 'base64'));
+    await writeFile(path.join(projectDir, 'ref-b.png'), Buffer.from(PNG_BASE64, 'base64'));
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe('https://images.example.test/v1/images/edits');
+      expect(init?.method).toBe('POST');
+      const body = JSON.parse(String(init?.body));
+      // 直接生图工作台的一张主图 + 一张风格参考,必须两张都发出去。
+      expect(body.images).toEqual([
+        { image_url: expect.stringMatching(/^data:image\/png;base64,/) },
+        { image_url: expect.stringMatching(/^data:image\/png;base64,/) },
+      ]);
+      expect(body.quality).toBe('high');
+      return new Response(JSON.stringify({
+        data: [{ b64_json: PNG_BASE64 }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await generateMedia({
+      projectRoot,
+      projectsRoot,
+      projectId: 'project-1',
+      surface: 'image',
+      model: 'custom-image',
+      prompt: 'Blend both references into one poster',
+      image: 'ref-a.png',
+      images: ['ref-b.png'],
+      quality: 'high',
+      output: 'multi-reference.png',
+    });
+
+    expect(result.providerId).toBe('custom-image');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const bytes = await readFile(path.join(projectDir, 'multi-reference.png'));
+    expect(bytes.length).toBeGreaterThan(0);
+  });
+
+  it('lets an explicit model override win over the configured custom-image model', async () => {
+    await writeConfig({
+      providers: {
+        'custom-image': {
+          apiKey: 'proxy-test-key',
+          baseUrl: 'https://images.example.test/v1',
+          model: 'acme-image-model',
+        },
+      },
+    });
+
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      expect(String(input)).toBe('https://images.example.test/v1/images/generations');
+      const body = JSON.parse(String(init?.body));
+      expect(body.model).toBe('workbench-image-model');
+      // 没有参考图时不许出现 images 字段(端点会把它当成 edits 请求)。
+      expect(body).not.toHaveProperty('images');
+      return new Response(JSON.stringify({
+        data: [{ b64_json: PNG_BASE64 }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await generateMedia({
+      projectRoot,
+      projectsRoot,
+      projectId: 'project-1',
+      surface: 'image',
+      model: 'custom-image',
+      modelOverride: 'workbench-image-model',
+      prompt: 'A flat illustration of a robot barista',
+      output: 'override.png',
+    });
+
+    expect(result.providerNote).toContain('custom-image/workbench-image-model');
+  });
+
+  it('accepts a model override when the provider config names no model at all', async () => {
+    await writeConfig({
+      providers: {
+        'custom-image': {
+          apiKey: 'proxy-test-key',
+          baseUrl: 'https://images.example.test/v1',
+        },
+      },
+    });
+
+    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      // 目录 id `custom-image` 只是占位,绝不能作为 wire 名发出去。
+      expect(JSON.parse(String(init?.body)).model).toBe('workbench-only-model');
+      return new Response(JSON.stringify({
+        data: [{ b64_json: PNG_BASE64 }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await generateMedia({
+      projectRoot,
+      projectsRoot,
+      projectId: 'project-1',
+      surface: 'image',
+      model: 'custom-image',
+      modelOverride: 'workbench-only-model',
+      prompt: 'A flat illustration of a robot barista',
+      output: 'override-only.png',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps aliased gpt-image-2 on the explicit OpenAI API path', async () => {
     process.env.OPENAI_API_KEY = 'sk-openai-test-key';
     process.env.OD_MEDIA_MODEL_ALIASES = JSON.stringify({

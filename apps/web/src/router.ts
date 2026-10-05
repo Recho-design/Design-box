@@ -30,6 +30,7 @@ export type EntryHomeView =
   | 'members'
   | 'board'
   | 'workspace-settings'
+  | 'generate'
   // Full-page personal Settings surface. `/settings` renders the same
   // SettingsDialog component in its `page` presentation instead of the modal.
   | 'settings';
@@ -46,6 +47,7 @@ export type Route =
        * select a specific brand without leaving the tab.
        */
       brandId?: string;
+      generateProjectId?: string;
     }
   | { kind: 'design-system-create' }
   | { kind: 'design-system-detail'; designSystemId: string }
@@ -160,6 +162,11 @@ export function parseRoute(pathname: string): Route {
   if (parts[0] === 'workspace-settings' && !parts[1]) {
     return { kind: 'home', view: 'workspace-settings' };
   }
+  if (parts[0] === 'generate') {
+    return parts[1]
+      ? { kind: 'home', view: 'generate', generateProjectId: decodeURIComponent(parts[1]) }
+      : { kind: 'home', view: 'generate' };
+  }
   // Phase 2B / spec §11.6 — marketplace deep UI routes. Two paths:
   //   /marketplace            → catalog grid (MarketplaceView)
   //   /marketplace/<pluginId> → detail page (PluginDetailView)
@@ -192,6 +199,9 @@ export function buildPath(route: Route): string {
     if (route.view === 'members') return '/members';
     if (route.view === 'board') return '/board';
     if (route.view === 'workspace-settings') return '/workspace-settings';
+    if (route.view === 'generate') {
+      return route.generateProjectId ? `/generate/${encodeURIComponent(route.generateProjectId)}` : '/generate';
+    }
     if (route.view === 'settings') return '/settings';
     return '/';
   }

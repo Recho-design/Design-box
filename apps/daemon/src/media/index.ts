@@ -142,6 +142,14 @@ type MediaContext = {
    * what was actually sent.
    */
   wireModel: string;
+  /**
+   * 调用方直接指定的模型名,优先级高于一切已配置项。
+   *
+   * 直接生图工作台(项目面板 → `/media/generate`)复用同一个 `custom-image`
+   * provider 槽位指向用户配置的任意 OpenAI 兼容端点,所以模型名不能只存在
+   * provider 配置里,而是随请求进来。渲染器发 `body.model` 时它排第一。
+   */
+  modelOverride: string | undefined;
   modelDef: MediaModel;
   provider: MediaProvider | null;
   prompt: string;
@@ -230,9 +238,12 @@ function stubsAllowed() {
  * upstream model APIs (Volcengine i2v, OpenAI image-edit, etc.) accept
  * directly. Returns null when no path was supplied.
  *
- * Security: refuses anything that escapes the project directory.
+ * Security: refuses anything that escapes the allowed directory.
  * Without this guard, an agent (or a hallucinated arg) could ask the
  * daemon to upload `/etc/passwd` to a paid model.
+ *
+ * 「allowed directory」而不是「project directory」：Playground 把 scratch 目录
+ * 也交给这里，报错文案不该再说这是项目（O2）。
  */
 async function resolveProjectImage(rel: unknown, projectDir: string): Promise<ImageRef | null> {
   if (typeof rel !== 'string' || !rel.trim()) return null;
@@ -243,7 +254,7 @@ async function resolveProjectImage(rel: unknown, projectDir: string): Promise<Im
     !abs.startsWith(projectRootResolved + path.sep)
   ) {
     throw new Error(
-      `--image path "${rel}" resolves outside the project directory.`,
+      `--image path "${rel}" resolves outside the allowed directory.`,
     );
   }
   let info;
@@ -342,11 +353,25 @@ function clampWithWarning(value: unknown, allowed: number[], flagName: string): 
  * @param {string} [args.voice]
  * @param {string} [args.audioKind]
  * @param {string} [args.language]
+ * @param {string} [args.outputDir] - 显式输出目录：提供时目录完全由它决定。
  * @returns {Promise<{ name: string, size: number, mtime: number, kind: string, mime: string, model: string, surface: string, providerNote: string, providerId: string }>}
  */
 export async function generateMedia(args: {
   projectRoot: string; projectsRoot: string; projectId: string; surface: MediaSurface; model: string;
   prompt?: string; output?: string; aspect?: string; quality?: string; resolution?: string;
+  /**
+   * 显式输出目录：提供时【目录派生】以它为准——跳过 ensureProject，
+   * projectsRoot 不再参与路径，projectId 退化为纯错误上下文（不参与路径，
+   * 与其同传不构成冲突）。
+   *
+   * 互斥的是**目录选择行为**，不是参数本身：`outputDir` 存在 → 目录完全由它
+   * 决定；未传时行为逐字节不变（agent / CLI / 既有调用方零影响）。它同时是
+   * 产物落盘根与参考图解析根——`resolveProjectImage` 强制目标在该目录内，
+   * 所以参考图引用是「该目录下的相对路径」。
+   */
+  outputDir?: string;
+  /** Caller-supplied provider model name; wins over provider config + alias. */
+  modelOverride?: string;
   length?: number; duration?: number; voice?: string;
   audioKind?: AudioKind; language?: string; loop?: boolean; promptInfluence?: number;
   compositionDir?: string; image?: string; images?: string[]; onProgress?: ProgressFn; requestInit?: MediaRequestInit;
@@ -385,6 +410,7 @@ export async function generateMedia(args: {
     aspect,
     quality,
     resolution,
+    modelOverride,
     length,
     duration,
     voice,
@@ -397,6 +423,7 @@ export async function generateMedia(args: {
     requestInit,
     workspaceId,
     onProviderRequestSettled,
+    outputDir,
   } = args;
 
   if (!projectRoot) throw new Error('projectRoot required');
@@ -496,7 +523,12 @@ export async function generateMedia(args: {
     : durationClamp.value;
   const warnings = [lengthClamp.warning, durationClamp.warning].filter(Boolean);
 
-  const dir = await ensureProject(projectsRoot, projectId);
+  // 目录派生：显式 outputDir 优先（Playground 两种目标都走它），否则沿用
+  // ensureProject 的既有行为。projectId 在显式目录下只剩错误上下文一个角色。
+  const dir =
+    typeof outputDir === 'string' && outputDir
+      ? path.resolve(outputDir)
+      : await ensureProject(projectsRoot, projectId);
   const safeOut = sanitizeName(
     output || autoOutputName(surface, model, resolvedAudioKind),
   );
@@ -538,6 +570,12 @@ export async function generateMedia(args: {
     surface,
     model: canonicalModel,
     wireModel,
+    // Trimmed, and an all-whitespace override collapses to "no override" so a
+    // renderer can treat it as absent instead of sending an empty model name.
+    modelOverride:
+      typeof modelOverride === 'string' && modelOverride.trim()
+        ? modelOverride.trim()
+        : undefined,
     modelDef: def,
     provider: findProvider(def.provider),
     prompt: prompt || '',
@@ -881,7 +919,13 @@ export async function generateMedia(args: {
   };
 }
 
-function autoOutputName(surface: MediaSurface, model: string, audioKind?: AudioKind): string {
+/**
+ * 自动命名生成的产出文件。
+ *
+ * 之所以导出:路由层的多图批次在调用方没给 output 时,必须从同一个基准名派生
+ * 出 N 个不同文件名——两次并行调用各自自动命名会盖到同一个名字上。
+ */
+export function autoOutputName(surface: MediaSurface, model: string, audioKind?: AudioKind): string {
   const base = DEFAULT_OUTPUT_BY_SURFACE[surface] || 'artifact.bin';
   const stamp = Date.now().toString(36);
   // Slug the model id so the filename stays short and shell-safe.
@@ -1097,8 +1141,12 @@ async function renderCustomOpenAIImage(ctx: MediaContext, credentials: ProviderC
       `Custom Image API base URL required — configure an OpenAI-compatible /v1/images/generations or /v1/images/edits endpoint in ${SETTINGS_MEDIA_PROVIDERS_PATH}`,
     );
   }
+  // 模型取值优先级:请求里的 override(直接生图工作台用端点自己的模型名)>
+  // provider 配置 > 目录别名。`custom-image` 只是目录占位 id,不是 wire 名,
+  // 绝不能发给上游。
   const wireModel = (
-    credentials.model
+    ctx.modelOverride
+    || credentials.model
     || (ctx.wireModel !== CUSTOM_IMAGE_MODEL_ID ? ctx.wireModel : '')
   ).trim();
   if (!wireModel) {
@@ -1119,8 +1167,16 @@ async function renderCustomOpenAIImage(ctx: MediaContext, credentials: ProviderC
     n: 1,
     size: openaiSizeFor('gpt-image-1', ctx.aspect),
   };
+  // 质量档位原样透传;调用方没要求就不发——档位价差由用户承担,默认档交给
+  // provider 自己决定。
+  if (ctx.quality) {
+    body.quality = ctx.quality;
+  }
+  // 所有已解析的参考图都按 OpenAI 兼容的 image_url 条目发出去(工作台会带多张),
+  // 同时决定走 /edits 端点。
+  const referenceImages = ctx.imageRefs.map((ref) => ({ image_url: ref.dataUrl }));
   let url = buildOpenAIImageUrl(baseUrl, false);
-  if (ctx.imageRef?.dataUrl) {
+  if (referenceImages.length > 0) {
     // gpt-image-* does NOT accept response_format on /v1/images/edits
     // (HTTP 400 "Unknown parameter: 'response_format'"). dall-e-2
     // accepts it; the base b64 path is what callers expect either way,
@@ -1128,7 +1184,7 @@ async function renderCustomOpenAIImage(ctx: MediaContext, credentials: ProviderC
     if (!wireModel.startsWith('gpt-image-')) {
       body.response_format = 'b64_json';
     }
-    body.images = [{ image_url: ctx.imageRef.dataUrl }];
+    body.images = referenceImages;
     url = buildOpenAIImageEditUrl(baseUrl);
   }
 

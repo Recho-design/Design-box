@@ -103,7 +103,9 @@ const InviteDialog = (_props: any) => null;
 type SharedProjectPredicate = (projectId: string) => boolean;
 const canUpgradeFromPlanTier = (_tier?: any) => false;
 const isMaxPlanTier = (_tier?: any) => false;
-const resolvePlanLabelTier = (_tier?: any) => _tier || '';
+// 官方账号链路摘除后无套餐信息可解析：恒返回空串，让标签落到
+// free/团队 的兜底分支（调用点传的是 { billing, context } 聚合对象）。
+const resolvePlanLabelTier = (_sources?: any) => '';
 const CONSOLE_AUTO_RECHARGE_INTENT = 'auto-recharge';
 const CONSOLE_RECHARGE_INTENT = 'recharge';
 const autoRechargeUrlForProfile = (_p?: any) => '';
@@ -2522,6 +2524,15 @@ export function EntryNavRail({
             >
               <Icon name="puzzle" size={16} />
             </NavButton>
+            <NavButton
+              active={view === 'generate'}
+              ariaLabel={t('generate.title')}
+              label={t('generate.title')}
+              onClick={() => selectView('generate')}
+              testId="entry-nav-generate"
+            >
+              <Icon name="sparkles" size={16} />
+            </NavButton>
             {/* 设置 is a rail destination on BOTH branches (product: 设置的按钮
                 在插件下边). Signed-in used to keep it only in the account hover
                 menu — two interactions deep, and invisible until you found the
@@ -2603,6 +2614,15 @@ export function EntryNavRail({
               testId="entry-nav-plugins"
             >
               <Icon name="puzzle" size={16} />
+            </NavButton>
+            <NavButton
+              active={view === 'generate'}
+              ariaLabel={t('generate.title')}
+              label={t('generate.title')}
+              onClick={() => selectView('generate')}
+              testId="entry-nav-generate"
+            >
+              <Icon name="sparkles" size={16} />
             </NavButton>
             {/* recvq4hGF7BJkI removed this entry while the rail footer still
                 carried EntryShell's `entry-settings-chip` for the signed-out

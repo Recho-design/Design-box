@@ -36,6 +36,7 @@ import {
 import type { ChatArtifactRef } from './chat-artifacts/types.js';
 import { migrateCritique } from './critique/persistence.js';
 import { migrateMediaTasks } from './media/tasks.js';
+import { migrateMediaPlaygroundGenerations } from './media/playground-store.js';
 import { migrateLibrary } from './library-store.js';
 import { migratePlugins } from './plugins/persistence.js';
 import { migrateProjectScenarioBindings } from './plugins/scenario-binding.js';
@@ -608,6 +609,7 @@ function migrate(db: SqliteDb): void {
   }
   migrateCritique(db);
   migrateMediaTasks(db);
+  migrateMediaPlaygroundGenerations(db);
   migrateLibrary(db);
   migratePlugins(db);
   migrateProjectScenarioBindings(db);

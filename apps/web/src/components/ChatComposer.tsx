@@ -150,6 +150,7 @@ import {
   type ComposerDraftContext,
 } from '../runtime/chat/composer-draft';
 import { QuotedRefs } from './chat/QuotedRefs';
+import { GenerateSurface } from './chat/GenerateSurface';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -678,6 +679,26 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
     const [figmaModalOpen, setFigmaModalOpen] = useState(false);
     const [figmaHelpOpen, setFigmaHelpOpen] = useState(false);
     const [projectReferenceOpen, setProjectReferenceOpen] = useState(false);
+    /*
+     * 内嵌生图 surface(入口从 Design Files 工具栏迁过来,见
+     * `.agents/tasks/process/2026-10-05-generate-ui-and-chat-entry/task.md`)。
+     *
+     * 开关状态归 composer 自己:那颗按钮就在它的附件行里,点开的面板长在它的
+     * 上方 —— 状态跟着按钮走,不往 ChatPane 上抬,免得经过一层与它无关的宿主。
+     */
+    const [generateSurfaceOpen, setGenerateSurfaceOpen] = useState(false);
+    /*
+     * 「直接生图」的准入。三档都不出这颗按钮:
+     *   · 没有项目 —— 生图的目标就是当前项目,没项目就没有落地处;
+     *   · 只读 viewer(`inputDisabled`)—— 生成是一次写操作;
+     *   · `sendDisabled` —— 宿主已判定此刻不许写(共享只读 / 同步中 / 首页附件还在传)。
+     */
+    const canOpenGenerateSurface = Boolean(projectId) && !inputDisabled && !sendDisabled;
+    // 面板开着的时候准入被撤掉(例如协作状态翻成只读),连面板一起收掉 ——
+    // 留一块能提交的界面在只读项目里,比不出这颗按钮更糟。
+    useEffect(() => {
+      if (!canOpenGenerateSurface) setGenerateSurfaceOpen(false);
+    }, [canOpenGenerateSurface]);
     /*
      * 只恢复**输入框自己攒的**那批标注。宿主用 `commentAttachments` 传进来的那批由
      * daemon 持有,刷新之后本来就会自己回来 —— 一起存下来会在刷新后变成两份。
@@ -3374,6 +3395,18 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
             </div>
           </div>
         ) : null}
+        {/* 内嵌生图 surface:长在 composer 上方、聊天面板之内的一块面板。
+            放在 `.composer-shell` 之前而不是套进去 —— 它和输入框是**并列的两块**,
+            套进壳里会让「白色输入面」这个形状被撑成两个。宿主(portal 模式下的
+            `.chat-composer-fixed-layer`)按整层高度给 `.chat-composer-slot` 留位,
+            所以它撑起来的是聊天区,不是盖在消息上的浮层。 */}
+        {generateSurfaceOpen && projectId ? (
+          <GenerateSurface
+            key={projectId}
+            projectId={projectId}
+            onClose={() => setGenerateSurfaceOpen(false)}
+          />
+        ) : null}
         <div
           className={`composer-shell${manualEditorHeight != null ? ' composer-shell--manual-height' : ''}`}
           style={
@@ -3736,6 +3769,23 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
                 openDesignSystemPicker();
               } : undefined}
             />
+            {/* 「直接生图」。原来在 Design Files 工具栏,点了会 navigate 到全局
+                `/generate` 工作台;现在落在附件行里,点开的面板就在本面板内
+                (见 chat/GenerateSurface.tsx 的文件头)。 */}
+            {canOpenGenerateSurface ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="composer-generate-trigger"
+                title={t('generate.triggerTitle')}
+                aria-label={t('generate.triggerTitle')}
+                aria-expanded={generateSurfaceOpen}
+                onClick={() => setGenerateSurfaceOpen((open) => !open)}
+              >
+                <Icon name="sparkles" size={13} />
+                <span>{t('generate.trigger')}</span>
+              </Button>
+            ) : null}
             {/* #5517: the design-system picker sits inline in the composer's
                 icon row (palette icon) instead of the staged-context bar. */}
             {designSystemPicker}

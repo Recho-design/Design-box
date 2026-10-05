@@ -5270,7 +5270,6 @@ function AppInner() {
         onDismiss={() => trackExperienceSurveyDismissed(analytics.track)}
         onSubmit={(answers) => trackExperienceSurveySent(analytics.track, answers)}
       />
-      null
       <AnimatePresence>
       {settingsOpen ? (
         renderSettingsSurface('modal')

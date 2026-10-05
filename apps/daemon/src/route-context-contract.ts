@@ -10,6 +10,7 @@ import type { RegisterHostToolsRoutesDeps } from './routes/host-tools.js';
 import type { RegisterLiveArtifactRoutesDeps } from './routes/live-artifact.js';
 import type { RegisterMcpRoutesDeps } from './mcp-routes.js';
 import type { RegisterMediaRoutesDeps } from './routes/media.js';
+import type { RegisterMediaPlaygroundRoutesDeps } from './routes/media-playground.js';
 import type { RegisterMemoryRoutesDeps } from './routes/memory.js';
 import type { RegisterOpenDesignPublicMetadataRoutesDeps } from './routes/open-design-public-metadata.js';
 import type { RegisterProjectChatArtifactRoutesDeps } from './routes/project/chat-artifacts.js';
@@ -34,6 +35,7 @@ type AllRegisteredRouteDeps =
   & RegisterLiveArtifactRoutesDeps
   & RegisterMcpRoutesDeps
   & RegisterMediaRoutesDeps
+  & RegisterMediaPlaygroundRoutesDeps
   & RegisterMemoryRoutesDeps
   & RegisterOpenDesignPublicMetadataRoutesDeps
   & RegisterProjectArtifactRoutesDeps
