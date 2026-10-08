@@ -1538,7 +1538,7 @@ export interface SettingsByokFieldClickProps {
 export interface SettingsMediaProvidersClickProps {
   page_name: TrackingSettingsPage;
   area: 'media_providers';
-  element: 'reload' | 'key_input' | 'url_input' | 'clear';
+  element: 'reload' | 'key_input' | 'url_input' | 'clear' | 'fetch_models';
   providers_id?: string;
   is_configured?: boolean;
 }

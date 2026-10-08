@@ -339,6 +339,30 @@ sendDisabled 时隐藏）。点击**不再 navigate 到 `/generate`**，而是�
   空态、历史计数、上传失败、跨目标引用提示等；`types.ts` 先行，19 locale
   全量，typecheck 强制）。
 
+### 6.4 Settings → Media 提供商面板约定（2026-10-08 补）
+
+- 该面板表单是**自动保存**（400ms 防抖，SettingsDialog autosave loop），
+  没有保存按钮。禁止再出现"保存前不会生效"类误导文案
+  （`settings.mediaProviderSaveHint` 已因此删除，勿回填）。
+- 面板内**新增控件一律复用 `@open-design/components` 原语**
+  （如拉取模型按钮用 `Button`），不新增 raw class 按钮；既有旧按钮的
+  迁移另立任务，不顺手混入。
+- **拉取模型**：`supportsModelFetch` 的提供商（openai/grok/imagerouter/
+  openrouter/aihubmix/custom-image）在 model 字段旁有"拉取模型"按钮，
+  走 `GET /api/media/providers/:id/model-options`（路径刻意不带 `/models`
+  后缀：更早注册的 aihubmix 公开目录路由
+  `/api/media/providers/aihubmix/models` 会遮蔽同形路径；daemon 侧读已保存
+  配置代拉上游 OpenAI 兼容 `/models`，同 elevenlabs voices / aihubmix
+  catalogue 模式；错误信封单形状 `{error}`）。该能力位需要 web 与 daemon
+  两份 `MEDIA_PROVIDERS` 注册表（`apps/web/src/media/models.ts` 与
+  `apps/daemon/src/media/models.ts`）同步维护——review 时两边对账。
+- 拉取模型是设置表单辅助动作（同 elevenlabs voices），不做 CLI 双轨。
+- **已知限制（裁定不修）**：拉取读的是 daemon 已保存配置——屏上 key
+  改动若未过 400ms 防抖落盘就点拉取，仍用旧 key（旧 key 有效则静默
+  成功，无效则报错后重点即可）。修它需动自动保存与拉取的时序，
+  风险大于收益。custom-image 例外语义：无 key 也放行（镜像
+  `renderCustomOpenAIImage` 的 keyless 行为，由上游自行 401）。
+
 ## 7. 数据契约（packages/contracts）
 
 `packages/contracts/src/api/media-playground.ts`（纯 TS，无 Node API）：

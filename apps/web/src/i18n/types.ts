@@ -547,13 +547,16 @@ export interface Dict {
   'settings.mediaProviderLoadError': string;
   'settings.mediaProviderComingSoonHint': string;
   // #5517 media-providers redesign: provider pill selector + single detail
-  // card (labeled Model field, docs callout, save-bar note, no-key panel).
+  // card (labeled Model field, docs callout, model fetch, no-key panel).
   'settings.mediaProviderModelProviders': string;
   'settings.mediaProviderModel': string;
   'settings.mediaProviderModelPlaceholder': string;
   'settings.mediaProviderDocsTitle': string;
   'settings.mediaProviderDocsHint': string;
-  'settings.mediaProviderSaveHint': string;
+  'settings.mediaProviderFetchModels': string;
+  'settings.mediaProviderFetchModelsLoading': string;
+  'settings.mediaProviderFetchModelsEmpty': string;
+  'settings.mediaProviderFetchModelsFailed': string;
   'settings.mediaProviderNoKeyRequired': string;
   'settings.mediaProviderNoKeyHint': string;
   'settings.privacy': string;

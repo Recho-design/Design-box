@@ -7047,6 +7047,10 @@ function MediaProvidersSection({
   const analytics = useAnalytics();
   const [reloadRunning, setReloadRunning] = useState(false);
   const [reloadNotice, setReloadNotice] = useState<{ kind: 'error' | 'success'; message: string } | null>(null);
+  // Bumped by Clear so the fetch-models control remounts and its local
+  // loading / list / error state resets for a provider whose credentials
+  // were just wiped — stale ids or an error banner must not survive.
+  const [providerFetchResetToken, setProviderFetchResetToken] = useState(0);
   const [visibleApiKeys, setVisibleApiKeys] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -7382,6 +7386,14 @@ function MediaProvidersSection({
                   onChange={(e) => updateProvider(activeProvider, { model: e.target.value })}
                 />
               </label>
+              {activeProvider.supportsModelFetch ? (
+                <ProviderModelFetch
+                  key={`${activeProvider.id}:${providerFetchResetToken}`}
+                  providerId={activeProvider.id}
+                  isConfigured={activeClearable}
+                  onPick={(modelId) => updateProvider(activeProvider, { model: modelId })}
+                />
+              ) : null}
             </div>
           ) : (
             <div className="media-provider-no-key">
@@ -7410,7 +7422,6 @@ function MediaProvidersSection({
             ) : null}
           </div>
           <div className="media-provider-detail-actions">
-            <span className="hint">{t('settings.mediaProviderSaveHint')}</span>
             <button
               type="button"
               className="ghost"
@@ -7448,6 +7459,7 @@ function MediaProvidersSection({
                   apiKeyConfigured: false,
                   apiKeyTail: '',
                 });
+                setProviderFetchResetToken((n) => n + 1);
               }}
             >
               {t('settings.mediaProviderClear')}
@@ -7510,6 +7522,130 @@ function MediaProvidersSection({
       ) : null}
     </section>
   );
+}
+
+// Fetch-models control for providers backed by an OpenAI-compatible
+// GET /models catalogue. Local UI state (loading / ids / error / list
+// open) lives here; the call site passes `key={provider.id}` so a
+// provider switch remounts the control and resets everything for free.
+function ProviderModelFetch({
+  providerId,
+  isConfigured,
+  onPick,
+}: {
+  providerId: string;
+  isConfigured: boolean;
+  onPick: (modelId: string) => void;
+}) {
+  const { t } = useI18n();
+  const analytics = useAnalytics();
+  const [fetching, setFetching] = useState(false);
+  const [modelIds, setModelIds] = useState<string[] | null>(null);
+  const [listOpen, setListOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFetch = async () => {
+    if (fetching) return;
+    trackSettingsMediaProvidersClick(analytics.track, {
+      page_name: 'settings',
+      area: 'media_providers',
+      element: 'fetch_models',
+      providers_id: providerId,
+      is_configured: isConfigured,
+    });
+    setFetching(true);
+    setError(null);
+    try {
+      const ids = await fetchProviderModelIds(providerId);
+      setModelIds(ids);
+      setListOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      // A failed fetch also invalidates whatever a previous successful
+      // fetch left on screen — stale ids no longer match provider state.
+      setModelIds(null);
+      setListOpen(false);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  return (
+    <div className="media-provider-model-fetch">
+      <div className="media-provider-model-fetch-row">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={fetching}
+          onClick={() => void handleFetch()}
+        >
+          {fetching
+            ? t('settings.mediaProviderFetchModelsLoading')
+            : t('settings.mediaProviderFetchModels')}
+        </Button>
+        {error ? (
+          <span className="media-provider-model-fetch-error" role="alert">
+            {t('settings.mediaProviderFetchModelsFailed')}
+            {error}
+          </span>
+        ) : null}
+      </div>
+      {listOpen && modelIds ? (
+        modelIds.length === 0 ? (
+          <span className="media-provider-model-fetch-empty">
+            {t('settings.mediaProviderFetchModelsEmpty')}
+          </span>
+        ) : (
+          <ul className="media-provider-model-fetch-list">
+            {modelIds.map((id) => (
+              <li key={id}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  // Picking an id writes it into the Model field (auto-
+                  // saved like every other patch) and collapses the list;
+                  // the error banner must not outlive a successful pick.
+                  onClick={() => {
+                    setError(null);
+                    onPick(id);
+                    setListOpen(false);
+                  }}
+                >
+                  {id}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Hit `GET /api/media/providers/:id/model-options` (daemon proxies the
+ * provider's OpenAI-compatible GET /models; the route is named
+ * model-options to avoid shadowing the existing aihubmix catalogue
+ * route). Frozen contract: success is `200 { ok, models: [{ id }] }`,
+ * failure is `{ error }` (400 missing key, 404 unsupported, 502
+ * upstream) — both throw so the caller only handles ids or error text.
+ */
+async function fetchProviderModelIds(providerId: string): Promise<string[]> {
+  const res = await fetch(`/api/media/providers/${providerId}/model-options`);
+  const payload = (await res.json().catch(() => null)) as
+    | { ok?: boolean; models?: Array<{ id?: string }>; error?: string }
+    | null;
+  if (!res.ok) {
+    throw new Error(payload?.error ?? `HTTP ${res.status}`);
+  }
+  // Contract is `200 { ok: true, models: [{ id }] }`; a 200 body that
+  // deviates is a proxy/upstream bug, not an empty catalogue.
+  if (!payload || payload.ok !== true || !Array.isArray(payload.models)) {
+    throw new Error('unexpected response');
+  }
+  return payload.models
+    .filter((m): m is { id: string } => typeof m?.id === 'string' && m.id.length > 0)
+    .map((m) => m.id);
 }
 
 // Per-client install paths. Each entry's `snippet` is what the user

@@ -213,6 +213,7 @@ describe('server route inventory', () => {
       'GET /api/media/config',
       'PUT /api/media/config',
       'GET /api/media/providers/elevenlabs/voices',
+      'GET /api/media/providers/:id/model-options',
       'GET /api/app-config',
       'PUT /api/app-config',
       'POST /api/dir-exists',

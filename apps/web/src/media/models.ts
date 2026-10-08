@@ -74,6 +74,8 @@ export interface MediaProvider {
   supportsCustomModel?: boolean;
   /** Placeholder text for custom model override fields in Settings. */
   customModelPlaceholder?: string;
+  /** Whether Settings offers a "fetch models" button hitting the provider's OpenAI-compatible GET /models. */
+  supportsModelFetch?: boolean;
 }
 
 /**
@@ -90,6 +92,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     integrated: true,
     defaultBaseUrl: 'https://api.openai.com/v1',
     docsUrl: 'https://platform.openai.com/api-keys',
+    supportsModelFetch: true,
   },
   {
     id: 'volcengine',
@@ -106,6 +109,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     integrated: true,
     defaultBaseUrl: 'https://api.x.ai/v1',
     docsUrl: 'https://docs.x.ai/developers/model-capabilities/video/generation',
+    supportsModelFetch: true,
   },
   {
     id: 'hyperframes',
@@ -134,6 +138,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     docsUrl: 'https://docs.imagerouter.io/api-reference/image-generation/',
     supportsCustomModel: true,
     customModelPlaceholder: 'openai/gpt-image-2 or xAI/grok-imagine-video',
+    supportsModelFetch: true,
   },
   {
     id: 'openrouter',
@@ -144,6 +149,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     settingsVisible: true,
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
     docsUrl: 'https://openrouter.ai/settings/keys',
+    supportsModelFetch: true,
   },
   {
     id: 'custom-image',
@@ -153,6 +159,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     docsUrl: 'https://platform.openai.com/docs/api-reference/images',
     supportsCustomModel: true,
     customModelPlaceholder: 'my-image-model',
+    supportsModelFetch: true,
   },
   {
     id: 'comfyui',
@@ -272,6 +279,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     docsUrl: 'https://docs.aihubmix.com',
     supportsCustomModel: true,
     customModelPlaceholder: 'gpt-image-1 or dall-e-3',
+    supportsModelFetch: true,
   },
   {
     id: 'tavily',

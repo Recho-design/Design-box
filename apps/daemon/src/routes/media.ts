@@ -10,6 +10,7 @@ import type {
 import type { AnalyticsContext } from '../analytics.js';
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
 import { formatMediaTaskDiagnostic } from '../media/diagnostics.js';
+import { fetchProviderModelOptions } from '../media/model-fetch.js';
 import { autoOutputName } from '../media/index.js';
 import {
   findMediaModel,
@@ -836,6 +837,40 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       const message = String(err && err.message ? err.message : err);
       const status = message.includes('no ElevenLabs API key') ? 400 : 502;
       res.status(status).json({ error: message });
+    }
+  });
+
+  // Model catalogue for a provider the user configured, for the Settings →
+  // Media "fetch models" button. The daemon makes the call instead of the
+  // browser so the stored API key never leaves the daemon and the redirect /
+  // timeout policy stays in one place; the upstream origin comes from the
+  // saved config (or the registry default), never from the request, and only
+  // providers flagged `supportsModelFetch` are served — either one of those
+  // missing would make this an open proxy for any URL in the path.
+  app.get('/api/media/providers/:id/model-options', async (req, res) => {
+    // `/model-options`, not `/models`: the earlier-registered AIHubMix public
+    // catalogue (`/api/media/providers/aihubmix/models`, above) would shadow
+    // this generic route and answer it with the old directory contract.
+    if (!isLocalSameOrigin(req, getResolvedPort())) {
+      return res.status(403).json({ error: 'cross-origin request rejected' });
+    }
+    const proxyDispatcher = proxyDispatcherRequestInit(process.env);
+    try {
+      const models = await fetchProviderModelOptions(PROJECT_ROOT, req.params.id, {
+        requestInit: proxyDispatcher.requestInit,
+      });
+      res.json({ ok: true, models });
+    } catch (err: any) {
+      // Every failure leaves through this one envelope shape; the status comes
+      // off the error (400/404/502) and defaults to 502 for anything that is
+      // not a recognized precondition — e.g. the upstream fetch itself
+      // throwing (DNS, TLS, proxy, timeout).
+      const status = typeof err?.status === 'number' ? err.status : 502;
+      res
+        .status(status)
+        .json({ error: String(err && err.message ? err.message : err) });
+    } finally {
+      await proxyDispatcher.close();
     }
   });
 

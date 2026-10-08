@@ -798,9 +798,56 @@
 .media-provider-detail-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* The save-bar hint span was removed (auto-save makes it misleading);
+     with a single child left, space-between would strand the Clear
+     button on the left instead of its original right-aligned spot. */
+  justify-content: flex-end;
   gap: 12px;
   padding-top: 4px;
+}
+/* "Fetch models" control under the Model field: the daemon proxies the
+   provider's OpenAI-compatible GET /models, and the fetched ids render
+   as a compact scrollable pick-list. */
+.media-provider-model-fetch {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+.media-provider-model-fetch-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.media-provider-model-fetch-error {
+  color: var(--danger, #d4543b);
+  font-size: 12px;
+}
+.media-provider-model-fetch-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.media-provider-model-fetch-list {
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+/* List rows are the shared ghost Button primitive; these container-scoped
+   descendant overrides only re-anchor them to full-width left-aligned
+   single-line rows with ellipsis (class+type beats the module class). */
+.media-provider-model-fetch-list button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .media-provider-no-key {
   display: flex;
