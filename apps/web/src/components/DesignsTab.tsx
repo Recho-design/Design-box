@@ -1488,7 +1488,7 @@ function projectCategory(project: Project): ProjectCategory {
 	if (meta?.intent === "web-clone") return "web-clone";
 	if (meta?.kind === "deck") return "slide";
 	if (meta?.kind === "brand") return "brand";
-	if (meta?.kind === "image" || meta?.kind === "video" || meta?.kind === "audio") {
+	if (meta?.kind === "image" || meta?.kind === "video") {
 		return "media";
 	}
 	return "prototype";

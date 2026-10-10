@@ -55,7 +55,7 @@ export interface ExecutionSettingsPopoverClickProps {
     | 'mode_byok'
     | 'agent_card'
     // BYOK provider protocol tab inside the popover (Anthropic / OpenAI /
-    // Azure / Google / AIHubMix). Mirrors Settings'
+    // Azure / Google / Ollama). Mirrors Settings'
     // `byok_provider_option` so mode-switch funnels line up.
     | 'byok_provider_tab'
     | 'model_dropdown'
@@ -65,7 +65,7 @@ export interface ExecutionSettingsPopoverClickProps {
   cli_provider_id?: TrackingCliProviderId;
   // `byok_provider_tab` / BYOK `model_dropdown`: the protocol tab, mapped via
   // `byokProtocolToTracking`; omitted when the protocol is outside the v2
-  // catalogue (e.g. aihubmix) so an unmapped value never ships.
+  // catalogue (e.g. bedrock) so an unmapped value never ships.
   provider_id?: TrackingByokProviderId;
   // `model_dropdown`: the picked model id (`modelIdForTracking`).
   model_id?: string;
@@ -1216,9 +1216,7 @@ export const TRACKING_HANDOFF_TARGET_IDS = [
   'cursor', 'vscode', 'windsurf', 'zed', 'qoder', 'antigravity', 'webstorm',
   'idea', 'xcode', 'finder', 'explorer', 'file-manager', 'terminal', 'warp',
   // code-agent CLIs (HandoffButton CLI_ORDER; qoder / antigravity already above)
-  'amr', 'claude', 'codex', 'opencode', 'cursor-agent', 'gemini', 'qwen',
-  'copilot', 'grok-build', 'deepseek', 'kimi', 'hermes', 'devin', 'kiro',
-  'kilo', 'vibe', 'aider', 'trae-cli', 'pi', 'reasonix',
+  'amr', 'claude', 'codex', 'opencode', 'gemini', 'grok-build', 'deepseek',
 ] as const;
 
 export type TrackingHandoffTargetId =

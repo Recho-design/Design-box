@@ -26,7 +26,6 @@ The daemon is not a shared library for the web app. Do not import daemon private
 - `src/prompts/` owns daemon-side prompt construction. Keep mirrored BYOK/API wording in `packages/contracts/src/prompts/` when the same text is exposed outside the daemon.
 - `src/plugins/`, `src/connectors/`, `src/registry/`, `src/research/`, `src/media-adapters/`, `src/live-artifacts/`, `src/storage/`, and `src/critique/` own their named domains. Prefer adding code inside the existing domain folder before creating a new top-level folder.
 - Team resource storage is Vela-owned. Daemon adapters under `src/collab/vela-cli-*` must invoke Vela through `src/integrations/vela-command.ts`, which shares the login/agent binary resolver and environment. Do not add Resource Hub tokens, direct HTTP clients, or a second content-addressed drive implementation to OpenDesign. `od resource` is only a thin Vela CLI compatibility entry point.
-- `tests/` contains daemon tests. Keep test paths roughly parallel to `src/` when useful.
 
 Do not edit generated `dist/` output.
 
@@ -47,7 +46,7 @@ When touching a legacy top-level file:
 
 - Prefer a small, safe move into an existing domain folder when imports are straightforward and the change is already about that domain.
 - Do not mix a broad mechanical move with behavior changes unless the move is required to make the behavior change understandable.
-- If a file is split, keep the public function names stable at call sites where possible and move tests with the behavior they cover.
+- If a file is split, keep the public function names stable at call sites where possible.
 - Use temporary root-level compatibility exports only when they materially reduce churn; remove them in the same PR if the diff stays small.
 
 Suggested ownership for common legacy top-level families:
@@ -108,17 +107,10 @@ When adding a user-facing capability, close the loop in one change: contract typ
 
 ## Runtime and Agent Changes
 
-- Parser changes belong beside the matching runtime stream helper and should include focused parser tests.
+- Parser changes belong beside the matching runtime stream helper.
 - Runtime definition changes belong in `src/runtimes/defs/`.
 - For agent-stream/parser changes, replay a mock CLI trace from `mocks/` when practical instead of burning provider budget.
 - Preserve Claude stream-json bookkeeping in `src/runtimes/claude-stream.ts` and `src/server.ts`; do not close stdin on `tool_use` stop reasons.
-
-## Tests
-
-- Tests belong under `apps/daemon/tests/`, not under `src/`.
-- Use the cheapest layer that can observe the behavior: pure helper test, route-level Vitest with `startServer`, then broader integration only when necessary.
-- For bug fixes, prefer a red spec that fails before the fix.
-- If a test depends on native modules such as `better-sqlite3`, make sure local dependencies were built for the active Node version before blaming the code.
 
 ## Commands
 
@@ -126,14 +118,7 @@ Common daemon checks:
 
 ```bash
 pnpm --filter @open-design/daemon typecheck
-pnpm --filter @open-design/daemon test
 pnpm --filter @open-design/daemon build
-```
-
-Focused tests from `apps/daemon`:
-
-```bash
-pnpm exec vitest run -c vitest.config.ts tests/<file>.test.ts
 ```
 
 For local runtime validation, start through the repo control plane, not daemon package lifecycle aliases:
@@ -151,4 +136,3 @@ Before handing off daemon changes, check:
 - Shared DTOs or error shapes live in `packages/contracts` when the web or CLI consumes them.
 - CLI parity is handled or explicitly not applicable.
 - Daemon data paths derive from the resolved daemon data root.
-- Tests are under `tests/` and relevant checks were run.

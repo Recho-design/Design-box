@@ -1,8 +1,8 @@
 /**
  * Parses `agy --output-format stream-json` (antigravity ≥ 1.2.13) NDJSON
  * stdout into the small event set consumed by the chat UI. Structure mirrors
- * `qoder-stream.ts` (per-handler StringDecoder + line split + bounded raw
- * fallback); the wire shape differs, so keep it separate.
+ * the other JSONL stream parsers (per-handler StringDecoder + line split +
+ * bounded raw fallback); the wire shape differs, so keep it separate.
  *
  * Wire shape (real-world sample, agy 1.2.13):
  *   {"event":"init","conversation_id":"…","init":{...}}
@@ -25,7 +25,7 @@ function isRecord(value: unknown): value is JsonRecord {
 
 /**
  * Decode one stdout chunk, given a decoder that carries state between chunks.
- * See `qoder-stream.ts` for why chunking makes naive `toString('utf8')` wrong.
+ * See `json-event-stream.ts` for why chunking makes naive `toString('utf8')` wrong.
  */
 function stringifyContent(value: unknown, decoder: StringDecoder): string {
   if (typeof value === 'string') return value;
@@ -64,7 +64,7 @@ export function createAgyStreamHandler(onEvent: AgyEventSink) {
   /*
    * Per-handler, never module-level: the decoder must own the trailing bytes
    * of the previous chunk alone, or two concurrent runs splice characters
-   * (see the qoder parser's comment for the failure).
+   * (see the stream parsers' comments for the failure).
    */
   const decoder = new StringDecoder('utf8');
   let emittedAgentText = false;

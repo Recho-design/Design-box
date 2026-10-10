@@ -37,7 +37,6 @@ import { resolveExternalMcpServersForRun } from '../../run-tool-bundle.js';
 import {
   composeChatAgentTextPayload,
   resolveOdNextRequestUserPrompt,
-  resolveResearchCommandContract,
 } from '../../runtimes/chat-prompt-inputs.js';
 import { renderRunContextPrompt } from '../../runtimes/chat-run-context.js';
 import type { RunWorkspaceScope } from '../../runtimes/chat-run-records.js';
@@ -66,12 +65,6 @@ type IntentSignals = ReturnType<typeof latchConversationIntentSignals>;
 const FORM_ANSWERS_HEADER_RE =
   /^\s*\[form answers(?:\s*[\u2014\-:]\s*([^\]\r\n]+))?\]\s*(?:\r?\n|$)/i;
 
-type ResearchInput = {
-  enabled?: boolean;
-  query?: string;
-  maxSources?: number;
-} | null;
-
 export interface OdNextInitialPromptMeta {
   agentId: string;
   doneKey?: unknown;
@@ -86,7 +79,6 @@ export interface OdNextInitialPromptMeta {
   designSystemId?: unknown;
   sessionMode?: unknown;
   locale?: unknown;
-  research?: ResearchInput;
   context?: unknown;
   titleGeneration?: unknown;
   byokMediaDefaults?: unknown;
@@ -278,7 +270,6 @@ export function createOdNextInitialPromptBundleService(
       designSystemId,
       sessionMode,
       locale,
-      research,
       context,
       titleGeneration,
       byokMediaDefaults,
@@ -362,7 +353,6 @@ export function createOdNextInitialPromptBundleService(
       deps.daemonUrl,
       projectRoot && projectId ? { token: 'available' } : null,
     );
-    const researchCommandContract = resolveResearchCommandContract(research, userPrompt);
     const formAnswerMatch = FORM_ANSWERS_HEADER_RE.exec(
       typeof currentPrompt === 'string' ? currentPrompt : '',
     );
@@ -433,7 +423,6 @@ export function createOdNextInitialPromptBundleService(
       formOverride,
       daemonSystemPrompt: '',
       runtimeToolPrompt,
-      researchCommandContract,
       runContextPrompt,
       connectedExternalMcpReference: renderConnectedExternalMcpDirective(connectedExternalMcp),
       browserUnavailableGuard: renderBrowserUseUnavailablePrompt(browserUse),

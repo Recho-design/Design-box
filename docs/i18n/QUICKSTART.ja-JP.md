@@ -56,7 +56,7 @@ pnpm tools-dev # daemon + web + desktop をバックグラウンドで起動し�
 ```bash
 pnpm tools-dev                 # daemon + web + desktop をバックグラウンドで起動
 pnpm tools-dev start web       # daemon + web をバックグラウンドで起動
-pnpm tools-dev run web         # daemon + web をフォアグラウンドで起動（e2e/dev サーバー）
+pnpm tools-dev run web         # daemon + web をフォアグラウンドで起動（dev server）
 pnpm tools-dev restart         # daemon + web + desktop を再起動
 pnpm tools-dev restart --daemon-port 7457 --web-port 5175
 pnpm tools-dev status          # 管理対象ランタイムを検査
@@ -294,8 +294,7 @@ open-design/
 │   │       │   └── defs/          # ランタイム別の起動／引数定義
 │   │       ├── skills.ts          # SKILL.md ローダー（フロントマターパーサー）
 │   │       └── design-systems/    # DESIGN.md ローダーとサービス
-│   │   ├── sidecar/           # tools-dev daemon sidecar ラッパー
-│   │   └── tests/             # daemon パッケージのテスト
+│   │   └── sidecar/           # tools-dev daemon sidecar ラッパー
 │   ├── web/                   # Next.js 16 App Router + React クライアント
 │       ├── app/               # App Router エントリポイント
 │       ├── src/               # React + TypeScript クライアント／ランタイムモジュール
@@ -314,13 +313,12 @@ open-design/
 │   ├── sidecar/               # 汎用 sidecar ランタイムプリミティブ
 │   └── platform/              # 汎用プロセス／プラットフォームプリミティブ
 ├── tools/dev/                 # `pnpm tools-dev` ライフサイクルと inspect CLI
-├── e2e/                       # Playwright UI + 外部統合／Vitest ハーネス
 ├── skills/                    # 作業中に呼び出す機能的な能力
 ├── design-templates/          # プロトタイプ、デッキ、文書、メディアのレンダリングカタログ
 ├── design-systems/            # DESIGN.md を基点とするブランドパッケージ
 ├── scripts/sync-design-systems.ts    # 上流の getdesign tarball から再インポート
 ├── docs/                      # 製品ビジョン + 仕様
-├── pnpm-workspace.yaml        # apps/* + packages/* + tools/* + e2e
+├── pnpm-workspace.yaml        # apps/* + packages/* + tools/*
 └── package.json               # root quality スクリプト + `od` bin
 ```
 

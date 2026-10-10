@@ -636,7 +636,6 @@ gh issue develop <number>   # 创建分支和 worktree
 
 # 3. 做出改动，运行检查
 pnpm guard && pnpm typecheck
-pnpm --filter @open-design/<package> test
 
 # 4. 提交 PR
 gh pr create --fill

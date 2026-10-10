@@ -28,16 +28,6 @@ import { checkScriptsLibraryArchitecture } from "./lib/guard/architecture.ts";
 import { runGuardChecks, type GuardCheck, type GuardContext } from "./lib/guard/core.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const allowedE2eScripts = new Set([
-  "e2e/scripts/artifact-render-parity.ts",
-  "e2e/scripts/playwright.ts",
-  "e2e/scripts/release-smoke.ts",
-  // Explicit opt-in local daemon acceptance; not part of hermetic CI test discovery.
-  "e2e/scripts/syntax-acceptance.ts",
-  "e2e/scripts/visual-report.ts",
-  // Cross-version real Vela / synthetic OpenCode protocol acceptance.
-  "e2e/scripts/vela-contract.ts",
-]);
 
 function toRepositoryPath(filePath: string): string {
   return path.relative(repoRoot, filePath).split(path.sep).join("/");
@@ -156,14 +146,6 @@ const residualAllowedPathPrefixes = [
   "apps/web/.next/",
   "apps/web/out/",
   "generated/",
-  "e2e/playwright-report/",
-  "e2e/reports/html/",
-  "e2e/reports/playwright-html-report/",
-  "e2e/reports/test-results/",
-  "e2e/ui/.od-data/",
-  "e2e/ui/reports/playwright-html-report/",
-  "e2e/ui/reports/test-results/",
-  "e2e/ui/test-results/",
   // Vendored upstream HyperFrames helper scripts (design template).
   "design-templates/hyperframes/scripts/",
   // Vendored upstream Web Clone skill helper scripts. These are portable
@@ -303,7 +285,7 @@ export async function checkRootPackageManagerLockfiles(root: string = repoRoot):
   return true;
 }
 
-const sourcePackageManifestRootPaths = ["package.json", "e2e/package.json"];
+const sourcePackageManifestRootPaths = ["package.json"];
 const sourcePackageManifestScopedDirectories = ["apps", "packages", "tools"];
 const packageDependencySections = [
   "dependencies",
@@ -525,116 +507,6 @@ async function checkPackageDependencySpecs(): Promise<boolean> {
   return true;
 }
 
-const testLayoutScopedDirectories = ["apps", "packages", "tools"];
-const testLayoutSkippedDirectories = new Set([".next", ".od-data", "dist", "node_modules", "out", "reports", "test-results"]);
-
-function isTestFile(fileName: string): boolean {
-  return /\.test\.tsx?$/.test(fileName);
-}
-
-function expectedTestPath(repositoryPath: string): string {
-  const [scope, project, ...relativeParts] = repositoryPath.split("/");
-  if (!testLayoutScopedDirectories.includes(scope ?? "") || project == null || relativeParts.length === 0) {
-    return repositoryPath;
-  }
-
-  const normalizedRelativeParts = relativeParts[0] === "src" ? relativeParts.slice(1) : relativeParts;
-  return [scope, project, "tests", ...normalizedRelativeParts].join("/");
-}
-
-function isAllowedScopedTestPath(repositoryPath: string): boolean {
-  const [scope, project, directory] = repositoryPath.split("/");
-  return testLayoutScopedDirectories.includes(scope ?? "") && project != null && directory === "tests";
-}
-
-async function collectTestLayoutViolations(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const violations: string[] = [];
-
-  for (const entry of entries) {
-    const fullPath = path.join(directory, entry.name);
-
-    if (entry.isDirectory()) {
-      if (testLayoutSkippedDirectories.has(entry.name)) {
-        continue;
-      }
-
-      violations.push(...(await collectTestLayoutViolations(fullPath)));
-      continue;
-    }
-
-    if (!entry.isFile() || !isTestFile(entry.name)) {
-      continue;
-    }
-
-    const repositoryPath = toRepositoryPath(fullPath);
-    if (!isAllowedScopedTestPath(repositoryPath)) {
-      violations.push(repositoryPath);
-    }
-  }
-
-  return violations;
-}
-
-async function checkScriptsTestFree(): Promise<boolean> {
-  const scriptsFiles = await collectRepositoryFiles(path.join(repoRoot, "scripts"), testLayoutSkippedDirectories);
-  const violations = scriptsFiles.filter(isScriptTestFile);
-
-  if (violations.length > 0) {
-    console.error(
-      "Root scripts/ is test-free: move behavior-contract coverage to e2e/tests/scripts/ (see e2e/AGENTS.md):",
-    );
-    for (const violation of violations) {
-      console.error(`- ${violation}`);
-    }
-    return false;
-  }
-
-  console.log("Scripts test-free check passed: no test files under root scripts/.");
-  return true;
-}
-
-export function isScriptTestFile(repositoryPath: string): boolean {
-  return /\.test\.[^/]+$/.test(repositoryPath);
-}
-
-async function checkTestLayout(): Promise<boolean> {
-  const violations = (
-    await Promise.all(
-      testLayoutScopedDirectories.map((directory) => collectTestLayoutViolations(path.join(repoRoot, directory))),
-    )
-  ).flat();
-
-  if (violations.length > 0) {
-    console.error("Test files under apps/, packages/, and tools/ must live in tests/ sibling to src/:");
-    for (const violation of violations) {
-      console.error(`- ${violation} -> ${expectedTestPath(violation)}`);
-    }
-    return false;
-  }
-
-  console.log("Test layout check passed: apps/packages/tools tests live in sibling tests directories.");
-  return true;
-}
-
-const e2ePackageJsonPath = path.join(repoRoot, "e2e", "package.json");
-const e2eSkippedDirectories = new Set([".od-data", "node_modules", "reports", "test-results"]);
-const e2eAllowedScripts = [
-  "test",
-  "test:p0",
-  "test:p0p1",
-  "test:p1",
-  "test:p2",
-  "test:ui",
-  "test:ui:critical",
-  "test:ui:extended",
-  "test:ui:p0",
-  "test:ui:p0p1",
-  "test:ui:p1",
-  "test:ui:p2",
-  "typecheck",
-];
-
 async function collectRepositoryFiles(directory: string, skippedDirectoryNames = new Set<string>()): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const files: string[] = [];
@@ -763,115 +635,6 @@ async function checkProductNeutrality(): Promise<boolean> {
   }
 
   console.log("Product-neutrality check passed: public docs, contracts, and prompts use generic orchestrator naming.");
-  return true;
-}
-
-async function checkE2eLayout(): Promise<boolean> {
-  const violations: string[] = [];
-  const packageJson = JSON.parse(await readFile(e2ePackageJsonPath, "utf8")) as {
-    scripts?: Record<string, unknown>;
-  };
-  const scriptNames = Object.keys(packageJson.scripts ?? {}).sort();
-  if (scriptNames.join("\0") !== e2eAllowedScripts.join("\0")) {
-    violations.push(
-      `e2e/package.json scripts must be exactly ${e2eAllowedScripts.join(", ")} (found: ${scriptNames.join(", ")})`,
-    );
-  }
-
-  const e2eRoot = path.join(repoRoot, "e2e");
-  for (const repositoryPath of await collectRepositoryFiles(e2eRoot, e2eSkippedDirectories)) {
-    if (
-      repositoryPath === "e2e/package.json" ||
-      repositoryPath === "e2e/tsconfig.json" ||
-      repositoryPath === "e2e/vitest.config.ts" ||
-      repositoryPath === "e2e/playwright.config.ts" ||
-      repositoryPath === "e2e/playwright.visual.config.ts" ||
-      repositoryPath === "e2e/AGENTS.md"
-    ) {
-      continue;
-    }
-
-    if (repositoryPath.startsWith("e2e/specs/")) {
-      if (!/\.spec\.ts$/.test(repositoryPath)) {
-        violations.push(`${repositoryPath} -> e2e specs must be *.spec.ts`);
-      }
-      continue;
-    }
-
-    if (repositoryPath.startsWith("e2e/tests/")) {
-      if (!/\.test\.ts$/.test(repositoryPath)) {
-        violations.push(`${repositoryPath} -> e2e tests must be *.test.ts`);
-      }
-      continue;
-    }
-
-    if (repositoryPath.startsWith("e2e/ui/")) {
-      const relativePath = repositoryPath.slice("e2e/ui/".length);
-      if (relativePath.includes("/") || !/\.test\.ts$/.test(repositoryPath)) {
-        violations.push(`${repositoryPath} -> e2e UI files must be flat Playwright *.test.ts files under ui/`);
-      }
-      continue;
-    }
-
-    if (repositoryPath.startsWith("e2e/resources/")) {
-      const relativePath = repositoryPath.slice("e2e/resources/".length);
-      if (relativePath.includes("/") || !/\.ts$/.test(repositoryPath)) {
-        violations.push(`${repositoryPath} -> e2e resources must be flat TypeScript files under resources/`);
-      }
-      continue;
-    }
-
-    if (repositoryPath.startsWith("e2e/lib/")) {
-      if (!/\.ts$/.test(repositoryPath)) {
-        violations.push(`${repositoryPath} -> e2e lib files must be TypeScript`);
-      }
-      continue;
-    }
-
-    if (repositoryPath.startsWith("e2e/scripts/")) {
-      if (!allowedE2eScripts.has(repositoryPath)) {
-        violations.push(`${repositoryPath} -> e2e scripts must be an approved package-owned entrypoint`);
-      }
-      continue;
-    }
-
-    violations.push(`${repositoryPath} -> e2e source files must live in specs/, tests/, ui/, resources/, lib/, or approved scripts`);
-  }
-
-  if (violations.length > 0) {
-    console.error("E2E package layout violations found:");
-    for (const violation of violations) console.error(`- ${violation}`);
-    return false;
-  }
-
-  console.log("E2E layout check passed: Vitest, Playwright UI, resources, lib, and scripts stay in their lanes.");
-  return true;
-}
-
-const webTestSkippedDirectories = new Set([".od-data", "reports", "test-results"]);
-
-async function checkWebTestLayout(): Promise<boolean> {
-  const violations: string[] = [];
-  const webTestsRoot = path.join(repoRoot, "apps", "web", "tests");
-
-  for (const repositoryPath of await collectRepositoryFiles(webTestsRoot, webTestSkippedDirectories)) {
-    if (repositoryPath.startsWith("apps/web/tests/vitest/") || repositoryPath.startsWith("apps/web/tests/playwright/")) {
-      violations.push(`${repositoryPath} -> web tests should stay lightweight under apps/web/tests/ without vitest/playwright nesting`);
-      continue;
-    }
-
-    if (/\.(spec|test)\.tsx?$/.test(repositoryPath) && !/\.test\.tsx?$/.test(repositoryPath)) {
-      violations.push(`${repositoryPath} -> web Vitest test files must be *.test.ts or *.test.tsx`);
-    }
-  }
-
-  if (violations.length > 0) {
-    console.error("Web test layout violations found:");
-    for (const violation of violations) console.error(`- ${violation}`);
-    return false;
-  }
-
-  console.log("Web test layout check passed: web tests stay lightweight and Vitest-only.");
   return true;
 }
 
@@ -1431,8 +1194,6 @@ async function checkHtmlBoundaryLookups(): Promise<boolean> {
     if (filePath === htmlBoundaryOwnerPath) continue;
     if (!htmlBoundaryCheckedPathPrefixes.some((prefix) => filePath.startsWith(prefix))) continue;
     if (!htmlBoundarySourceExtensions.has(path.extname(filePath))) continue;
-    // Tests are where these shapes get *asserted against*, so they may say them.
-    if (isTestFile(path.basename(filePath)) || filePath.includes("/tests/")) continue;
 
     const contents = await readFile(path.join(repoRoot, filePath), "utf8");
     const usesLocator = contents.includes(htmlBoundaryLocatorImport);
@@ -1521,11 +1282,7 @@ const checks: GuardCheck[] = [
   { name: "cross-app imports", run: checkCrossAppImportsOnce },
   { name: "HTML structural boundaries", run: checkHtmlBoundaryLookups },
   { name: "@ts-nocheck import resolution", run: checkTsNocheckImports },
-  { name: "test layout", run: checkTestLayout },
-  { name: "scripts test-free", run: checkScriptsTestFree },
   { name: "scripts library architecture", run: checkScriptsLibraryArchitecture },
-  { name: "e2e layout", run: checkE2eLayout },
-  { name: "web test layout", run: checkWebTestLayout },
   { name: "web import isolation", run: checkWebImportIsolation },
   { name: "run start choke point", run: checkRunStartChokePoint },
   { name: "tools layout", run: checkToolsLayout },

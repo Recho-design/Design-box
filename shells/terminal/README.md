@@ -158,36 +158,17 @@ artifact acceptance lane.
 
 ## Focused verification
 
-The focused Vitest suites are not wired into the repository's
-main CI:
+The repository's test layer (including the terminal-focused Vitest suites for
+contracts, scenes, offline distribution, cold lifecycle, update, channel
+isolation, atomic install, tamper failure, and the fixture-updater handoff
+matrix) has been removed. The behaviors those suites pinned are now validated
+on real paths:
 
-```sh
-OD_TERMINAL_NODE_ARCHIVE=/path/to/node-v24.18.0-darwin-arm64.tar.gz \
-  pnpm --filter @open-design/terminal test
-```
-
-Without the environment variable the suite uses the matching archive from
-`.tmp/terminal-e2e/node/` when present. It always checks contracts and shared
-fixture semantics; on a matching native host it additionally covers scene,
-offline distribution, cold lifecycle, update, channel isolation, atomic install
-and tamper failure. The full local E2E starts the existing
-`tools-serve start release-storage` fixture and fetches channel heads, signed
-metadata and changed Closure bytes from it, so update coverage cannot pass by
-reusing only the installed seed blob. Before its first launch, the installed beta
-also replaces an unrelated prepared generation and receives the first health
-proof under its exact signed identity. The same mutable
-`somechan/latest/channel-head.json` object is promoted across three beta rounds;
-`somepreview/latest` proves that another non-stable channel remains isolated.
-The fixture Shell updater additionally proves that a ready Electron installer is
-blocked by a live Terminal reference, can be deferred, and can take the explicit
-forced-stop handoff; the old Shell is rejected as installation proof and the
-extracted replacement Shell completes it. It launches the Sidecar with Node and scripts from the
-installed archive, then covers attachment capabilities, default-deferred and
-forced content restart, transition lease recovery after a Sidecar crash, and
-idle-only blob sweep/cleanup. It also closes the final logical reference and
-reattaches the same Terminal identity through a fresh Sidecar host while keeping
-the supervisor generation stable; a later content activation performs another
-exact host handoff.
-Platform coverage is deliberately split between
-`tests/mac.test.ts` (`sh` + tar.gz) and `tests/win.test.ts` (Windows PowerShell
-5.1 + zip); `tests/contract.test.ts` owns the shared protocol assertions.
+- Contract conformance: `mocks/scripts/contract-check.sh` plus
+  `pnpm guard` / `pnpm typecheck` over the workspace.
+- Install/lifecycle/update flows: drive the native carrier scripts
+  (`sh/`, `ps1/`) against a prepared `.tmp` scene with
+  `tools-serve start release-storage`, and observe receipts, transition
+  leases, and handoff states on the real files they write.
+- Platform split is preserved by the carriers themselves: `sh/` + tar.gz on
+  POSIX, `ps1/` + zip on Windows PowerShell 5.1.

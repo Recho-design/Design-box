@@ -118,8 +118,8 @@ export interface RunUsageAnalytics {
   cache_hit_ratio?: number;
   // The turn's FIRST model call (forward scan), as opposed to the fields above
   // which reflect the LAST usage event (reverse scan). The first call is the
-  // session-reuse signal: for per-call-usage agents (claude / opencode /
-  // codebuddy / pi) it is the turn's opening request, whose cached input shows
+  // session-reuse signal: for per-call-usage agents (claude / opencode) it
+  // is the turn's opening request, whose cached input shows
   // whether the resumed session's prior context was reused. The last/aggregate
   // call is saturated by within-turn prefix caching and masks the resume win.
   // (codex emits only a cumulative `turn.completed` usage, so its first-call
@@ -624,13 +624,13 @@ interface EffectiveInputTokens {
 //     input_tokens already contains the cache-read subset → effective = input,
 //     uncached = input - read.
 //   - ADDITIVE (Anthropic, and the Responses-API / ACP usage that the AMR/vela
-//     and pi STREAM emits): input_tokens is the UNCACHED remainder and the
+//     stream emits): input_tokens is the UNCACHED remainder and the
 //     cache-read/creation tokens are reported separately on top → effective =
 //     input + read + creation, uncached = input.
 // Picking the wrong convention is not cosmetic: treating an additive payload as
 // inclusive makes the denominator far too small, so `cache_hit_ratio` /
-// `first_call_cache_hit_ratio` blow past 1.0 (observed ~78% of AMR and ~57% of
-// pi follow-up runs) and `uncached_input_tokens` collapses to 0.
+// `first_call_cache_hit_ratio` blow past 1.0 (observed ~78% of AMR runs) and
+// `uncached_input_tokens` collapses to 0.
 //
 // The discriminator is a hard arithmetic invariant, not a heuristic guess: a
 // cache-read subset can never exceed the total it is a subset of, so

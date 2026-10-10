@@ -34,6 +34,34 @@ interface LiteLLMEntry {
   max_output_tokens?: number | string;
 }
 
+const ALLOWED_VENDORS = new Set([
+  'anthropic',
+  'claude',
+  'openai',
+  'gpt',
+  'o1',
+  'o3',
+  'o4',
+  'chatgpt',
+  'azure',
+  'google',
+  'gemini',
+  'vertex_ai',
+  'deepseek',
+  'xai',
+  'grok',
+]);
+
+function isAllowedVendorModel(id: string): boolean {
+  const lower = id.toLowerCase();
+  if (lower.includes('/')) {
+    const [slashPrefix] = lower.split('/');
+    return slashPrefix !== undefined && ALLOWED_VENDORS.has(slashPrefix);
+  }
+  const match = lower.match(/^[a-z0-9]+/);
+  return match ? ALLOWED_VENDORS.has(match[0]) : false;
+}
+
 async function main() {
   console.log(`fetching ${SOURCE_URL}`);
   const res = await fetch(SOURCE_URL);
@@ -47,6 +75,7 @@ async function main() {
     if (!value || typeof value !== 'object') continue;
     const entry = value as LiteLLMEntry;
     if (entry.mode !== 'chat') continue;
+    if (!isAllowedVendorModel(id)) continue;
     scanned++;
     const candidate = entry.max_output_tokens ?? entry.max_tokens;
     if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {

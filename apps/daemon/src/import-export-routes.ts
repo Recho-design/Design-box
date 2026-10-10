@@ -180,7 +180,7 @@ export function registerImportRoutes(app: Express, ctx: RegisterImportRoutesDeps
   // and OD works inside it directly: every write goes to metadata.baseDir.
   // No copy, no shadow tree — the user owns the workspace and is
   // responsible for their own version control (git, time machine, etc.),
-  // mirroring how Cursor / Claude Code / Aider behave.
+  // mirroring how Claude Code behaves.
   // Replace an existing project's working directory in-place. Mirrors
   // the same trust-gate, realpath, and data-dir checks as folder import,
   // but updates metadata.baseDir on an existing project record.
@@ -1964,7 +1964,7 @@ export function registerFinalizeRoutes(app: Express, ctx: RegisterFinalizeRoutes
     redactSecrets,
   } = ctx.finalize;
   app.post('/api/projects/:id/finalize/:provider', async (req, res) => {
-    const { apiKey, baseUrl, model, maxTokens, apiVersion, protocol: bodyProtocol, reasoningExecution } = req.body || {};
+    const { apiKey, baseUrl, model, maxTokens, protocol: bodyProtocol, reasoningExecution } = req.body || {};
     try {
       // Centralized path-traversal guard. `isSafeId` (apps/daemon/src/projects.ts)
       // rejects pure-dot ids (`.`, `..`, etc.) which would otherwise pass
@@ -1982,7 +1982,7 @@ export function registerFinalizeRoutes(app: Express, ctx: RegisterFinalizeRoutes
           res,
           400,
           'BAD_REQUEST',
-          'provider must be one of anthropic|openai|azure|google|ollama',
+          'provider must be one of anthropic|openai|google|deepseek|xai|custom',
         );
       }
       if (bodyProtocol !== undefined && bodyProtocol !== protocol) {
@@ -2025,9 +2025,6 @@ export function registerFinalizeRoutes(app: Express, ctx: RegisterFinalizeRoutes
       if (maxTokens !== undefined && (typeof maxTokens !== 'number' || maxTokens <= 0)) {
         return sendApiError(res, 400, 'BAD_REQUEST', 'maxTokens must be a positive number when provided');
       }
-      if (apiVersion !== undefined && typeof apiVersion !== 'string') {
-        return sendApiError(res, 400, 'BAD_REQUEST', 'apiVersion must be a string when provided');
-      }
 
       const project = getProject(db, req.params.id);
       if (!project) {
@@ -2059,9 +2056,6 @@ export function registerFinalizeRoutes(app: Express, ctx: RegisterFinalizeRoutes
             baseUrl: effectiveBaseUrl,
             model,
             maxTokens,
-            ...(typeof apiVersion === 'string' && apiVersion.trim()
-              ? { apiVersion: apiVersion.trim() }
-              : {}),
             signal: finalizeAbort.signal,
           },
         );

@@ -8,15 +8,24 @@ import type {
   PlaygroundTransferResponse,
 } from '@open-design/contracts';
 import { Button, Input, Select, Textarea } from '@open-design/components';
-import type { Project } from '../types';
+import type { MediaProviderCredentials, Project } from '../types';
 import { useI18n } from '../i18n';
 import { invalidateProjectFilesCache, projectFileUrl } from '../providers/registry';
+import { isMediaModelPickerReady } from '../media/provider-readiness';
 import { Icon } from './Icon';
 import styles from './GenerateView.module.css';
 
 interface Props {
   initialProjectId?: string;
   projects?: Project[];
+  /**
+   * Saved media-provider credentials. The model suggestions below are filtered
+   * through `isMediaModelPickerReady`, so the dropdown only ever offers models
+   * whose provider the user can actually dispatch to. Omitted (or undefined)
+   * means "credentials not loaded yet" — the readiness helper treats that as
+   * ready and the full catalogue stays visible.
+   */
+  mediaProviders?: Record<string, MediaProviderCredentials>;
 }
 
 interface OptimisticCard {
@@ -49,7 +58,7 @@ function apiErrorMessage(payload: unknown, fallback: string): string {
   return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
-export function GenerateView({ initialProjectId, projects = [] }: Props) {
+export function GenerateView({ initialProjectId, projects = [], mediaProviders }: Props) {
   const { t } = useI18n();
 
   // D7: Only list personal/local projects, exclude team workspace projects
@@ -75,7 +84,11 @@ export function GenerateView({ initialProjectId, projects = [] }: Props) {
     }
   }, [initialProjectId, eligibleProjects]);
 
-  // Model suggestions from GET /api/media/models
+  // Model suggestions from GET /api/media/models. The route publishes the
+  // whole catalogue, so the list is filtered down to models whose provider the
+  // user has configured before it reaches the dropdown — offering a model the
+  // run cannot dispatch is how a user ends up with a failed generation and no
+  // idea why.
   const [suggestedModels, setSuggestedModels] = useState<string[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +107,10 @@ export function GenerateView({ initialProjectId, projects = [] }: Props) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+  const readySuggestedModels = useMemo(
+    () => suggestedModels.filter((id) => isMediaModelPickerReady(id, mediaProviders)),
+    [suggestedModels, mediaProviders],
+  );
 
   // History state
   const [generations, setGenerations] = useState<PlaygroundGeneration[]>([]);
@@ -593,7 +610,7 @@ export function GenerateView({ initialProjectId, projects = [] }: Props) {
                   placeholder={t('generate.modelPlaceholder')}
                 />
                 <datalist id="gen-model-suggestions">
-                  {suggestedModels.map((m) => (<option key={m} value={m} />))}
+                  {readySuggestedModels.map((m) => (<option key={m} value={m} />))}
                 </datalist>
               </div>
 

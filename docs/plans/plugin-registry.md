@@ -401,14 +401,15 @@ This repo now has the first registry closure in place:
   so open-design.ai can show the ecosystem without calling daemon APIs.
 - The `Create plugin` product prompt is agent-assisted and explicitly drives
   scaffold/validate/local install/pack/login/whoami/publish expectations.
-- Registry evaluation cases now live in
-  [`docs/testing/plugin-registry-eval-cases.md`](../testing/plugin-registry-eval-cases.md).
-  The first covered set locks raw `open-design-marketplace.json` source input,
-  populated official seed loading, default community seed loading,
-  provenance/trust inheritance, bundled official `Use` behavior in Available,
-  direct GitHub imports, the Create/Publish agent handoff surfaces, version
-  resolution/yanking, backend parity, registry doctor, archive integrity,
-  lockfiles, and static marketplace-json publishing.
+- Registry evaluation cases were previously tracked in
+  `docs/testing/plugin-registry-eval-cases.md`; that document was removed with
+  the repository's test layer. The covered behaviors (raw
+  `open-design-marketplace.json` source input, populated official/community
+  seeds, provenance/trust inheritance, bundled official `Use` behavior in
+  Available, direct GitHub imports, the Create/Publish agent handoff surfaces,
+  version resolution/yanking, backend parity, registry doctor, archive
+  integrity, lockfiles, and static marketplace-json publishing) remain product
+  requirements; verify them against a running daemon when they change.
 
 ---
 

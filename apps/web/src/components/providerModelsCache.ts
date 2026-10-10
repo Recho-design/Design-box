@@ -11,33 +11,44 @@ function fingerprintSecret(value: string): string {
   return `${value.length}:${(hash >>> 0).toString(36)}`;
 }
 
+/**
+ * Cache key for one `/api/provider/models` discovery result. The key names the
+ * credentialed endpoint the list belongs to, so two protocols that share a
+ * base URL never read each other's catalogue.
+ *
+ * There is no `apiVersion` component any more: none of the six protocols sends
+ * an api-version query param (see `packages/contracts/src/api/providerModels.ts`).
+ */
 export function providerModelsCacheKey(
   protocol: ApiProtocol,
   baseUrl: string,
   apiKey: string,
-  apiVersion = '',
 ): string {
   return [
     protocol,
     baseUrl.trim().replace(/\/+$/, ''),
     fingerprintSecret(apiKey.trim()),
-    protocol === 'azure' ? apiVersion.trim() : '',
   ].join('\n');
 }
 
+/**
+ * Normalize a live `/api/provider/models` response into dropdown options.
+ *
+ * This deliberately takes **only** the fetched list: the pickers no longer
+ * merge a hand-curated suggestion table on top, because that advertised model
+ * ids the user's own key could not necessarily reach. An empty result means
+ * "we could not fetch" and the caller shows the empty-state hint instead.
+ */
 export function mergeProviderModelOptions(
   fetchedModels: readonly ProviderModelOption[],
-  suggestedModelIds: readonly string[],
 ): ProviderModelOption[] {
   const seen = new Set<string>();
   const out: ProviderModelOption[] = [];
-  const add = (model: ProviderModelOption) => {
+  for (const model of fetchedModels) {
     const id = model.id.trim();
-    if (!id || seen.has(id)) return;
+    if (!id || seen.has(id)) continue;
     seen.add(id);
     out.push({ ...model, id, label: model.label.trim() || id });
-  };
-  for (const model of fetchedModels) add(model);
-  for (const id of suggestedModelIds) add({ id, label: id });
+  }
   return out;
 }

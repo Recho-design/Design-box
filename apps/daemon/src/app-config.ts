@@ -206,24 +206,10 @@ function validateTelemetry(raw: unknown): TelemetryPrefs | undefined {
 }
 
 const AGENT_CLI_ENV_KEYS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ['aider', new Set(['AIDER_BIN'])],
   ['claude', new Set(['CLAUDE_CONFIG_DIR', 'CLAUDE_BIN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'MMD_MODEL_ROUTES_FILE'])],
   ['codex', new Set(['CODEX_HOME', 'CODEX_BIN', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'OPENAI_API_KEY'])],
-  ['copilot', new Set(['COPILOT_BIN'])],
-  ['cursor-agent', new Set(['CURSOR_AGENT_BIN'])],
   ['deepseek', new Set(['DEEPSEEK_BIN'])],
-  ['devin', new Set(['DEVIN_BIN'])],
-  ['mimo', new Set(['MIMO_BIN'])],
-  ['hermes', new Set(['HERMES_BIN'])],
-  ['kimi', new Set(['KIMI_BIN'])],
-  ['kiro', new Set(['KIRO_BIN'])],
-  ['kilo', new Set(['KILO_BIN'])],
   ['opencode', new Set(['OPENCODE_BIN'])],
-  ['pi', new Set(['PI_BIN'])],
-  ['qoder', new Set(['QODER_BIN'])],
-  ['qwen', new Set(['QWEN_BIN'])],
-  ['trae-cli', new Set(['TRAE_CLI_BIN'])],
-  ['vibe', new Set(['VIBE_BIN'])],
 ]);
 
 const AGENT_CLI_AUTH_ENV_KEYS: ReadonlyMap<string, {

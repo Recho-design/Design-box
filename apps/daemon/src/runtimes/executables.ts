@@ -14,28 +14,12 @@ const RUNTIME_PROJECT_ROOT = path.resolve(
 );
 
 const AGENT_BIN_ENV_KEYS = new Map<string, string>([
-  ['aider', 'AIDER_BIN'],
   ['claude', 'CLAUDE_BIN'],
-  ['codebuddy', 'CODEBUDDY_BIN'],
   ['codex', 'CODEX_BIN'],
-  ['copilot', 'COPILOT_BIN'],
-  ['cursor-agent', 'CURSOR_AGENT_BIN'],
   ['deepseek', 'DEEPSEEK_BIN'],
   ['deepseek-harness', 'DSH_BIN'],
-  ['devin', 'DEVIN_BIN'],
-  ['hermes', 'HERMES_BIN'],
-  ['kimi', 'KIMI_BIN'],
-  ['kiro', 'KIRO_BIN'],
-  ['kilo', 'KILO_BIN'],
-  ['mimo', 'MIMO_BIN'],
   ['opencode', 'OPENCODE_BIN'],
   ['byok-opencode', 'OPENCODE_BIN'],
-  ['pi', 'PI_BIN'],
-  ['qoder', 'QODER_BIN'],
-  ['qwen', 'QWEN_BIN'],
-  ['reasonix', 'REASONIX_BIN'],
-  ['trae-cli', 'TRAE_CLI_BIN'],
-  ['vibe', 'VIBE_BIN'],
 ]);
 
 const TOOLCHAIN_DIR_CACHE_TTL_MS = 5000;
@@ -120,8 +104,8 @@ export function agentSearchDirs(): string[] {
 }
 
 // The `*_BIN` environment variable that overrides PATH detection for a given
-// agent id (e.g. `cursor-agent` → `CURSOR_AGENT_BIN`), or null when the agent
-// has no override key. Drives the `setEnv` / `clearEnv` fix intents.
+// agent id (e.g. `claude` → `CLAUDE_BIN`), or null when the agent has no
+// override key. Drives the `setEnv` / `clearEnv` fix intents.
 export function agentBinEnvKey(agentId: string | undefined): string | null {
   if (!agentId) return null;
   return AGENT_BIN_ENV_KEYS.get(agentId) ?? null;
@@ -198,18 +182,6 @@ function configuredExecutableOverride(
   const envKey = AGENT_BIN_ENV_KEYS.get(def?.id);
   if (!envKey) return null;
   return executableFilePath(configuredEnv?.[envKey] ?? process.env[envKey]);
-}
-
-function orderPathCandidatesForAgent(agentId: string, candidates: string[]): string[] {
-  if (agentId !== 'copilot') return candidates;
-  const isVsCodeBootstrap = (candidate: string) =>
-    candidate.replace(/\\/g, '/').toLowerCase().includes(
-      '/code/user/globalstorage/github.copilot-chat/copilotcli/',
-    );
-  return [
-    ...candidates.filter((candidate) => !isVsCodeBootstrap(candidate)),
-    ...candidates.filter(isVsCodeBootstrap),
-  ];
 }
 
 export function resolvePackagedOpenCodeExecutable(
@@ -355,11 +327,10 @@ export function inspectAgentExecutableResolution(
       pathCandidates.push(resolved);
     }
   }
-  const orderedPathCandidates = orderPathCandidatesForAgent(def.id, pathCandidates);
   // First hit among what is left. Plain order is not enough on its own — the
   // first file that merely *exists* can be a shim detection already proved
   // dead, which is why those are filtered out above rather than ranked below.
-  const pathResolvedPath: string | null = orderedPathCandidates[0] ?? null;
+  const pathResolvedPath: string | null = pathCandidates[0] ?? null;
   const builtInPath = packagedBuiltInExecutable(def, configuredEnv);
   const appBundlePath = codexAppBundleExecutable(def);
   return {

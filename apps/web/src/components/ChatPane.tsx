@@ -290,8 +290,8 @@ const IMAGE_STARTERS: StarterPrompt[] = [
   },
 ];
 
-// Pure-video / cinematic-shot starters for seedance, sora, kling, veo,
-// grok-imagine and similar text-to-video models. Each prompt is one
+// Pure-video / cinematic-shot starters for grok-imagine and similar
+// text-to-video models. Each prompt is one
 // shot, restrained motion, and a clear visual concept the model can
 // nail in 5-10 seconds.
 const VIDEO_SEEDANCE_STARTERS: StarterPrompt[] = [
@@ -348,33 +348,6 @@ const VIDEO_HYPERFRAMES_STARTERS: StarterPrompt[] = [
   },
 ];
 
-// Speech-focused audio starters — the New Project audio panel only
-// surfaces the `speech` kind today (see MediaProjectOptions), so we
-// match that. If/when the music + sfx tabs come back, broaden this set.
-const AUDIO_STARTERS: StarterPrompt[] = [
-  {
-    icon: '♪',
-    title: 'Brand voiceover',
-    tag: 'Speech',
-    prompt:
-      "A 30-second warm-toned narrative voiceover for a product launch video — confident but conversational, mid-tempo, with a beat of pause after the brand name. Script: 'Three years in the making. One simple promise. Meet [product name] — the way work was supposed to feel.' English, neutral North American accent.",
-  },
-  {
-    icon: '♫',
-    title: 'Onboarding narration',
-    tag: 'Speech',
-    prompt:
-      "A 20-second friendly onboarding narration for a mobile app's first-launch screen. Reassuring, smiling tone, slow enough to feel attentive without sounding scripted. Script: 'Welcome to Loop. Let's set up your space — three quick questions and you're in. You can change any of this later.'",
-  },
-  {
-    icon: '♬',
-    title: 'Story passage read',
-    tag: 'Speech',
-    prompt:
-      "A 45-second cinematic read of an opening passage. Low, measured delivery with breath between sentences, slightly intimate close-mic'd quality. Script: 'The city sleeps in pieces. A neon sign flickers above the ramen counter. Across the avenue, a window glows — the only one still on this side of midnight.'",
-  },
-];
-
 function pickStarters(
   metadata: ProjectMetadata | undefined,
   t: TranslateFn,
@@ -386,7 +359,6 @@ function pickStarters(
       ? VIDEO_HYPERFRAMES_STARTERS
       : VIDEO_SEEDANCE_STARTERS;
   }
-  if (kind === 'audio') return AUDIO_STARTERS;
   return DEFAULT_STARTER_KEYS.map((entry) => ({
     icon: entry.icon,
     title: t(entry.titleKey),
@@ -807,25 +779,12 @@ interface Props {
   workspaceContexts?: WorkspaceContextItem[];
   currentSkillId?: string | null;
   onProjectSkillChange?: (skillId: string | null) => void;
-  researchAvailable?: boolean;
   // Immutable snapshot of the plugin pinned to this project. When set
   // we suppress the in-composer plugin rail (the user already picked a
   // plugin on Home) and render the active plugin as a context chip on
   // each user message — that satisfies §8 "show context inside the run
   // message" without forcing a separate side widget.
   activePluginSnapshot?: AppliedPluginSnapshot | null;
-  // SenseAudio BYOK only — wired straight through to ChatComposer for the
-  // in-composer image-model picker. Active protocol is read so the picker
-  // hides when the user is on any other BYOK tab (azure / openai / …).
-  byokApiProtocol?: AppConfig['apiProtocol'];
-  byokImageModel?: string;
-  onChangeByokImageModel?: (model: string) => void;
-  byokVideoModel?: string;
-  onChangeByokVideoModel?: (model: string) => void;
-  byokSpeechModel?: string;
-  onChangeByokSpeechModel?: (model: string) => void;
-  byokSpeechVoice?: string;
-  onChangeByokSpeechVoice?: (voice: string) => void;
   composerFooterAccessory?: ReactNode;
   // Slot rendered next to the composer's "+" menu (e.g. the working-dir pill).
   composerLeadingAccessory?: ReactNode;
@@ -1302,18 +1261,8 @@ export function ChatPane({
   workspaceContexts = [],
   currentSkillId = null,
   onProjectSkillChange,
-  researchAvailable,
   activePluginSnapshot,
   skills = [],
-  byokApiProtocol,
-  byokImageModel,
-  onChangeByokImageModel,
-  byokVideoModel,
-  onChangeByokVideoModel,
-  byokSpeechModel,
-  onChangeByokSpeechModel,
-  byokSpeechVoice,
-  onChangeByokSpeechVoice,
   composerLeadingAccessory,
   composerFooterAccessory,
   currentDesignSystemId,
@@ -3739,21 +3688,11 @@ export function ChatPane({
       onAdoptPet={onAdoptPet}
       onTogglePet={onTogglePet}
       onOpenPetSettings={onOpenPetSettings}
-      researchAvailable={researchAvailable}
       projectMetadata={projectMetadata}
       onProjectMetadataChange={onProjectMetadataChange}
       activeWorkspaceContext={activeWorkspaceContext}
       initialWorkspaceContexts={initialWorkspaceContexts}
       workspaceContexts={workspaceContexts}
-      byokApiProtocol={byokApiProtocol}
-      byokImageModel={byokImageModel}
-      onChangeByokImageModel={onChangeByokImageModel}
-      byokVideoModel={byokVideoModel}
-      onChangeByokVideoModel={onChangeByokVideoModel}
-      byokSpeechModel={byokSpeechModel}
-      onChangeByokSpeechModel={onChangeByokSpeechModel}
-      byokSpeechVoice={byokSpeechVoice}
-      onChangeByokSpeechVoice={onChangeByokSpeechVoice}
       currentSkillId={currentSkillId}
       onProjectSkillChange={onProjectSkillChange}
       pinnedPluginId={activePluginSnapshot?.pluginId ?? null}
@@ -5506,7 +5445,7 @@ function queuedTipPlacement(
   return index === 0 ? 'bottom' : fallback;
 }
 
-  /** 导出只为验收:镜像陈列页(`tests/components/chat/mirror-gallery.test.tsx`)要单挂
+  /** 导出只为验收:镜像陈列页(`docs/design/chat-mirror/`)要单挂
    *  这一条队列去对第 72–74 格。产品里仍旧只有 `ChatPane` 一个消费方。 */
   export function QueuedSendStrip({
   containerRef,
@@ -6106,7 +6045,7 @@ const UserMessage = memo(UserMessageImpl);
 
   /**
    * 导出只为**验收**:镜像陈列页要能单独挂它,和设计稿逐格并排比
-   * (`apps/web/tests/components/chat/mirror-gallery.test.tsx`)。
+   * (`docs/design/chat-mirror/`)。
    * 产品侧仍然只由本文件内部使用,不要在别处引它。
    */
   export function UserMessageImpl({

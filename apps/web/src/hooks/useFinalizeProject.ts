@@ -28,9 +28,10 @@ const FETCH_TIMEOUT_MS = 130_000;
 const FINALIZE_PROTOCOLS = new Set<FinalizeProviderProtocol>([
   'anthropic',
   'openai',
-  'azure',
   'google',
-  'ollama',
+  'deepseek',
+  'xai',
+  'custom',
 ]);
 
 export type FinalizeStatus = 'idle' | 'pending' | 'success' | 'error';

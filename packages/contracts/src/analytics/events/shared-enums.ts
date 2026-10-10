@@ -86,21 +86,20 @@ export type TrackingByokPreflightBlockReason =
   | 'config_invalid';
 
 // v2 BYOK provider catalogue (CSV row 65). Replaces v1's
-// `anthropic|openai|azure|ollama|google`. `senseaudio` was added on
-// `main` after the v2 doc was published; we forward it verbatim so
-// dashboards can split it out even though the product CSV does not yet
-// list it.
+// `anthropic|openai|azure|ollama|google`. `azure_openai` / `ollama_cloud`
+// stay so historical rows and dashboards keyed on them keep resolving; the
+// web surface no longer offers either protocol, so nothing emits them now.
 export type TrackingByokProviderId =
   | 'anthropic'
   | 'openai'
   | 'azure_openai'
   | 'google_gemini'
   | 'ollama_cloud'
-  | 'senseaudio'
-  | 'aihubmix';
+  | 'deepseek'
+  | 'xai'
+  | 'custom';
 
-// v2 CLI provider catalogue (CSV row 63 + image 59). Adds `qoder_cli` and
-// `kilo` over v1.
+// CLI provider catalogue (CSV row 63 + image 59).
 // Every agent the daemon can detect needs its own id here. An agent that falls
 // through to `other` is invisible to any breakdown or alert that asks *which*
 // CLI failed — which is the only question worth asking when an install someone
@@ -108,29 +107,11 @@ export type TrackingByokProviderId =
 export type TrackingCliProviderId =
   | 'claude_code'
   | 'codex_cli'
-  | 'devin_for_terminal'
   | 'gemini_cli'
   | 'opencode'
   | 'byok_opencode'
-  | 'hermes'
-  | 'kimi_cli'
-  | 'cursor_agent'
-  | 'qwen_code'
-  | 'qoder_cli'
-  | 'github_copilot_cli'
-  | 'pi'
-  | 'kilo'
-  | 'kiro'
-  | 'vibe'
-  | 'amp'
-  | 'aider'
-  | 'trae_cli'
   | 'grok_build'
   | 'antigravity'
-  | 'codebuddy'
-  | 'reasonix'
-  | 'mimo'
-  | 'atomcode'
   | 'deepseek'
   | 'deepseek_harness'
   | 'other';
@@ -265,7 +246,6 @@ export type TrackingRunFailureDetail =
   | 'session_resume_expired'
   | 'fabricated_role_marker'
   | 'permission_request_not_found'
-  | 'qoder_stop_sequence'
   | 'signal_killed'
   | 'process_crashed'
   | 'cpu_unsupported'

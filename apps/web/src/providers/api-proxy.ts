@@ -31,8 +31,6 @@ export interface ProxyContext {
   workspaceContext?: WorkspaceCollabContext | null;
   byokImageModel?: string;
   byokVideoModel?: string;
-  byokSpeechModel?: string;
-  byokSpeechVoice?: string;
 }
 
 export async function streamProxyEndpoint(
@@ -69,18 +67,17 @@ export async function streamProxyEndpoint(
         messages,
         maxTokens: effectiveMaxTokens(cfg),
         apiVersion: cfg.apiVersion,
+        // The route already says which wire format this is; `protocol` says
+        // which PROVIDER the user configured on it. Four protocols share the
+        // OpenAI-compatible route, so the daemon cannot recover this from the
+        // path — it needs it to attribute the run and to normalize model ids.
+        ...(cfg.apiProtocol ? { protocol: cfg.apiProtocol } : {}),
         ...(context?.projectId ? { projectId: context.projectId } : {}),
         ...(context?.byokImageModel
           ? { byokImageModel: context.byokImageModel }
           : {}),
         ...(context?.byokVideoModel
           ? { byokVideoModel: context.byokVideoModel }
-          : {}),
-        ...(context?.byokSpeechModel
-          ? { byokSpeechModel: context.byokSpeechModel }
-          : {}),
-        ...(context?.byokSpeechVoice
-          ? { byokSpeechVoice: context.byokSpeechVoice }
           : {}),
       }),
       signal,

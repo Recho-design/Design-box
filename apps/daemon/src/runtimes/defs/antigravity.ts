@@ -201,8 +201,8 @@ export const antigravityAgentDef = {
   // we got an identical byte-for-byte form re-emission on turn 2 when
   // turn 1's tool-call retry path returned the cached form response.
   //
-  // Instead we treat agy as a stateless plain adapter like qwen /
-  // deepseek: every spawn gets the full OD-rendered transcript via
+  // Instead we treat agy as a stateless plain adapter like deepseek:
+  // every spawn gets the full OD-rendered transcript via
   // `buildDaemonTranscript`, and that transcript's prior assistant
   // turns are sanitized to strip `<question-form>` markup + form-schema
   // JSON fences (see `sanitizePriorAssistantTurnForTranscript` in

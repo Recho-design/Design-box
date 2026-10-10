@@ -57,7 +57,7 @@ type OAuthCredential = { apiKey: string; source: string };
 // `aliases` map so users can switch storage layers without rewriting
 // their workflow:
 //
-//   OD_MEDIA_MODEL_ALIASES='{"doubao-seedream-3-0-t2i-250415":"doubao-seedream-5-0"}'
+//   OD_MEDIA_MODEL_ALIASES='{"gpt-image-1":"my-image-deployment"}'
 const ENV_MODEL_ALIASES = 'OD_MEDIA_MODEL_ALIASES';
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -80,31 +80,13 @@ const ENV_KEYS: Record<string, string[]> = {
     'AZURE_API_KEY',
     'AZURE_OPENAI_API_KEY',
   ],
-  volcengine: ['OD_VOLCENGINE_API_KEY', 'ARK_API_KEY', 'VOLCENGINE_API_KEY'],
   // OD_GROK_API_KEY first (the project-reserved override, same shape as
   // every other provider above), then XAI_API_KEY as the canonical
   // upstream env per docs.x.ai quickstart — so users who already export
   // it for the official SDK don't have to re-paste into Settings.
   grok: ['OD_GROK_API_KEY', 'XAI_API_KEY'],
   nanobanana: ['OD_NANOBANANA_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'],
-  imagerouter: ['OD_IMAGEROUTER_API_KEY', 'IMAGEROUTER_API_KEY'],
-  openrouter: ['OD_OPENROUTER_API_KEY', 'OPENROUTER_API_KEY'],
   'custom-image': ['OD_CUSTOM_IMAGE_API_KEY', 'CUSTOM_IMAGE_API_KEY'],
-  bfl: ['OD_BFL_API_KEY', 'BFL_API_KEY'],
-  fal: ['OD_FAL_KEY', 'FAL_KEY'],
-  replicate: ['OD_REPLICATE_API_TOKEN', 'REPLICATE_API_TOKEN'],
-  google: ['OD_GOOGLE_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'],
-  kling: ['OD_KLING_API_KEY', 'KLING_API_KEY'],
-  midjourney: ['OD_MIDJOURNEY_API_KEY'],
-  minimax: ['OD_MINIMAX_API_KEY', 'MINIMAX_API_KEY'],
-  suno: ['OD_SUNO_API_KEY'],
-  udio: ['OD_UDIO_API_KEY'],
-  elevenlabs: ['OD_ELEVENLABS_API_KEY', 'ELEVENLABS_API_KEY'],
-  fishaudio: ['OD_FISHAUDIO_API_KEY', 'FISH_AUDIO_API_KEY'],
-  senseaudio: ['OD_SENSEAUDIO_API_KEY', 'SENSEAUDIO_API_KEY'],
-  aihubmix: ['OD_AIHUBMIX_API_KEY', 'AIHUBMIX_API_KEY'],
-  tavily: ['OD_TAVILY_API_KEY', 'TAVILY_API_KEY'],
-  leonardo: ['OD_LEONARDO_API_KEY', 'LEONARDO_API_KEY'],
 };
 
 // Resolve an `OD_*_DIR` env override using the same semantics as
@@ -310,8 +292,8 @@ async function resolveOpenAIAuthFileCredential(): Promise<OAuthCredential | null
 async function resolveXAIOAuthCredential(
   projectRoot: string,
 ): Promise<OAuthCredential | null> {
-  // 1. OD-native xAI OAuth tokens (written by the daemon's own
-  //    xai-oauth.ts client when the user authorizes inside OD).
+  // OD-native xAI OAuth tokens, written by the daemon's own
+  // xai-oauth.ts client when the user authorizes inside OD.
   const odBearer = await resolveXAIBearer(mediaConfigDir(projectRoot)).catch(
     () => null,
   );
@@ -321,35 +303,13 @@ async function resolveXAIOAuthCredential(
       source: `oauth-xai-${odBearer.source}`,
     };
   }
-
-  if (isSandboxModeEnabled(process.env)) return null;
-
-  // 2. Borrow the xAI OAuth token Hermes wrote to ~/.hermes/auth.json
-  //    when the user ran `hermes auth add xai-oauth`. A user who has already authorized
-  //    Hermes doesn't have to run a second OAuth dance inside OD.
-  //    (No proactive refresh here — Hermes itself maintains the token,
-  //    and we only borrow what is currently fresh.)
-  const home = os.homedir();
-  const hermesAuth = await readJsonIfPresent(
-    path.join(home, '.hermes', 'auth.json'),
-  );
-  const hermesXaiToken = readNestedString(hermesAuth, [
-    'providers',
-    'xai-oauth',
-    'tokens',
-    'access_token',
-  ]);
-  if (hermesXaiToken) {
-    return { apiKey: hermesXaiToken, source: 'oauth-hermes-xai' };
-  }
-
   return null;
 }
 
 /**
  * Resolve credentials for a provider. Env vars win, then stored config,
  * then provider-specific external credential stores. OpenAI only trusts
- * explicit API keys from Codex auth files; Codex/Hermes OAuth tokens are
+ * explicit API keys from Codex auth files; Codex OAuth tokens are
  * not valid proof that the Images API can be called.
  * Returns { apiKey, baseUrl } where either may be empty string.
  */

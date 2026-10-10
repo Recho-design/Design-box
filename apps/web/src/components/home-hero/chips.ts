@@ -325,25 +325,6 @@ export const HOME_HERO_CHIPS: ReadonlyArray<HomeHeroChip> = [
     },
   },
   {
-    id: 'audio',
-    label: 'Audio',
-    icon: 'mic',
-    group: 'create',
-    description: 'Voiceovers, music & SFX',
-    action: {
-      kind: 'apply-scenario',
-      pluginId: 'od-media-generation',
-      projectKind: 'audio',
-      automaticDefault: true,
-      inputs: {
-        mediaKind: 'audio',
-        subject: 'a concise audio identity for a product',
-        style: 'clear, polished, modern',
-        aspect: '16:9',
-      },
-    },
-  },
-  {
     id: 'create-plugin',
     label: 'Create plugin',
     icon: 'edit',
@@ -381,7 +362,7 @@ export function chipsForGroup(group: ChipGroup): HomeHeroChip[] {
   return HOME_HERO_CHIPS.filter((c) => c.group === group);
 }
 
-// Fixed Home information architecture. Only these ten output types are
+// Fixed Home information architecture. Only these nine output types are
 // top-level choices. Action-only create entries (for example Create Design
 // System) are intentionally excluded. Prototype leads and Slide deck follows;
 // the media scenarios trail so at typical widths they live in the 更多
@@ -396,7 +377,6 @@ export const CREATE_RAIL_ORDER = [
   'webgl',
   'live-artifact',
   'video',
-  'audio',
 ] as const;
 
 // The Home type row is an explicit product decision, not a width computation
@@ -410,18 +390,17 @@ export const HOME_TYPE_ROW_MORE_IDS: readonly string[] = [
   'hyperframes',
   'web-clone',
   'video',
-  'audio',
   'live-artifact',
   'webgl',
 ];
 
 // Chip ids the onboarding "build a design system" teaser intentionally omits.
-// Video and Audio are pure-media outputs and the least central to the
-// design-system story, so they are omitted to keep the teaser chips to a
-// single tidy row. Website clone starts
+// Video is a pure-media output and the least central to the design-system
+// story, so it is omitted to keep the teaser chips to a single tidy row.
+// Website clone starts
 // from someone else's site rather than the user's design system, so it stays
 // off the design-system teaser too.
-const ONBOARDING_ARTIFACT_OMIT = new Set<string>(['web-clone', 'video', 'audio']);
+const ONBOARDING_ARTIFACT_OMIT = new Set<string>(['web-clone', 'video']);
 
 // The artifact chips shown on the onboarding "build a design system" step — a
 // curated single-row subset of the create rail. Derived from CREATE_RAIL_ORDER

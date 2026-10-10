@@ -1,8 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { announceSwallowedSmoke } from "./smoke-annotation.ts";
-
 type JsonRecord = Record<string, unknown>;
 
 function required(name: string): string {
@@ -112,30 +110,18 @@ const reportSummaryPath = resolvePath(required("RELEASE_REPORT_SUMMARY_PATH"));
 const buildJsonPath = optional("BUILD_JSON_PATH");
 const buildLogPath = optional("BUILD_LOG_PATH");
 const indexPath = optional("INDEX_PATH");
-const smokeSummary = readJsonFile(join(reportRoot, "summary.json"));
-const suiteResult = readJsonFile(join(reportRoot, "suite-result.json"));
 const manifest = readJsonFile(join(reportRoot, "manifest.json"));
 const build = buildJsonPath.length > 0 ? readJsonFile(resolvePath(buildJsonPath)) : null;
 const index = indexPath.length > 0 ? readJsonFile(resolvePath(indexPath)) : null;
-const sourceStatus = optional("REPORT_STATUS", String(index?.status ?? suiteResult?.status ?? "unknown"));
+const sourceStatus = optional("REPORT_STATUS", String(index?.status ?? "unknown"));
 const buildTimings = arrayOrEmpty(build?.timings);
 const releaseScriptTimings = arrayOrEmpty(build?.releaseScriptTimings ?? index?.timings);
-const smokeTimings = arrayOrEmpty(smokeSummary?.timings);
 const cacheReport = objectOrNull(build?.cacheReport);
 const cacheEntries = arrayOrEmpty(cacheReport?.entries ?? index?.cache);
 const buildSegments = arrayOrEmpty(build?.segments ?? index?.buildSegments);
-const totalDurationMs = numberOrNull(index?.durationMs) ?? numberOrNull(suiteResult?.durationMs) ?? null;
+const totalDurationMs = numberOrNull(index?.durationMs) ?? null;
 
 const reportTitle = optional("REPORT_TITLE", `${releaseTarget} release report`);
-const smoke = announceSwallowedSmoke({
-  exempt: optional("RELEASE_SMOKE_EXEMPT") === "true",
-  outcome: optional("RELEASE_SMOKE_OUTCOME"),
-  reportPath: reportRoot,
-  suiteStatus: sourceStatus,
-  target: releaseTarget,
-  title: reportTitle,
-  version: optional("RELEASE_VERSION", String(index?.releaseVersion ?? manifest?.releaseVersion ?? "")),
-});
 
 const report = {
   version: 1,
@@ -155,13 +141,7 @@ const report = {
   inputs: {
     namespace: optional("RELEASE_NAMESPACE", String(index?.namespace ?? manifest?.namespace ?? "")),
     signed: index?.signed ?? optional("RELEASE_SIGNED"),
-    smokeMode: optional("RELEASE_SMOKE_MODE", String(index?.smokeMode ?? "")),
     target: optional("RELEASE_BUILD_TARGET", String(index?.target ?? "")),
-  },
-  smoke: {
-    exempt: optional("RELEASE_SMOKE_EXEMPT") === "true",
-    failed: smoke.failed,
-    outcome: optional("RELEASE_SMOKE_OUTCOME"),
   },
   paths: {
     reportRoot,
@@ -173,11 +153,9 @@ const report = {
     totalDurationMs,
     releaseScript: releaseScriptTimings,
     build: buildTimings,
-    smoke: smokeTimings,
     slowest: {
       releaseScript: topDurations(releaseScriptTimings, "step", 12),
       build: topDurations(buildTimings, "phase", 12),
-      smoke: topDurations(smokeTimings, "step", 16),
       cache: topDurations(cacheEntries, "nodeId", 12),
       buildSegments: topDurations(buildSegments, "phase", 12),
     },
@@ -194,9 +172,6 @@ mkdirSync(dirname(reportJsonPath), { recursive: true });
 writeFileSync(reportJsonPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 
 const lines = [
-  // The banner leads: a swallowed smoke failure must be the first thing anyone
-  // reading this job's summary sees, not a `status` line inside the report body.
-  ...smoke.banner,
   `### ${reportTitle}`,
   "",
   `- status: ${code(sourceStatus)}`,
@@ -224,8 +199,4 @@ if (cacheEntries.length > 0) {
 
 mkdirSync(dirname(reportSummaryPath), { recursive: true });
 writeFileSync(reportSummaryPath, `${lines.join("\n")}\n`, "utf8");
-// Annotations surface at the top of the run page and in the job's annotation
-// list. `::error` does not fail a step, so the continue-on-error exemption is
-// preserved: the release still ships, but nobody can claim the red was silent.
-if (smoke.annotation != null) console.log(smoke.annotation);
 console.log(`wrote release report ${reportJsonPath}`);

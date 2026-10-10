@@ -1143,7 +1143,7 @@ export function createRunAnalyticsLifecycle(
                 ? { cache_hit_ratio: usageAnalytics.cache_hit_ratio }
                 : {}),
               // First-call cache-hit of the turn's opening model call (per-call
-              // usage for claude/opencode/codebuddy/pi from the stream; codex from
+              // usage for claude/opencode from the stream; codex from
               // its rollout). Sliced by is_followup_turn, this isolates the
               // session-reuse cache win on non-first turns.
               ...(firstCallUsage ?? {}),

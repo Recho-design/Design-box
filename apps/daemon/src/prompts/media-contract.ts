@@ -1,6 +1,6 @@
 /**
  * Media generation contract. Pinned LAST in the system prompt for
- * image / video / audio surfaces so its hard rules win over softer
+ * image / video surfaces so its hard rules win over softer
  * wording in earlier layers ("emit an artifact tag", "use the Write
  * tool", etc.).
  *
@@ -14,7 +14,7 @@
  *
  * The contract is intentionally tool-name-agnostic: it works on any
  * code-agent CLI that has shell access (Claude Code's Bash, Codex's
- * shell, Gemini's exec, OpenCode, Cursor Agent, Qwen — all of them).
+ * shell, Gemini's exec, OpenCode — all of them).
  * That's why we keep it as text-driven shell calls rather than custom
  * tool definitions.
  */
@@ -29,9 +29,6 @@ function fmtList(ids: string[]): string {
 // 组装，被下架的 provider 不会只在一处消失。
 const IMAGE_IDS = fmtList(offeredModelsForSurface('image').map((m) => m.id));
 const VIDEO_IDS = fmtList(offeredModelsForSurface('video').map((m) => m.id));
-const AUDIO_MUSIC_IDS = fmtList(offeredModelsForSurface('audio', 'music').map((m) => m.id));
-const AUDIO_SPEECH_IDS = fmtList(offeredModelsForSurface('audio', 'speech').map((m) => m.id));
-const AUDIO_SFX_IDS = fmtList(offeredModelsForSurface('audio', 'sfx').map((m) => m.id));
 
 export const MEDIA_USER_REPLY_CONTRACT = `
 ### User-facing media completion (load-bearing)
@@ -106,7 +103,7 @@ it; a sentence that only says "it failed" is not an acceptable substitute.
   expected and you never invoked the dispatcher, that is your own miss and it
   takes the same sentence; do not invent a cause for it.
 
-Video and audio use the same sentences with the medium swapped -- 视频 / 音频 in
+Video uses the same sentences with the medium swapped -- 视频 in
 place of 图片 -- and never a model or provider name in either.
 
 Do not add a filename, model, provider, internal code, retry offer, or
@@ -136,7 +133,7 @@ OD's behalf.
 External MCP media tools, when explicitly configured for this run, are outside
 this OD-owned media policy. If no such external tool is available and the user
 asks for an image, use the fixed \`unsupported\` sentence from the user-reply
-contract below and stop. For a video or audio request, state briefly
+contract below and stop. For a video request, state briefly
 that media generation is disabled for this run and stop. Do not claim a file was
 generated and do not emit an \`<artifact>\` block for media.
 ${scope}
@@ -174,18 +171,14 @@ function renderByokMediaDefaults(
   const lines: string[] = [];
   const imageModel = defaults?.imageModel?.trim();
   const videoModel = defaults?.videoModel?.trim();
-  const speechModel = defaults?.speechModel?.trim();
-  const speechVoice = defaults?.speechVoice?.trim();
   if (imageModel) lines.push(`- Image model: \`${imageModel}\``);
   if (videoModel) lines.push(`- Video model: \`${videoModel}\``);
-  if (speechModel) lines.push(`- Speech model: \`${speechModel}\``);
-  if (speechVoice) lines.push(`- Speech voice: \`${speechVoice}\``);
   if (lines.length === 0) return '';
   return `### Run-scoped BYOK media defaults
 
 The user selected these BYOK media defaults in the chat UI for this run. Use
 them when dispatching media unless the current user message explicitly asks for
-a different model or voice.
+a different model.
 ${lines.join('\n')}
 
 `;
@@ -209,11 +202,11 @@ export const MEDIA_GENERATION_CONTRACT = `
 
 ## Media generation contract (load-bearing — overrides softer wording above)
 
-This project is a **non-web** surface (image / video / audio). The unifying
+This project is a **non-web** surface (image / video). The unifying
 contract is: skill workflow + project metadata tell you WHAT to make; one
 shell command through \`OD_NODE_BIN\` + \`OD_BIN\` is HOW you actually produce bytes.
 Do not try to embed binary content inside \`<artifact>\` tags, and do not
-write image/video/audio bytes by hand. Always call out to the dispatcher.
+write image/video bytes by hand. Always call out to the dispatcher.
 
 **Explicit layer overrides — read this first.** The design-workflow
 sections of this prompt (designer charter, discovery, and any deck
@@ -221,7 +214,7 @@ framework) push hard on the \`<artifact>\` HTML pattern, the PDF print
 stylesheet, and the slide nav/counter scripts. Those directives **do not
 apply on this surface**. For media projects you do NOT emit
 \`<artifact>\` blocks, do NOT stitch a print stylesheet, and do NOT
-fabricate \`<svg>\`/\`<canvas>\`/\`<audio>\` markup as a stand-in for the
+fabricate \`<svg>\`/\`<canvas>\` markup as a stand-in for the
 generated file. The dispatcher writes the real bytes; your job is the
 prompt and the narration.
 
@@ -248,7 +241,7 @@ Run via your shell tool (Bash on Claude Code, exec on Codex/Gemini, etc.):
 \`\`\`bash
 "$OD_NODE_BIN" "$OD_BIN" media generate \\
   --project "$OD_PROJECT_ID" \\
-  --surface <image|video|audio> \\
+  --surface <image|video> \\
   --model <model-id> \\
   --output <filename> \\
   --prompt "<full prompt>" \\
@@ -256,12 +249,6 @@ Run via your shell tool (Bash on Claude Code, exec on Codex/Gemini, etc.):
   [--quality <tier>]                # gpt-image-2 accepts low|medium|high
   [--resolution <res>]              # use only resolutions supported by the selected model
   [--length <seconds>]              # video only
-  [--duration <seconds>]            # audio only
-  [--prompt-influence <0-1>]        # audio:sfx only; higher follows the prompt more closely
-  [--loop]                          # audio:sfx only; request a seamless loop
-  [--audio-kind music|speech|sfx]   # audio only
-  [--voice <provider-voice-id>]     # audio:speech only; omit to use provider default
-  [--language <lang>]               # audio:speech only; language boost (e.g. Chinese,Yue for Cantonese)
 \`\`\`
 
 Always quote the prompt value. Use \`--prompt "<full prompt>"\` (or the
@@ -370,9 +357,9 @@ fan out into alternate execution paths inside the same turn.
 
 ### All slow renders: generate → wait loop
 
-Any model whose generation takes longer than ~25s — including **fal flux-pro-ultra,
-fal Veo, fal Sora, Volcengine i2v, hyperframes-html, and anything else with a
-multi-minute pipeline** — will not complete within the initial \`media generate\` call.
+Any model whose generation takes longer than ~25s — including **grok-imagine-video
+and hyperframes-html, and anything else with a multi-minute pipeline** — will not
+complete within the initial \`media generate\` call.
 
 \`media generate\` dispatches the task daemon-side and polls for up to ~25s. It
 always exits 0 — either with \`{"file":{...}}\` if the render finished within that
@@ -393,7 +380,7 @@ The pattern in your shell tool (uses python3 to parse JSON — do NOT use jq, it
 may not be installed):
 
 \`\`\`bash
-out=\$("$OD_NODE_BIN" "$OD_BIN" media generate --surface image --model flux-pro-ultra --prompt "…")
+out=\$("$OD_NODE_BIN" "$OD_BIN" media generate --surface image --model gpt-image-2 --prompt "…")
 ec=\$?
 if [ "\$ec" -ne 0 ]; then
   echo "\$out" >&2; exit "\$ec"
@@ -424,8 +411,8 @@ they arrive, so the user sees live status in chat throughout the loop instead of
 waiting silently for a single multi-minute call.
 
 **Always write your shell invocation as the full generate+wait loop above**, even
-for image models. \`flux-pro-ultra\` routinely takes 60–180s; \`sora-2\` and
-\`veo-3-fal\` take longer. In the wait loop, exit 2 means "keep polling, not an error."
+for image models. \`grok-imagine-video\` and \`hyperframes-html\` routinely take
+longer than the initial window. In the wait loop, exit 2 means "keep polling, not an error."
 
 A note on \`fetch failed\` to \`127.0.0.1\`. The OD daemon runs on
 loopback in the same machine that spawned you, so it is essentially
@@ -441,53 +428,24 @@ daemon, or network-policy diagnosis in the visible assistant reply.
 
 - **image**:   ${IMAGE_IDS}
 - **video**:   ${VIDEO_IDS}
-  Image-to-video (i2v): the Volcengine Seedance family
-  (\`doubao-seedance-2-0-260128\`, \`doubao-seedance-2-0-fast-260128\`,
-  \`doubao-seedance-1-0-pro-250528\`, \`doubao-seedance-1-0-lite-i2v-250428\`)
-  accepts a reference image as the first frame. Pass it via
+  Image-to-video (i2v): \`grok-imagine-video\` accepts a reference image
+  as the first frame. Pass it via
   \`--image <project-relative-path>\` to \`"$OD_NODE_BIN" "$OD_BIN" media generate\`. The
   daemon reads the file from the project, base64-encodes it, and
-  forwards it as the model's \`image_url\` input. Path traversal
+  forwards it as the model's reference input. Path traversal
   outside the project is rejected.
-- **audio · music**:  ${AUDIO_MUSIC_IDS}
-- **audio · speech**: ${AUDIO_SPEECH_IDS}
-- **audio · sfx**:    ${AUDIO_SFX_IDS}
 
-If the user requests a model that is not in this list **and** the ID does
-not start with \`fal-ai/\`, surface a warning in your reply and either
-(a) ask them to pick a registered ID or (b) proceed with the project
-metadata's default model and explain the substitution. Do not silently
-fall back.
-
-Exception — **fal-ai/\* custom paths**: any model ID that begins with
-\`fal-ai/\` (e.g. \`fal-ai/flux/dev\`, \`fal-ai/stable-diffusion-xl\`) is a
-valid passthrough for the image or video surface. Pass it to
-\`"$OD_NODE_BIN" "$OD_BIN" media generate\` as-is via \`--model <id>\`;
-the daemon routes it directly to the fal queue without a catalog entry.
-Do **not** warn the user or substitute the default when a \`fal-ai/\`
-path is given.
+If the user requests a model that is not in this list, surface a warning in
+your reply and either (a) ask them to pick a registered ID or (b) proceed with
+the project metadata's default model and explain the substitution. Do not
+silently fall back.
 
 ### Workflow rules
 
 1. **Read project metadata first.** The "Project metadata" block above
-    tells you the user's pre-selected model, aspect, length, voice, audio
-    kind, etc. Treat those as authoritative defaults — only override if
+    tells you the user's pre-selected model, aspect, and length.
+    Treat those as authoritative defaults — only override if
     the user's chat message explicitly contradicts them.
-    For \`minimax-tts\`, \`voice\` must be a valid MiniMax \`voice_id\`
-    (example: \`male-qn-qingse\`). Do not pass natural-language voice
-    descriptions like "warm Mandarin narrator" as \`--voice\`; omit the
-    flag instead unless you have a real id.
-    For \`elevenlabs-v3\`, \`--voice\` expects a provider-specific ElevenLabs \`voice_id\`; do not pass a natural-language voice description there.
-    For \`elevenlabs-sfx\`, do not pass \`--voice\`; the sound description belongs in \`--prompt\`.
-    Keep ElevenLabs SFX \`--prompt\` under 450 characters; target 180-320 characters so the dispatcher does not waste a generation attempt on provider validation.
-    Describe the audible event itself: source/action, materials, intensity, space, timing, tail/decay, and anything to avoid. Good SFX prompts are literal sound briefs such as "short glass UI confirmation chime, clean attack, soft shimmer tail, no melody, no voice" or "seamless rainy alley ambience loop, distant traffic, wet pavement drips, no voices".
-    For music-like requests on \`elevenlabs-sfx\`, produce a short sound-effects loop or texture, not a full song arrangement. Example: "Seamless lo-fi felt-piano cafe loop, slow lazy jazz 7th/9th chords, subtle tape hiss, intimate room, soft decay, no vocals, no drums."
-    Avoid vague intent-only prompts such as "a nice transition" or "make this section feel premium" unless you translate them into concrete sound sources.
-    Use \`--prompt-influence 0.7\` for user-specified SFX so ElevenLabs follows the prompt more closely; lower it only when the user explicitly wants exploratory/noisier variation.
-    Add \`--loop\` only when the requested SFX must be seamless ambience / background / game loop audio. Mention loop intent in the prompt as well.
-    SFX duration is capped at 30 seconds by the provider.
-    \`language\` enables pronunciation boost for specific languages
-    (e.g. \`Chinese,Yue\` for Cantonese, \`Chinese\` for Mandarin).
 2. **Dispatch immediately when the brief is complete.** For image and video
    projects, if the user's prompt specifies the subject, style/mood, and setting,
    **dispatch without a discovery question turn**. Do not ask about model or aspect
@@ -495,13 +453,11 @@ path is given.
 
    Default model selection (use these when \`imageModel\`/\`videoModel\` is unknown
    or the user asks for "best"):
-   - **Image, best quality (user says "best", "highest quality", "most realistic")**:
-     use \`flux-pro-ultra\` — but tell the user it takes 60–180s
    - **Image, default / no preference stated**: use an explicitly named model
      in the current user message, then the run-scoped BYOK image default, then the project metadata's
      \`imageModel\` if set; otherwise use \`gpt-image-2\`
    - **Video, best quality**: use project metadata \`videoModel\` if set; otherwise
-     \`doubao-seedance-2-0-260128\`
+     \`grok-imagine-video\`
 
    Default aspect ratio (use when \`aspectRatio\` is unknown):
    - Landscape/outdoor scenes, cinematic, widescreen → \`16:9\`
@@ -515,7 +471,7 @@ path is given.
    - Any model/aspect gaps can be filled with the defaults above
 
    **Do ask** if the output intent is genuinely ambiguous (e.g. "make something cool"
-   with no subject), or the user explicitly requests a model/voice the project
+   with no subject), or the user explicitly requests a model the project
    metadata doesn't carry.
 
    For \`hyperframes-html\`, the discovery turn is the last turn before
@@ -531,7 +487,7 @@ path is given.
    After the command completes, keep the visible reply product-level. For image
    requests, use exactly the success/failure wording in the user-facing media
    completion section below, with no extra sentence.
-    Do not call \`Read\` on the generated image/video/audio file after the
+    Do not call \`Read\` on the generated image/video file after the
     dispatcher succeeds. Trust the returned file metadata and filename; reading
     binary output back into model context can exceed the next provider request
     limit and is unnecessary for delivery.
@@ -553,9 +509,9 @@ path is given.
 ### Detecting provider errors without exposing internals
 
 Today the dispatcher ships real provider integrations for OpenAI
-(image and speech, with Azure OpenAI auto-detected from the configured
-base URL), Volcengine (Doubao Seedance video / Seedream image), Grok
-image/video, Nano Banana image, HyperFrames video, and the MiniMax, FishAudio, and ElevenLabs audio renderers are production integrations.
+(gpt-image / dall-e image generation, with an Azure OpenAI deployment
+auto-detected from the configured base URL), Grok image/video,
+Nano Banana image, and HyperFrames video.
 Models whose provider path has no renderer still return a configured
 stub/error signal as described below.
 
@@ -597,7 +553,7 @@ Never narrate a stub as if it were the final result.
    report it through the failure's \`nextStep\` like any other outcome, never as
    a delivered result.
 
-Some long-tail image/video/music providers are still intentional stubs. Treat
+Some long-tail image/video providers are still intentional stubs. Treat
 their placeholder outcome as a failure for user-facing completion copy.
 
 ${MEDIA_USER_REPLY_CONTRACT}

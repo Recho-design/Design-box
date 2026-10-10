@@ -34,10 +34,12 @@
 ## 怎么重建
 
 ```bash
-# ① 我们这一侧(每一格都重新走一遍真实事件流)
-OD_WRITE_MIRROR="$PWD/docs/design/chat-mirror/mirror-exec.html" \
-  pnpm --filter @open-design/web exec vitest run \
-  -c vitest.config.ts tests/components/chat/mirror-gallery.test.tsx
+# ① 我们这一侧 —— 原先由 apps/web 的 mirror-gallery vitest 套件驱动
+#    (OD_WRITE_MIRROR 指到本目录逐格写出 mirror-exec.html)。
+#    该套件已随仓库的测试层一起移除,生成入口在本仓库不复存在;
+#    现在这份 mirror-exec.html 是**提交在仓库里的最后快照**。
+#    要重建:从原仓库取回那套驱动,或在 apps/web 里对着
+#    runtime/chat/build-turn-blocks.ts 的真实事件流重写一个单挂驱动。
 
 # ①.5 上字体 —— **别跳这一步**
 #      仓库里那份陈列页**故意不带字体字节**:同一份字节 apps/web/public/fonts/ 里已经
@@ -123,7 +125,8 @@ MIRROR_PICK=".stage, .gap" MIRROR_NO_FULL=1 node docs/design/chat-mirror/shoot.m
   「没有反馈按钮」的那条分支。✅ 现在两条分支都传了。
   连带那条「就算补上也贴不到右端」:`.assistant-feedback-wrap` 原来是 `inline-flex` +
   `max-width: min(360px,100%)`,整行缩成 220.6px、弹簧撑不开。✅ 现在是 `flex` +
-  `width: 100%`(下面那块原因面板改成自己限宽),`footer-time.test.tsx` 钉着。
+  `width: 100%`(下面那块原因面板改成自己限宽;原先钉它的 `footer-time.test.tsx`
+  已随仓库的测试层移除)。
 - **第 39 格**:中断的一轮照出来是绿勾 + 绿字 —— 换勾那条规则只排除了 `data-streaming` /
   `data-unfinished`,没排除 `canceled`。✅ 现在也排除了 `data-canceled`,中断档是
   灰点 + `--text-muted`。
@@ -132,7 +135,7 @@ MIRROR_PICK=".stage, .gap" MIRROR_NO_FULL=1 node docs/design/chat-mirror/shoot.m
   `.queue .q` 同一套排版模型,行高也回到 34。
 
 > ⚠️ 这一段**每次修完都要跟着改**。上一次它整整过期了一轮:三条早就修好,页面和 README
-> 还在照旧印,给验收的人看的是三个不存在的缺陷。同理还有测试文件里那些硬编码注记 ——
+> 还在照旧印,给验收的人看的是三个不存在的缺陷。同理还有页面上那些硬编码注记 ——
 > 页面重跑照样把旧话印出来,它们不会自己过期。
 
 ## 这把尺子自己的三条守卫
@@ -143,7 +146,7 @@ MIRROR_PICK=".stage, .gap" MIRROR_NO_FULL=1 node docs/design/chat-mirror/shoot.m
 
 1. **漏内联对账**:生成页面时逐格核对「这一格里真的有元素命中、却没被内联进来的选择器」,
    有就**明写在那一格的注记里**(`⚠️ 这一格有 N 条规则没内联进来,读数不可信`),
-   同时在生成日志里喊一声;`mirror-gallery.test.tsx` 还有一条断言钉住它必须为空。
+   同时在生成日志里喊一声;生成器还会在页面注记里把漏内联清单原样印出来。
 2. **重写产品逻辑的地方立了清单**:静态页没有 React,画球那段是把 `Orb.tsx` 的 effect
    重写了一遍 —— 它曾经把 DOM 上的 `data-orb-box` 丢了,壳头那颗 24px 的球被画成 20,
    于是壳头高度 36 → 32,报成「壳头比稿子矮」。这类地方现在逐条列在页面脚本的开头,

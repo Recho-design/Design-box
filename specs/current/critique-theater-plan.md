@@ -1,12 +1,14 @@
 # Critique Theater Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Test-layer note (2026-10):** This plan was authored TDD-style and many steps say "write the failing test" / "run test to verify". The repository's test layer has since been removed wholesale (all `tests/` dirs, e2e, vitest/playwright configs). Skip every test-writing and test-running step as written: implement the code, then verify via `pnpm typecheck` + `pnpm guard` plus the matching real-path exercise (replay a recorded transcript through the adapter for parser/scoreboard/reducer, drive the running web UI for Theater components). Do not recreate `*.test.ts` files or vitest configs.
 
 **Goal:** Implement Critique Theater per `specs/current/critique-theater.md`: a panel-tempered, scored, replayable artifact-generation pipeline that runs five panelists (Designer, Critic, Brand, A11y, Copy) inside a single CLI session per artifact, gated by an auto-converging score threshold.
 
 **Architecture:** Three new pure modules in `apps/daemon/src/critique/` (`parser`, `scoreboard`, `orchestrator`) consume the existing CLI stdout and emit new SSE events on the existing `/api/projects/:id/events` stream. New web components under `apps/web/src/components/Theater/` subscribe through a pure reducer. New shared contract types live in `packages/contracts/src/critique.ts`. SQLite gains five additive columns on `artifacts` via a reversible migration.
 
-**Tech Stack:** TypeScript (Node 24, pnpm 10), Next.js 16 App Router, vitest, Playwright, SQLite (better-sqlite3), zod, Prometheus, OpenTelemetry, axe-playwright, size-limit, ts-prune.
+**Tech Stack:** TypeScript (Node 24, pnpm 10), Next.js 16 App Router, SQLite (better-sqlite3), zod, Prometheus, OpenTelemetry. (vitest / Playwright / axe-playwright / size-limit / ts-prune were part of the original plan; the repository's test layer has since been removed wholesale.)
 
 **Branch:** `feat/critique-theater` (already created off `main`).
 
@@ -46,10 +48,10 @@ Expected: pnpm 10.33.2, no errors, all workspace packages linked.
 ```bash
 pnpm typecheck
 pnpm guard
-pnpm --filter @open-design/web test
-pnpm --filter @open-design/daemon test
 ```
-Expected: all pass on the unmodified `feat/critique-theater` branch.
+Expected: all pass on the unmodified `feat/critique-theater` branch. (The
+`web`/`daemon` test suites originally listed here were removed with the
+repository's test layer.)
 
 - [ ] **Step 4: Confirm dev daemon and web boot end-to-end**
 

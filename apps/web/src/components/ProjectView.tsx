@@ -90,7 +90,6 @@ import {
   type ByokChatProtocol,
   type ChatTaskExecutionAnalytics,
   type ProjectWorkspaceScope,
-  type ResearchOptions,
 } from '@open-design/contracts';
 import {
   anonymizeArtifactId,
@@ -380,8 +379,7 @@ import { byokProviderRequiresApiKey } from '../utils/byokProvider';
 import {
   useByokImageModelOptions,
   useByokVideoModelOptions,
-  useByokSpeechModelOptions,
-} from '../media/aihubmix-image-models';
+} from '../media/byok-media-models';
 import {
   buildFinalizeCredentialsMissingToast,
   buildFinalizeRequest,
@@ -926,8 +924,6 @@ const BYOK_OPENCODE_UNAVAILABLE_MESSAGE =
   'BYOK API runs require OpenCode. Install OpenCode, then rescan local agents in Settings before retrying.';
 const BYOK_PROVIDER_REQUIRED_MESSAGE =
   'BYOK OpenCode requires a provider, API key, and model. Complete BYOK settings before starting a run.';
-const BEDROCK_BYOK_UNSUPPORTED_MESSAGE =
-  'AWS Bedrock BYOK chat requires AWS credential signing and is not supported by the current API-key proxy.';
 const CHAT_PANEL_KEYBOARD_STEP = 16;
 const DESIGN_SYSTEM_AUDIT_AUTO_REPAIR_ATTEMPTS = 2;
 // The conversations list 404s while a project is not yet in the local daemon DB.
@@ -1755,16 +1751,20 @@ function applySplitChatPanelWidth(
 }
 
 // The media model the user picked in the New Project → Media dialog, keyed by
-// surface. For BYOK providers (AIHubMix) media is produced by the generate_*
-// chat tools whose default model comes from the per-request byok*Model field —
-// NOT the `od media generate` dispatcher — so without this seed the dialog pick
-// is dropped and the conversation falls back to the Settings default. Returns
+// surface. For BYOK providers media is produced by the generate_* chat tools
+// whose default model comes from the per-request byok*Model field — NOT the
+// `od media generate` dispatcher — so without this seed the dialog pick is
+// dropped and the conversation falls back to the Settings default. Returns
 // undefined for non-media projects (and when the field is empty) so callers fall
 // back to the Settings default exactly as before. The daemon re-validates the id
 // against the active provider's registry, so a mismatched pick is safely ignored.
+//
+// `speech` used to be a third surface here. It went away with the audio
+// surface: `ProjectMetadata` has no `audioKind` / `audioModel`, and
+// `ByokMediaDefaults` in the contract is image + video only.
 function projectMediaModelSeed(
   metadata: ProjectMetadata | null | undefined,
-  surface: 'image' | 'video' | 'speech',
+  surface: 'image' | 'video',
 ): string | undefined {
   if (!metadata) return undefined;
   if (surface === 'image' && metadata.kind === 'image') {
@@ -1773,31 +1773,17 @@ function projectMediaModelSeed(
   if (surface === 'video' && metadata.kind === 'video') {
     return metadata.videoModel?.trim() || undefined;
   }
-  if (surface === 'speech' && metadata.kind === 'audio' && metadata.audioKind === 'speech') {
-    return metadata.audioModel?.trim() || undefined;
-  }
-  return undefined;
-}
-
-function projectMediaVoiceSeed(
-  metadata: ProjectMetadata | null | undefined,
-): string | undefined {
-  if (metadata?.kind === 'audio' && metadata.audioKind === 'speech') {
-    return metadata.voice?.trim() || undefined;
-  }
   return undefined;
 }
 
 // Carry the creation-time model pick into the conversation ONLY when it belongs
 // to the active BYOK provider. Guards against clobbering a user's Settings
-// default with a model from a different provider — e.g. a SenseAudio user whose
-// image project was created with the dialog's default `openai/gpt-image-2` keeps their
-// configured SenseAudio model instead of being forced to the registry default.
-// AIHubMix's live (`aihubmix-` prefixed) ids resolve via mediaModelProviderId
-// without waiting on the async catalogue, so the AIHubMix path still seeds.
+// default with a model from a different provider — e.g. a Nano Banana user
+// whose image project was created with OpenAI's `gpt-image-2` keeps their
+// configured Nano Banana model instead of being forced to the registry default.
 function byokModelSeedForProtocol(
   metadata: ProjectMetadata | null | undefined,
-  surface: 'image' | 'video' | 'speech',
+  surface: 'image' | 'video',
   protocol: string | undefined,
 ): string | undefined {
   const picked = projectMediaModelSeed(metadata, surface);
@@ -1812,12 +1798,9 @@ function firstNonBlank(...values: Array<string | null | undefined>): string {
 function byokMediaDefaultsForRun(input: {
   imageModelOverride: string;
   videoModelOverride: string;
-  speechModelOverride: string;
-  speechVoiceOverride: string;
-  config: Pick<AppConfig, 'byokImageModel' | 'byokVideoModel' | 'byokSpeechModel' | 'byokSpeechVoice'>;
+  config: Pick<AppConfig, 'byokImageModel' | 'byokVideoModel'>;
   imageModelOptions: readonly { id: string }[];
   videoModelOptions: readonly { id: string }[];
-  speechModelOptions: readonly { id: string }[];
 }): ByokMediaDefaults {
   const imageModel = firstNonBlank(
     input.imageModelOverride,
@@ -1829,20 +1812,9 @@ function byokMediaDefaultsForRun(input: {
     input.config.byokVideoModel,
     input.videoModelOptions[0]?.id,
   );
-  const speechModel = firstNonBlank(
-    input.speechModelOverride,
-    input.config.byokSpeechModel,
-    input.speechModelOptions[0]?.id,
-  );
-  const speechVoice = firstNonBlank(
-    input.speechVoiceOverride,
-    input.config.byokSpeechVoice,
-  );
   return {
     ...(imageModel ? { imageModel } : {}),
     ...(videoModel ? { videoModel } : {}),
-    ...(speechModel ? { speechModel } : {}),
-    ...(speechVoice ? { speechVoice } : {}),
   };
 }
 
@@ -1857,7 +1829,6 @@ function byokOpenCodeProviderFromConfig(
       && !config.apiKey.trim())
     || !model
     || model.toLowerCase() === 'default'
-    || (config.apiProtocol === 'azure' && !config.baseUrl.trim())
   ) {
     return undefined;
   }
@@ -1866,9 +1837,6 @@ function byokOpenCodeProviderFromConfig(
     apiKey: config.apiKey.trim(),
     baseUrl: config.baseUrl.trim(),
     model,
-    ...(config.apiProtocol === 'azure' && config.apiVersion?.trim()
-      ? { apiVersion: config.apiVersion.trim() }
-      : {}),
     requiresApiKey: byokProviderRequiresApiKey(
       config.apiProtocol,
       selectedProvider,
@@ -1896,11 +1864,10 @@ function isOpenCodeByokChatProtocol(
   return (
     protocol === 'anthropic' ||
     protocol === 'openai' ||
-    protocol === 'azure' ||
     protocol === 'google' ||
-    protocol === 'ollama' ||
-    protocol === 'senseaudio' ||
-    protocol === 'aihubmix'
+    protocol === 'deepseek' ||
+    protocol === 'xai' ||
+    protocol === 'custom'
   );
 }
 
@@ -2614,28 +2581,17 @@ export function ProjectView({
   // from the New Project → Media model pick (project.metadata.imageModel) — but
   // only when that pick belongs to the active BYOK provider (see
   // byokModelSeedForProtocol) — falling back to the Settings default
-  // (config.byokImageModel) otherwise. Subsequent selections live only in this
-  // component's state — page refresh / project switch resets to this seed.
-  // Persistent defaults live in Settings → BYOK → Image generation model.
-  const [byokImageModelOverride, setByokImageModelOverride] = useState<string>(
+  // (config.byokImageModel) otherwise. The value is a per-session seed and
+  // nothing edits it any more: the in-composer BYOK media pickers that used to
+  // write these were removed along with the audio surface, so the seed now only
+  // has to survive the render that builds the run request.
+  const [byokImageModelOverride] = useState<string>(
     () => byokModelSeedForProtocol(project.metadata, 'image', config.apiProtocol) ?? config.byokImageModel ?? '',
   );
-  // Same per-session override for the BYOK chat's generate_video tool, seeded
+  // Same per-session seed for the BYOK chat's generate_video tool, seeded
   // from the project's videoModel pick (provider-gated), then Settings.
-  const [byokVideoModelOverride, setByokVideoModelOverride] = useState<string>(
+  const [byokVideoModelOverride] = useState<string>(
     () => byokModelSeedForProtocol(project.metadata, 'video', config.apiProtocol) ?? config.byokVideoModel ?? '',
-  );
-  // Same per-session overrides for the BYOK chat's generate_speech tool (model +
-  // voice), seeded from the project's speech pick (provider-gated), then Settings.
-  const [byokSpeechModelOverride, setByokSpeechModelOverride] = useState<string>(
-    () => byokModelSeedForProtocol(project.metadata, 'speech', config.apiProtocol) ?? config.byokSpeechModel ?? '',
-  );
-  // Voice only carries when the speech model itself is carried (same provider),
-  // so a cross-provider voice id never leaks into the request.
-  const [byokSpeechVoiceOverride, setByokSpeechVoiceOverride] = useState<string>(
-    () => (byokModelSeedForProtocol(project.metadata, 'speech', config.apiProtocol)
-      ? projectMediaVoiceSeed(project.metadata)
-      : undefined) ?? config.byokSpeechVoice ?? '',
   );
   // Live model option lists (same hooks the composer/Settings pickers use) so
   // the chat "default" (no explicit pick) resolves to the FIRST catalogue model
@@ -2643,7 +2599,6 @@ export function ProjectView({
   // fallback for when the catalogue hasn't loaded.
   const byokImageModelOptionsPV = useByokImageModelOptions(config.apiProtocol);
   const byokVideoModelOptionsPV = useByokVideoModelOptions(config.apiProtocol);
-  const byokSpeechModelOptionsPV = useByokSpeechModelOptions(config.apiProtocol);
   // PR #974 round 7 (mrcfps @ useDesignMdState.ts:131): counter that
   // bumps on file-changed SSE events, live_artifact* events, and the
   // chat streaming-completion edge so the staleness chip stays in sync
@@ -7919,8 +7874,11 @@ export function ProjectView({
         ),
       );
       const byokOpenCodeProvider = byokOpenCodeProviderFromConfig(config);
+      // Every BYOK protocol needs the preflight now: the old bedrock exemption
+      // is gone with the protocol itself (a stale saved `bedrock` config is
+      // already rewritten by `downgradeUnsupportedChatProtocol` on load).
       const requiresByokPreflight =
-        (config.mode === 'api' && config.apiProtocol !== 'bedrock') ||
+        config.mode === 'api' ||
         (config.mode === 'daemon' && config.agentId === 'byok-opencode');
       if (requiresByokPreflight && !byokOpenCodeProvider) {
         const blockReason = byokPreflightBlockReason(config) ?? 'config_invalid';
@@ -9418,7 +9376,6 @@ export function ProjectView({
           sessionMode: runSessionMode,
           appliedPluginSnapshotId:
             meta?.appliedPluginSnapshotId ?? meta?.appliedPluginSnapshot?.snapshotId ?? null,
-          research: meta?.research,
           mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata),
           model: daemonByokOpenCode ? config.model : choice?.model ?? null,
           reasoning: daemonByokOpenCode ? null : choice?.reasoning ?? null,
@@ -9431,12 +9388,9 @@ export function ProjectView({
                 byokMediaDefaults: byokMediaDefaultsForRun({
                   imageModelOverride: byokImageModelOverride,
                   videoModelOverride: byokVideoModelOverride,
-                  speechModelOverride: byokSpeechModelOverride,
-                  speechVoiceOverride: byokSpeechVoiceOverride,
                   config,
                   imageModelOptions: byokImageModelOptionsPV,
                   videoModelOptions: byokVideoModelOptionsPV,
-                  speechModelOptions: byokSpeechModelOptionsPV,
                 }),
               }
             : {}),
@@ -9569,10 +9523,6 @@ export function ProjectView({
         });
         return true;
       } else {
-        if (config.apiProtocol === 'bedrock') {
-          handlers.onError(new Error(BEDROCK_BYOK_UNSUPPORTED_MESSAGE));
-          return true;
-        }
         if (!agentsById.get('byok-opencode')?.available) {
           handlers.onError(new Error(BYOK_OPENCODE_UNAVAILABLE_MESSAGE));
           return true;
@@ -9662,7 +9612,6 @@ export function ProjectView({
           sessionMode: runSessionMode,
           appliedPluginSnapshotId:
             meta?.appliedPluginSnapshotId ?? meta?.appliedPluginSnapshot?.snapshotId ?? null,
-          research: meta?.research,
           mediaExecution: mediaExecutionPolicyForProjectMetadata(project.metadata),
           model: config.model,
           reasoning: null,
@@ -9671,12 +9620,9 @@ export function ProjectView({
           byokMediaDefaults: byokMediaDefaultsForRun({
             imageModelOverride: byokImageModelOverride,
             videoModelOverride: byokVideoModelOverride,
-            speechModelOverride: byokSpeechModelOverride,
-            speechVoiceOverride: byokSpeechVoiceOverride,
             config,
             imageModelOptions: byokImageModelOptionsPV,
             videoModelOptions: byokVideoModelOptionsPV,
-            speechModelOptions: byokSpeechModelOptionsPV,
           }),
           titleGeneration: isFirstTurn ? { enabled: true } : undefined,
           locale,
@@ -9831,11 +9777,8 @@ export function ProjectView({
       onOpenSettings,
       byokImageModelOverride,
       byokVideoModelOverride,
-      byokSpeechModelOverride,
-      byokSpeechVoiceOverride,
       byokImageModelOptionsPV,
       byokVideoModelOptionsPV,
-      byokSpeechModelOptionsPV,
       projectRunAuthorityKey,
       registerManualFileWrites,
       projectRunPreflightContext,
@@ -12961,16 +12904,6 @@ export function ProjectView({
               onAdoptPet={onAdoptPetInline}
               onTogglePet={onTogglePet}
               onOpenPetSettings={onOpenPetSettings}
-              researchAvailable={config.mode === 'daemon'}
-              byokApiProtocol={config.apiProtocol}
-              byokImageModel={byokImageModelOverride}
-              onChangeByokImageModel={setByokImageModelOverride}
-              byokVideoModel={byokVideoModelOverride}
-              onChangeByokVideoModel={setByokVideoModelOverride}
-              byokSpeechModel={byokSpeechModelOverride}
-              onChangeByokSpeechModel={setByokSpeechModelOverride}
-              byokSpeechVoice={byokSpeechVoiceOverride}
-              onChangeByokSpeechVoice={setByokSpeechVoiceOverride}
               projectMetadata={currentProject.metadata}
               onProjectMetadataChange={onProjectChange}
               activeWorkspaceContext={activeWorkspaceContext}

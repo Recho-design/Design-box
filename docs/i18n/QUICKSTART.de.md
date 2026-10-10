@@ -56,7 +56,7 @@ Der Katalog **Templates** kommt aus [`design-templates/`](../../design-templates
 ```bash
 pnpm tools-dev                 # daemon + web + desktop im Hintergrund
 pnpm tools-dev start web       # daemon + web im Hintergrund
-pnpm tools-dev run web         # daemon + web im Vordergrund (e2e/dev server)
+pnpm tools-dev run web         # daemon + web im Vordergrund (dev server)
 pnpm tools-dev restart         # daemon + web + desktop neu starten
 pnpm tools-dev restart --daemon-port 7457 --web-port 5175
 pnpm tools-dev status          # verwaltete Runtimes prüfen
@@ -294,8 +294,7 @@ open-design/
 │   │       │   └── defs/          # per-runtime launch and argument definitions
 │   │       ├── skills.ts          # SKILL.md loader (frontmatter parser)
 │   │       └── design-systems/    # DESIGN.md loader and services
-│   │   ├── sidecar/           # tools-dev daemon sidecar wrapper
-│   │   └── tests/             # daemon package tests
+│   │   └── sidecar/           # tools-dev daemon sidecar wrapper
 │   ├── web/                   # Next.js 16 App Router + React client
 │       ├── app/               # App Router entrypoints
 │       ├── src/               # React + TypeScript client/runtime modules
@@ -314,13 +313,12 @@ open-design/
 │   ├── sidecar/               # generic sidecar runtime primitives
 │   └── platform/              # generic process/platform primitives
 ├── tools/dev/                 # `pnpm tools-dev` lifecycle and inspect CLI
-├── e2e/                       # Playwright UI + external integration/Vitest harness
 ├── skills/                    # functional capabilities invoked mid-task
 ├── design-templates/          # rendering catalog for prototypes, decks, docs, and media
 ├── design-systems/            # brand packages rooted at DESIGN.md
 ├── scripts/sync-design-systems.ts    # re-import from upstream getdesign tarball
 ├── docs/                      # product vision + spec
-├── pnpm-workspace.yaml        # apps/* + packages/* + tools/* + e2e
+├── pnpm-workspace.yaml        # apps/* + packages/* + tools/*
 └── package.json               # root quality scripts + `od` bin
 ```
 

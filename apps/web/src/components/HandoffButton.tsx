@@ -56,51 +56,32 @@ interface CliTarget {
   version?: string | null;
 }
 
+// Display order for the CLI targets the daemon can spawn. Mirrors the runtime
+// definitions that still exist in `apps/daemon/src/runtimes/defs/` — the
+// eighteen CLIs that were retired in S5a are gone from here too, so an offline
+// catalogue can no longer offer a binary nothing can launch.
+//
+// `qoder` is deliberately NOT in this list even though its brand label survives
+// in `utils/agentLabels.ts`: Qoder is an *editor* target (`HostEditorId`), not a
+// local CLI agent.
 const CLI_ORDER = [
   'claude',
   'codex',
   'opencode',
-  'cursor-agent',
-  'gemini',
-  'qwen',
-  'qoder',
-  'copilot',
-  'grok-build',
   'deepseek',
-  'kimi',
-  'hermes',
-  'devin',
-  'kiro',
-  'kilo',
-  'vibe',
+  'deepseek-harness',
+  'grok-build',
   'antigravity',
-  'aider',
-  'trae-cli',
-  'pi',
-  'reasonix',
 ];
 
 const FALLBACK_CLI_TARGETS: CliTarget[] = [
   { id: 'claude', name: 'Claude Code', bin: 'claude', available: false },
   { id: 'codex', name: 'Codex CLI', bin: 'codex', available: false },
   { id: 'opencode', name: 'OpenCode', bin: 'opencode-cli', available: false },
-  { id: 'cursor-agent', name: 'Cursor Agent', bin: 'cursor-agent', available: false },
-  { id: 'qwen', name: 'Qwen Code', bin: 'qwen', available: false },
-  { id: 'qoder', name: 'Qoder CLI', bin: 'qodercli', available: false },
-  { id: 'copilot', name: 'GitHub Copilot CLI', bin: 'copilot', available: false },
-  { id: 'grok-build', name: 'Grok Build', bin: 'grok', available: false },
   { id: 'deepseek', name: 'DeepSeek TUI', bin: 'deepseek', available: false },
-  { id: 'kimi', name: 'Kimi CLI', bin: 'kimi', available: false },
-  { id: 'hermes', name: 'Hermes', bin: 'hermes', available: false },
-  { id: 'devin', name: 'Devin for Terminal', bin: 'devin', available: false },
-  { id: 'kiro', name: 'Kiro CLI', bin: 'kiro-cli', available: false },
-  { id: 'kilo', name: 'Kilo', bin: 'kilo', available: false },
-  { id: 'vibe', name: 'Mistral Vibe CLI', bin: 'vibe-acp', available: false },
+  { id: 'deepseek-harness', name: 'DeepSeek Harness', bin: 'dsh', available: false },
+  { id: 'grok-build', name: 'Grok Build', bin: 'grok', available: false },
   { id: 'antigravity', name: 'Antigravity', bin: 'agy', available: false },
-  { id: 'aider', name: 'Aider', bin: 'aider', available: false },
-  { id: 'trae-cli', name: 'Trae CLI', bin: 'traecli', available: false },
-  { id: 'pi', name: 'Pi', bin: 'pi', available: false },
-  { id: 'reasonix', name: 'DeepSeek Reasonix', bin: 'reasonix', available: false },
 ];
 
 interface Props {

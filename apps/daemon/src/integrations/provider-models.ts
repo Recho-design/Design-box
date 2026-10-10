@@ -11,7 +11,6 @@ import type { ModelCapability, ModelCost, ModelMetadata } from '@open-design/con
 import { isLoopbackApiHost } from '@open-design/contracts/api/connectionTest';
 import { redactSecrets, validateUserProviderBaseUrl } from '../connectionTest.js';
 import { googleProviderModelsUrl, normalizeGoogleModelId } from './google-models.js';
-import { aihubmixHeaders, aihubmixCatalogUrl, parseAIHubMixCatalog } from './aihubmix.js';
 
 type ProviderModelsInput = ProviderModelsRequest & {
   signal?: AbortSignal;
@@ -19,14 +18,18 @@ type ProviderModelsInput = ProviderModelsRequest & {
 };
 
 const PROVIDER_MODELS_TIMEOUT_MS = 12_000;
-const BEDROCK_MODEL_OPTIONS: ProviderModelOption[] = [
-  { id: 'anthropic.claude-3-5-sonnet-20241022-v2:0', label: 'Claude 3.5 Sonnet v2' },
-  { id: 'anthropic.claude-3-5-haiku-20241022-v1:0', label: 'Claude 3.5 Haiku' },
-  { id: 'anthropic.claude-3-haiku-20240307-v1:0', label: 'Claude 3 Haiku' },
-  { id: 'amazon.nova-pro-v1:0', label: 'Amazon Nova Pro' },
-  { id: 'amazon.nova-lite-v1:0', label: 'Amazon Nova Lite' },
-  { id: 'amazon.nova-micro-v1:0', label: 'Amazon Nova Micro' },
-];
+
+// The four protocols that expose an OpenAI-shaped `GET /v1/models` catalogue.
+const OPENAI_WIRE_PROTOCOLS: ReadonlySet<ConnectionTestProtocol> = new Set([
+  'openai',
+  'deepseek',
+  'xai',
+  'custom',
+]);
+
+function isOpenAiWireProtocol(protocol: ConnectionTestProtocol): boolean {
+  return OPENAI_WIRE_PROTOCOLS.has(protocol);
+}
 
 function appendVersionedApiPath(baseUrl: string, suffix: string): string {
   const url = new URL(baseUrl);
@@ -236,12 +239,7 @@ function extractGoogleModels(data: unknown): ProviderModelOption[] {
 }
 
 function providerModelsUrl(protocol: ConnectionTestProtocol, baseUrl: string, apiKey: string): string {
-  if (protocol === 'aihubmix') {
-    // AIHubMix exposes its chat catalogue on a dedicated endpoint
-    // (GET /api/v1/models?type=llm), not the OpenAI /v1/models route.
-    return aihubmixCatalogUrl(baseUrl, 'llm');
-  }
-  if (protocol === 'openai' || protocol === 'senseaudio') {
+  if (isOpenAiWireProtocol(protocol)) {
     return appendVersionedApiPath(baseUrl, '/models');
   }
   if (protocol === 'anthropic') {
@@ -259,14 +257,8 @@ function providerModelsHeaders(
   protocol: ConnectionTestProtocol,
   apiKey: string,
 ): Record<string, string> {
-  if (protocol === 'openai' || protocol === 'senseaudio') {
+  if (isOpenAiWireProtocol(protocol)) {
     return { authorization: `Bearer ${apiKey}` };
-  }
-  if (protocol === 'aihubmix') {
-    // The catalogue is public — only attach Bearer auth (+ APP-Code) when the
-    // user actually supplied a key. An empty `Bearer ` would be rejected by
-    // some gateways, so send no headers when the key is blank.
-    return apiKey.trim() ? aihubmixHeaders(apiKey) : {};
   }
   if (protocol === 'anthropic') {
     return {
@@ -278,14 +270,7 @@ function providerModelsHeaders(
 }
 
 function extractModels(protocol: ConnectionTestProtocol, data: unknown): ProviderModelOption[] {
-  // SenseAudio's /v1/models response follows the OpenAI envelope
-  // (`{ data: [{ id, ... }] }`), so the same extractor handles both.
-  // Chat picker: drop media-generation rows. AIHubMix's `?type=llm` matches any
-  // model whose `types` merely contains `llm`, so dual-tagged image models
-  // (e.g. gpt-image-2 → "image_generation,llm") would otherwise leak in. Those
-  // belong to the dedicated image/video/audio pickers.
-  if (protocol === 'aihubmix') return parseAIHubMixCatalog(data, { chatOnly: true });
-  if (protocol === 'openai' || protocol === 'senseaudio') return extractOpenAiModels(data);
+  if (isOpenAiWireProtocol(protocol)) return extractOpenAiModels(data);
   if (protocol === 'anthropic') return extractAnthropicModels(data);
   if (protocol === 'google') return extractGoogleModels(data);
   return [];
@@ -295,15 +280,6 @@ export async function listProviderModels(
   input: ProviderModelsInput,
 ): Promise<ProviderModelsResponse> {
   const start = Date.now();
-  if (input.protocol === 'azure') {
-    return {
-      ok: false,
-      kind: 'unsupported_protocol',
-      latencyMs: Date.now() - start,
-      detail: 'Azure OpenAI deployment discovery is not supported from the inference endpoint.',
-    };
-  }
-
   const validated = await validateUserProviderBaseUrl(input.baseUrl);
   if (validated.error || !validated.parsed) {
     return {
@@ -311,15 +287,6 @@ export async function listProviderModels(
       kind: validated.forbidden ? 'forbidden' : 'invalid_base_url',
       latencyMs: Date.now() - start,
       detail: validated.error ?? '',
-    };
-  }
-  if (input.protocol === 'bedrock') {
-    return {
-      ok: true,
-      kind: 'success',
-      latencyMs: Date.now() - start,
-      models: BEDROCK_MODEL_OPTIONS,
-      detail: 'AWS Bedrock uses a static seed until AWS credential-backed discovery is available.',
     };
   }
 

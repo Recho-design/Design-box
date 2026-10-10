@@ -3,14 +3,14 @@
  * longer ingest.
  *
  * ACP carries MCP servers on `session/new` as a `type`-discriminated array in
- * which a *missing* `type` means stdio. Kimi Code CLI 0.37.0 removed the branch
+ * which a *missing* `type` means stdio. A peer build removed the branch
  * that built stdio servers out of those entries and replaced it with a throw:
  *
  *   {"code":-32603,"message":"Internal error","data":{"details":
  *    "ACP stdio MCP server open-design-live-artifacts does not declare a runtime identity"}}
  *
  * The message names a "runtime identity" the entry should declare, but no
- * accepted value exists. Kimi validates `session/new` against a zod union whose
+ * accepted value exists. The peer validates `session/new` against a zod union whose
  * stdio member declares no `type` key at all, so zod strips an explicit
  * `type: "stdio"` before the handler runs — after which the handler sees no
  * `type` and throws. Verified against the published tarballs: 0.35.0 and 0.36.1
@@ -77,7 +77,7 @@ function isAtLeast(version: VersionCore, minimum: VersionCore): boolean {
  * When a runtime *does* declare it, an unreadable reported version answers
  * `false`. That is the deliberate fail-safe direction: withholding costs an
  * accepting build its live-artifact tooling for the turn, while sending costs a
- * rejecting build the entire run. Every Kimi build from 0.35.0 on reports its
+ * rejecting build the entire run. Every affected build reports its
  * version in the `initialize` result, so this branch is close to unreachable in
  * practice.
  *

@@ -327,7 +327,7 @@ type CritiqueState =
   | { phase: 'failed'; runId: string; cause: FailedCause };
 ```
 
-The reducer is pure. Every transition is covered by a vitest case backed by golden-file SSE replays from the adapter conformance suite. No state lives outside the reducer except UI-only ephemera (lane scroll position, badge expanded vs collapsed).
+The reducer is pure. Transitions were originally pinned by vitest cases backed by golden-file SSE replays from the adapter conformance suite; those suites were removed with the repository's test layer, and reducer behavior is now re-verified by replaying recorded transcripts through the adapter. No state lives outside the reducer except UI-only ephemera (lane scroll position, badge expanded vs collapsed).
 
 ### Visual specification
 
@@ -408,9 +408,9 @@ These exist purely to let reviewers walk every state in one page. The production
 | Metric | Budget | Enforcement |
 | --- | --- | --- |
 | Stage component bundle | ≤ 18 KiB gzipped | `size-limit` in CI |
-| Reducer hot path | p99 ≤ 2 ms per event | vitest bench in CI |
-| First lane visible from first SSE event | ≤ 200 ms | Planned Playwright trace; the current functional suite is `e2e/ui/critique-theater.test.ts`. |
-| Transcript scrub at 1 MiB transcript | 60 fps, no dropped frames | Playwright `Page.metrics` |
+| Reducer hot path | p99 ≤ 2 ms per event | Originally vitest bench in CI; the bench suite was removed with the repository's test layer — spot-check with a manual replay when the reducer changes. |
+| First lane visible from first SSE event | ≤ 200 ms | Originally planned as a Playwright trace over `e2e/ui/critique-theater.test.ts`; that suite was removed with the repository's test layer — measure on the running web UI when the stage changes. |
+| Transcript scrub at 1 MiB transcript | 60 fps, no dropped frames | Originally Playwright `Page.metrics`; measure on the running web UI when replay changes. |
 
 ### Interrupt semantics
 
@@ -524,6 +524,8 @@ A Grafana dashboard ships in `tools/dev/dashboards/critique.json` with three def
 A separate security review pass runs through the `code-reviewer` agent before merge.
 
 ## Testing
+
+The layered testing matrix below described the original plan. The repository's test layer (vitest, RTL, Playwright, axe, size-limit benches, golden-file suites) has since been removed wholesale; the table stays only as the historical record of what each gate once covered. Current validation runs on real paths: replay recorded adapter transcripts to exercise parser/scoreboard/reducer behavior, and drive the live web UI to confirm stage rendering, interrupt, badge states, and locale coverage (`Dict` typing enforces locale-key alignment at typecheck).
 
 | Layer | Tool | Gate |
 | --- | --- | --- |

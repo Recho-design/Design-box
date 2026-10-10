@@ -24,7 +24,6 @@ import type {
   DaemonAgentPayload,
   ByokChatProviderConfig,
   MediaExecutionPolicy,
-  ResearchOptions,
   RunCancelOrigin,
   RunContextSelection,
   SseErrorPayload,
@@ -113,15 +112,23 @@ const LARGE_TOOL_RESULT_CHARS = 8_000;
 const HIGH_INPUT_TOKEN_WARNING_THRESHOLD = 200_000;
 const RUN_CREATE_AUTHORITY_RETRY_DELAYS_MS = [500, 1_000, 2_000] as const;
 const BYOK_OPENCODE_AGENT_ID = 'byok-opencode';
+// The agent id `ProjectView` stamps on an API-mode turn: one per chat protocol
+// in `utils/byokProvider.ts` (`API_PROTOCOL_AGENT_IDS`). That module is the
+// authority for the spelling — this set only reads it back, and the two must
+// list the same six ids. A protocol missing here is worse than a stale entry:
+// `isSameTranscriptAgentFamily` then reads an API-mode turn as a different
+// agent family from the `byok-opencode` turn that follows it, and
+// `scopeHistoryToAgent` slices the transcript at that boundary — silently
+// dropping the user's whole prior conversation from the prompt. The two ids
+// that used to sit here for the retired azure / ollama protocols are gone
+// with the protocols.
 const API_MODE_AGENT_IDS = new Set([
   'anthropic-api',
   'openai-api',
-  'azure-openai-api',
   'google-gemini-api',
-  'ollama-cloud-api',
-  'senseaudio-api',
-  'aihubmix-api',
-  'bedrock-api',
+  'deepseek-api',
+  'xai-api',
+  'custom-api',
 ]);
 
 export function latestUserPromptFromHistory(history: ChatMessage[]): string {
@@ -559,7 +566,6 @@ export interface DaemonStreamOptions {
   serviceTier?: string | null;
   byokProvider?: ByokChatProviderConfig;
   byokMediaDefaults?: ChatRequest['byokMediaDefaults'];
-  research?: ResearchOptions;
   context?: RunContextSelection;
   appliedPluginSnapshotId?: string | null;
   mediaExecution?: MediaExecutionPolicy;
@@ -1036,7 +1042,6 @@ export async function streamViaDaemon({
   serviceTier,
   byokProvider,
   byokMediaDefaults,
-  research,
   context,
   appliedPluginSnapshotId,
   mediaExecution,
@@ -1086,7 +1091,6 @@ export async function streamViaDaemon({
     locale,
     ...(appliedPluginSnapshotId ? { appliedPluginSnapshotId } : {}),
     ...(context ? { context } : {}),
-    ...(research ? { research } : {}),
     ...(mediaExecution ? { mediaExecution } : {}),
     ...(titleGeneration?.enabled ? { titleGeneration: { enabled: true } } : {}),
     ...(analyticsHints ? { analyticsHints } : {}),

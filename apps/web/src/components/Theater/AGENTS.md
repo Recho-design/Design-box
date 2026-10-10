@@ -39,8 +39,8 @@ without code churn.
   inside this directory.
 - **All strings go through the i18n registry.** Every visible string is
   a `t(...)` call against the `critiqueTheater.*` key namespace.
-  Hardcoded English will fail review; the locale alignment test
-  enforces every locale carries the same keyset.
+  Hardcoded English will fail review; every locale carries the same
+  keyset (enforced at typecheck through `types.ts`).
 - **Terminal phases are sticky.** Once the reducer is in `shipped`,
   `degraded`, `interrupted`, or `failed`, only a `run_started` for a
   new runId or a host-dispatched `__reset__` can leave that phase.
@@ -77,12 +77,12 @@ without code churn.
    all 19 files under `apps/web/src/i18n/locales/`. The locale files
    carry complete dictionaries rather than inheriting missing keys from
    English.
-3. Run `pnpm --filter @open-design/web exec vitest run tests/components/Theater`
-   before pushing. The suite has 100+ cases pinning the reducer
-   shape, SSE validation, host lifecycle, and component renders.
-4. Visual regression: run `pnpm --filter @open-design/e2e test:ui:extended`
-   with `--update-snapshots` after any CSS change in
-   `apps/web/src/styles/viewer/theater.css`'s `.theater-*` block.
+3. Run `pnpm --filter @open-design/web typecheck`, then exercise the
+   change in a running web runtime (the repository no longer carries a
+   test layer for the reducer, SSE validation, or component renders).
+4. After any CSS change in `apps/web/src/styles/viewer/theater.css`'s
+   `.theater-*` block, verify the theater visually in a running web
+   runtime.
 
 ## Related
 

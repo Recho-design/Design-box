@@ -49,16 +49,8 @@ export type PlatformLane = {
   build: LaneStatus;
   /** Public R2 download URL; empty until the platform is published. */
   downloadUrl: string;
-  /** Packaged smoke outcome for this platform. `skipped` when not requested. */
-  smoke: LaneStatus;
   /** Wall clock of this platform's build job. */
   timing: LaneTiming;
-};
-
-export type TestLane = {
-  key: string;
-  label: string;
-  status: LaneStatus;
 };
 
 export type Changelog = {
@@ -75,13 +67,8 @@ export type PrereleaseCardState = {
   previousCommit: string;
   repo: string;
   originRunUrl: string;
-  testsRunUrl: string;
-  smokeRunUrl: string;
   changelog: Changelog;
   platforms: PlatformLane[];
-  tests: TestLane[];
-  expectTests: boolean;
-  expectSmoke: boolean;
   /** Everything the card waits on has reported. */
   finished: boolean;
   /** The watcher hit its wall clock before everything reported. */
@@ -131,17 +118,6 @@ const BUILD_STATUS_TEXT: Record<LaneStatus, string> = {
   unknown: "状态未知",
 };
 
-const CHECK_STATUS_TEXT: Record<LaneStatus, string> = {
-  pending: "排队中",
-  running: "运行中",
-  success: "通过",
-  failure: "未通过",
-  cancelled: "已取消",
-  skipped: "未运行",
-  never_started: "未触发（应运行，但没有被调起）",
-  unknown: "状态未知",
-};
-
 export function isTerminal(status: LaneStatus): boolean {
   return (
     status === "success" ||
@@ -150,35 +126,6 @@ export function isTerminal(status: LaneStatus): boolean {
     status === "skipped" ||
     status === "never_started"
   );
-}
-
-/**
- * What the card has learned about a lane it expected but has found no job for.
- *
- * `runFound` — a workflow run carrying this origin's marker exists.
- * `runCompleted` — that run has finished, which is the only thing that proves a
- *   job is genuinely absent rather than not yet created by the API.
- * `discoveryExpired` — the dispatch window closed without a run ever appearing.
- */
-export type LaneDiscovery = {
-  runFound: boolean;
-  runCompleted: boolean;
-  discoveryExpired: boolean;
-};
-
-/**
- * Status for an expected lane the card has found no job for.
- *
- * The invariant: the same discovery window that lets the watcher stop waiting
- * on a lane must also change what that lane SAYS. A lane whose run never
- * appeared before that window closed was never dispatched, so "排队中" promises
- * a result that can never arrive — worse than saying nothing, because a reader
- * waits for it.
- */
-export function undiscoveredLaneStatus(discovery: LaneDiscovery): LaneStatus {
-  if (discovery.runCompleted) return "skipped";
-  if (discovery.runFound) return "pending";
-  return discovery.discoveryExpired ? "never_started" : "pending";
 }
 
 /** A lane that a human has to look at. `skipped` is a decision, not a problem. */
@@ -287,10 +234,6 @@ export function failureCount(state: PrereleaseCardState): number {
   let failures = 0;
   for (const platform of state.platforms) {
     if (isBadNews(platform.build)) failures += 1;
-    if (isBadNews(platform.smoke)) failures += 1;
-  }
-  for (const test of state.tests) {
-    if (isBadNews(test.status)) failures += 1;
   }
   return failures;
 }
@@ -307,10 +250,6 @@ export function neverStartedCount(state: PrereleaseCardState): number {
   let count = 0;
   for (const platform of state.platforms) {
     if (platform.build === "never_started") count += 1;
-    if (platform.smoke === "never_started") count += 1;
-  }
-  for (const test of state.tests) {
-    if (test.status === "never_started") count += 1;
   }
   return count;
 }
@@ -351,10 +290,6 @@ function platformLine(platform: PlatformLane, now: number): string {
   const line = `${STATUS_GLYPH[platform.build]} ${platform.label} · ${BUILD_STATUS_TEXT[platform.build]}`;
   const duration = laneDurationText(platform.build, platform.timing, now);
   return duration.length > 0 ? `${line} · ${duration}` : line;
-}
-
-function checkLine(label: string, status: LaneStatus): string {
-  return `${STATUS_GLYPH[status]} ${label} · ${CHECK_STATUS_TEXT[status]}`;
 }
 
 export function changelogMarkdown(state: PrereleaseCardState): string {
@@ -408,26 +343,6 @@ export function renderPrereleaseCard(state: PrereleaseCardState): FeishuCard {
   const platformLines = state.platforms.map((platform) => platformLine(platform, state.now)).join("\n");
   elements.push({ tag: "div", text: { tag: "lark_md", content: `**平台产物**\n${platformLines}` } });
 
-  const checks: string[] = [];
-  if (state.expectTests) {
-    for (const test of state.tests) checks.push(checkLine(test.label, test.status));
-  }
-  if (state.expectSmoke) {
-    for (const platform of state.platforms) {
-      if (platform.smoke === "skipped") continue;
-      checks.push(checkLine(`${platform.label} packaged smoke`, platform.smoke));
-    }
-  }
-  if (checks.length > 0) {
-    elements.push({
-      tag: "div",
-      text: {
-        tag: "lark_md",
-        content: `**验证**（不阻塞发布）\n${checks.join("\n")}`,
-      },
-    });
-  }
-
   elements.push({
     tag: "div",
     text: { tag: "lark_md", content: `**自上个 ${state.channelLabel} 新增提交**\n${changelogMarkdown(state)}` },
@@ -455,8 +370,6 @@ export function renderPrereleaseCard(state: PrereleaseCardState): FeishuCard {
   const total = totalElapsedText(state);
   if (total.length > 0) noteParts.push(total);
   if (state.originRunUrl.length > 0) noteParts.push(`[打包运行](${state.originRunUrl})`);
-  if (state.testsRunUrl.length > 0) noteParts.push(`[代码测试](${state.testsRunUrl})`);
-  if (state.smokeRunUrl.length > 0) noteParts.push(`[包 smoke](${state.smokeRunUrl})`);
   if (noteParts.length > 0) {
     elements.push({ tag: "note", elements: [{ tag: "lark_md", content: noteParts.join(" · ") }] });
   }

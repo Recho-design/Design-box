@@ -124,7 +124,6 @@
       "pipeline:*",
       "media:image",
       "media:video",
-      "media:audio",
       "fs:write"
     ],
     "useCase": {

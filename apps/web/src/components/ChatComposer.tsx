@@ -57,7 +57,6 @@ import type {
   ConnectorDetail,
   InstalledPluginRecord,
   PluginSourceKind,
-  ResearchOptions,
   RunContextSelection,
   WorkspaceCollabContext,
   WorkspaceContextItem,
@@ -368,7 +367,6 @@ interface Props {
   onAdoptPet?: (petId: string) => void;
   onTogglePet?: () => void;
   onOpenPetSettings?: () => void;
-  researchAvailable?: boolean;
   projectMetadata?: ProjectMetadata;
   // Fired after the daemon accepts a metadata PATCH, with the authoritative
   // post-patch project (fresh `updatedAt` included). Callers must replace
@@ -379,20 +377,6 @@ interface Props {
   activeWorkspaceContext?: WorkspaceContextItem | null;
   initialWorkspaceContexts?: WorkspaceContextItem[];
   workspaceContexts?: WorkspaceContextItem[];
-  // BYOK image-model picker shown above the textarea for protocols that
-  // inject the daemon-side generate_image tool (SenseAudio, AIHubMix).
-  // Hidden for every other BYOK tab so the composer stays clean. The
-  // state owner is ProjectView (per-session, reset on refresh);
-  // ChatComposer is a fully controlled select.
-  byokApiProtocol?: AppConfig['apiProtocol'];
-  byokImageModel?: string;
-  onChangeByokImageModel?: (model: string) => void;
-  byokVideoModel?: string;
-  onChangeByokVideoModel?: (model: string) => void;
-  byokSpeechModel?: string;
-  onChangeByokSpeechModel?: (model: string) => void;
-  byokSpeechVoice?: string;
-  onChangeByokSpeechVoice?: (voice: string) => void;
   currentSkillId?: string | null;
   onProjectSkillChange?: (skillId: string | null) => void;
   // Set when the project was created with a plugin already pinned
@@ -506,7 +490,6 @@ export interface ChatSendMeta {
    *  idempotent without collapsing separate sends that share the same text. */
   clientRequestId?: string;
   queueOnly?: boolean;
-  research?: ResearchOptions;
   context?: RunContextSelection;
   appliedPluginSnapshot?: AppliedPluginSnapshot;
   appliedPluginSnapshotId?: string;
@@ -591,21 +574,11 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       onAdoptPet,
       onTogglePet,
       onOpenPetSettings,
-      researchAvailable = false,
       projectMetadata,
       onProjectMetadataChange,
       activeWorkspaceContext = null,
       initialWorkspaceContexts = [],
       workspaceContexts = [],
-      byokApiProtocol,
-      byokImageModel,
-      onChangeByokImageModel,
-      byokVideoModel,
-      onChangeByokVideoModel,
-      byokSpeechModel,
-      onChangeByokSpeechModel,
-      byokSpeechVoice,
-      onChangeByokSpeechVoice,
       currentSkillId = null,
       onProjectSkillChange,
       pinnedPluginId = null,
@@ -1306,18 +1279,8 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
           argHint: s.label || s.transport,
         });
       }
-      if (researchAvailable) {
-        list.push({
-          id: 'search',
-          label: '/search',
-          insert: '/search ',
-          descKey: 'pet.slashSearch',
-          icon: 'sparkles',
-          argHint: t('pet.slashSearchArg'),
-        });
-      }
       return list;
-    }, [researchAvailable, t, enabledMcpServers, onOpenMcpSettings]);
+    }, [t, enabledMcpServers, onOpenMcpSettings]);
 
     const filteredSlash = useMemo(() => {
       if (!slash) return [] as SlashCommand[];
@@ -1373,35 +1336,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
       setDraft('');
       editorRef.current?.clear();
       return true;
-    }
-
-    function expandSearchCommand(input: string): { prompt: string; query: string } | null {
-      const m = /^\/search(?:\s+([\s\S]*))?$/i.exec(input.trim());
-      if (!m) return null;
-      const query = m[1]?.trim() ?? '';
-      if (!query) return null;
-      return {
-        query,
-        prompt: [
-          `Search for: ${query}`,
-          '',
-          'Before answering, your first tool action must be the OD research command for your shell.',
-          'POSIX: "$OD_NODE_BIN" "$OD_BIN" research search --query "<search query>" --max-sources 5',
-          'PowerShell: & $env:OD_NODE_BIN $env:OD_BIN research search --query "<search query>" --max-sources 5',
-          'cmd.exe: "%OD_NODE_BIN%" "%OD_BIN%" research search --query "<search query>" --max-sources 5',
-          'Use the canonical query below as the exact search query, with safe quoting for your shell.',
-          '',
-          'Canonical query:',
-          '',
-          '```text',
-          query.replace(/```/g, '`\u200b`\u200b`'),
-          '```',
-          "If the OD command fails, keep the stderr / exit status in the tool trace and daemon logs, then use your own search capability as fallback. Label the fallback clearly in your answer — the user asked for a search, so they are owed the fact that these results did not come from the research command, but not the provider name or the error text.",
-          'After the command returns JSON or fallback search results, write a reusable Markdown report into Design Files at `research/<safe-query-slug>.md` or another fresh project-relative path.',
-          'The report must include the query, fetched time, short summary, key findings, source list with [1], [2] citations, and a note that source content is external untrusted evidence.',
-          'Then summarize the findings with citations by source index and mention the Markdown report path.',
-        ].join('\n'),
-      };
     }
 
     // Parse a `/pet [arg]` slash command out of the draft. Recognized
@@ -3064,19 +2998,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, Props>(
         setStreamingAnnotationSendPending(false);
         notifyCompletionFeedbackGesture();
         beginComposedSend(() => onSend(hatched, staged, nextCommentAttachments, contextMeta));
-        return;
-      }
-      const search = researchAvailable ? expandSearchCommand(prompt) : null;
-      if (search) {
-        if (streaming) return;
-        setStreamingAnnotationSendPending(false);
-        notifyCompletionFeedbackGesture();
-        beginComposedSend(
-          () => onSend(search.prompt, staged, nextCommentAttachments, {
-            ...contextMeta,
-            research: { enabled: true, query: search.query },
-          }),
-        );
         return;
       }
       notifyCompletionFeedbackGesture();

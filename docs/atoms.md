@@ -31,7 +31,6 @@ never own the atom implementations; they only reference them by id.
 | `direction-picker` | Direction picker — optional Host-owned visual catalog when the user explicitly requests alternatives. | `new-generation`, `tune-collab` |
 | `todo-write` | Todo write — TodoWrite-driven plan. | all |
 | `file-read` / `file-write` / `file-edit` | File ops on the project cwd. | all |
-| `research-search` | Research search — Tavily-backed shallow research. | `new-generation` |
 | `media-image` / `media-video` / `media-audio` | Media generation through configured providers. | `new-generation`, `tune-collab` |
 | `live-artifact` | Create / refresh live artifacts. | `new-generation`, `tune-collab` |
 | `connector` | Composio connector tool calls. | `new-generation`, `tune-collab` |

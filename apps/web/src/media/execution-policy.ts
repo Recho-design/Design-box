@@ -21,11 +21,9 @@ export function mediaExecutionPolicyForProjectMetadata(
       ? { mode: 'enabled', allowedSurfaces: ['video'], allowedModels: [model] }
       : { mode: 'enabled', allowedSurfaces: ['video'] };
   }
-  if (metadata.kind === 'audio') {
-    const model = cleanModel(metadata.audioModel);
-    return model
-      ? { mode: 'enabled', allowedSurfaces: ['audio'], allowedModels: [model] }
-      : { mode: 'enabled', allowedSurfaces: ['audio'] };
-  }
+  // `kind: 'audio'` deliberately falls through: the audio surface is gone from
+  // the contract (`MEDIA_SURFACES` is image + video) and `ProjectMetadata` no
+  // longer carries `audioModel`, so there is nothing left to constrain. The
+  // daemon applies `DEFAULT_MEDIA_EXECUTION_POLICY` when no policy is sent.
   return undefined;
 }

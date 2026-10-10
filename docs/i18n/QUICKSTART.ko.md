@@ -193,7 +193,7 @@ pnpm tools-dev # daemon + web + desktop을 백그라운드로 시작합니다
 ```bash
 pnpm tools-dev                 # daemon + web + desktop을 백그라운드로
 pnpm tools-dev start web       # daemon + web을 백그라운드로
-pnpm tools-dev run web         # daemon + web을 포그라운드로 (e2e/dev 서버)
+pnpm tools-dev run web         # daemon + web을 포그라운드로 (dev server)
 pnpm tools-dev restart         # daemon + web + desktop 재시작
 pnpm tools-dev restart --daemon-port 7457 --web-port 5175
 pnpm tools-dev status          # 관리 중인 런타임 확인
@@ -298,8 +298,7 @@ open-design/
 │   │       │   └── defs/          # 런타임별 실행 및 인자 정의
 │   │       ├── skills.ts          # SKILL.md 로더 (frontmatter 파서)
 │   │       └── design-systems/    # DESIGN.md 로더 및 서비스
-│   │   ├── sidecar/           # tools-dev daemon sidecar 래퍼
-│   │   └── tests/             # daemon 패키지 테스트
+│   │   └── sidecar/           # tools-dev daemon sidecar 래퍼
 │   ├── web/                   # Next.js 16 App Router + React 클라이언트
 │       ├── app/               # App Router 진입점
 │       ├── src/               # React + TypeScript 클라이언트/런타임 모듈
@@ -318,13 +317,12 @@ open-design/
 │   ├── sidecar/               # 범용 sidecar 런타임 프리미티브
 │   └── platform/              # 범용 process/platform 프리미티브
 ├── tools/dev/                 # `pnpm tools-dev` 라이프사이클 및 inspect CLI
-├── e2e/                       # Playwright UI + 외부 통합/Vitest 하네스
 ├── skills/                    # 작업 중 호출하는 기능적 역량
 ├── design-templates/          # 프로토타입, deck, 문서, 미디어 렌더링 카탈로그
 ├── design-systems/            # DESIGN.md를 중심으로 한 브랜드 패키지
 ├── scripts/sync-design-systems.ts    # 업스트림 getdesign tarball에서 다시 import
 ├── docs/                      # 제품 비전 + 스펙
-├── pnpm-workspace.yaml        # apps/* + packages/* + tools/* + e2e
+├── pnpm-workspace.yaml        # apps/* + packages/* + tools/*
 └── package.json               # 루트 품질 스크립트 + `od` bin
 ```
 

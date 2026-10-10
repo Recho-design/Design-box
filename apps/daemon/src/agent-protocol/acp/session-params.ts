@@ -25,15 +25,15 @@ export interface AcpMcpServerInput {
 export interface AcpSessionOptions {
   mcpServers?: AcpMcpServerInput[];
   // How the `env` field of each mcpServer entry is shaped.
-  // `'array'` (default) → `[{name, value}]` (Hermes, Kimi, …).
-  // `'map'`   → `{"KEY": "val"}` (reasonix 1.x Go, standard MCP).
+  // `'array'` (default) → `[{name, value}]`.
+  // `'map'`   → `{"KEY": "val"}` (the standard MCP `map[string]string` shape).
   envFormat?: 'array' | 'map';
 }
 /**
  * Builds the params object for an ACP `session/new` JSON-RPC call. Resolves
  * `cwd` to an absolute path and normalises each MCP server entry's `env` field
- * between `'array'` format (`[{name, value}]`, default, used by Hermes/Kimi)
- * and `'map'` format (`{"KEY": "val"}`, used by reasonix and standard MCP).
+ * between `'array'` format (`[{name, value}]`, the default) and `'map'`
+ * format (`{"KEY": "val"}`, the standard MCP shape).
  *
  * MCP is optional — omit `mcpServers` to run without it. Never auto-installs
  * or mutates user/global MCP config.

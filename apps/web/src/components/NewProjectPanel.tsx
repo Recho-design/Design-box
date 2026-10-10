@@ -25,7 +25,6 @@ import { fetchPromptTemplate, openFolderDialog } from '../providers/registry';
 import { isStoredMediaProviderEntryPresent } from '../state/config';
 import { isMediaProviderPickerReady } from '../media/provider-readiness';
 import type {
-  AudioKind,
   DesignSystemSummary,
   MediaAspect,
   ProjectKind,
@@ -37,25 +36,17 @@ import type {
   SkillSummary,
 } from '../types';
 import {
-  AUDIO_DURATIONS_SEC,
-  AUDIO_MODELS_BY_KIND,
-  DEFAULT_AUDIO_MODEL,
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
   findProvider,
   imageModelIdForPromptTemplate,
   IMAGE_MODELS,
   MEDIA_ASPECTS,
+  MEDIA_PROVIDERS,
   type MediaModel,
   VIDEO_LENGTHS_SEC,
   VIDEO_MODELS,
 } from '../media/models';
-import {
-  mergeAihubmixModels,
-  useAIHubMixImageModels,
-  useAIHubMixVideoModels,
-  useAIHubMixAudioModels,
-} from '../media/aihubmix-image-models';
 import { formatPickAndImportFailure } from '../utils/pickAndImportError';
 import { useBrandsByDesignSystemId } from '../runtime/brands';
 import { BrandPreviewCard } from './BrandPreviewCard';
@@ -71,8 +62,6 @@ type PromptTemplatePick = {
   summary: PromptTemplateSummary;
   prompt: string;
 };
-
-const SFX_AUDIO_DURATIONS_SEC = AUDIO_DURATIONS_SEC.filter((sec) => sec <= 30);
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
 
@@ -124,7 +113,14 @@ const DESIGN_PLATFORMS: Array<{
 ];
 
 export type CreateTab = 'prototype' | 'live-artifact' | 'deck' | 'template' | 'media' | 'other';
-export type MediaSurface = 'image' | 'video' | 'audio';
+/**
+ * Media mode picked on the Media tab. Audio is gone: the audio surface left
+ * the contract (`MEDIA_SURFACES` is image + video), its model catalogue was
+ * removed from `src/media/models.ts`, and `ProjectMetadata` no longer carries
+ * the `audio*` fields — so there is no audio model, duration or voice left to
+ * pick.
+ */
+export type MediaSurface = 'image' | 'video';
 
 export interface CreateInput {
   name: string;
@@ -168,6 +164,14 @@ interface Props {
   connectors?: ConnectorDetail[];
   connectorsLoading?: boolean;
   onOpenConnectorsTab?: () => void;
+  /**
+   * Opens Settings → Media providers. Used by the media model picker's empty
+   * state when the user has no provider configured for the active surface, so
+   * the guidance has somewhere to go. Optional: the panel still renders the
+   * guidance copy without it (and callers that never offer Settings just omit
+   * it), it simply has no action button.
+   */
+  onOpenMediaSettings?: () => void;
   loading?: boolean;
   initialTab?: CreateTab;
 }
@@ -182,7 +186,7 @@ const TAB_LABEL_KEYS: Record<CreateTab, keyof Dict> = {
 };
 
 // Maps the New Project tab + media surface to the apply-result target
-// kind enum. `media` collapses to image/video/audio inside callers;
+// kind enum. `media` collapses to image/video inside callers;
 // this helper covers the non-media tabs and the live-artifact special
 // case. Media surfaces map case-by-case at the call site.
 function newProjectTabToApplyKind(
@@ -197,7 +201,7 @@ function newProjectTabToApplyKind(
       return 'live_artifact';
     case 'media':
       // Media tab has its own surface picker; the apply emission
-      // happens before the user selects image/video/audio, so we
+      // happens before the user selects image/video, so we
       // mark it `unknown` rather than guessing. The picker is also
       // typically hidden under media but the helper stays total.
       return 'unknown';
@@ -244,7 +248,6 @@ function deriveDesignSystemStatusValue(
 const MEDIA_SURFACE_LABEL_KEYS: Record<MediaSurface, keyof Dict> = {
   image: 'newproj.surfaceImage',
   video: 'newproj.surfaceVideo',
-  audio: 'newproj.surfaceAudio',
 };
 
 export function defaultDesignSystemSelection(
@@ -289,6 +292,7 @@ export function NewProjectPanel({
   connectors,
   connectorsLoading = false,
   onOpenConnectorsTab,
+  onOpenMediaSettings,
   loading = false,
   initialTab = 'prototype',
 }: Props) {
@@ -321,9 +325,9 @@ export function NewProjectPanel({
       tab_name: createTabToTracking(tab),
     });
   }, [tab, analytics.track]);
-  // Media tab consolidates image / video / audio. The active surface picks
+  // Media tab consolidates image / video. The active surface picks
   // which set of options + skill resolution applies; submission still maps
-  // back to the existing image/video/audio ProjectKind branches so the
+  // back to the existing image/video ProjectKind branches so the
   // backend contract is unchanged.
   const [mediaSurface, setMediaSurface] = useState<MediaSurface>('image');
   const tabsRef = useRef<HTMLDivElement | null>(null);
@@ -367,10 +371,6 @@ export function NewProjectPanel({
   const [videoModelTouched, setVideoModelTouched] = useState(false);
   const [videoAspect, setVideoAspect] = useState<MediaAspect>('16:9');
   const [videoLength, setVideoLength] = useState(5);
-  const [audioKind, setAudioKind] = useState<AudioKind>('speech');
-  const [audioModel, setAudioModel] = useState(DEFAULT_AUDIO_MODEL.speech);
-  const [audioDuration, setAudioDuration] = useState(10);
-  const [voice, setVoice] = useState('');
   // Per-surface curated prompt template the user picked. Tracked
   // independently for image vs video so flipping tabs doesn't clobber the
   // other one's pick. The body is editable in-line and the edited copy is
@@ -384,7 +384,7 @@ export function NewProjectPanel({
   // Design system is meaningful only for the structured/visual surfaces
   // (prototype, deck, template, and the freeform "other" canvas). The
   // media surfaces use prompt templates instead — design tokens don't map
-  // onto image/video/audio generations, and the picker just adds noise
+  // onto image/video generations, and the picker just adds noise
   // there. Keep this list explicit so future tabs declare their intent.
   const tabSupportsDesignSystem =
     tab === 'prototype' ||
@@ -576,9 +576,10 @@ export function NewProjectPanel({
         : pick;
     setImagePromptTemplate(normalizedPick);
     const m = normalizedModel;
-    // Accept catalogued ids plus any live AIHubMix catalogue id (aihubmix-*),
-    // which renders dynamically and won't appear in the static IMAGE_MODELS.
-    if (m && (IMAGE_MODELS.some((x) => x.id === m) || m.startsWith('aihubmix-'))) setImageModel(m);
+    // Only catalogued ids may travel as the project's image model. The live
+    // AIHubMix catalogue that used to be accepted here is gone with the
+    // provider, so an id outside `IMAGE_MODELS` is left to the agent.
+    if (m && IMAGE_MODELS.some((x) => x.id === m)) setImageModel(m);
     const a = pick?.summary.aspect;
     if (a && (MEDIA_ASPECTS as readonly string[]).includes(a)) {
       setImageAspect(a as MediaAspect);
@@ -722,7 +723,7 @@ export function NewProjectPanel({
     // Media surfaces don't carry a design system pick. Force the primary
     // and inspiration ids to empty there so the New Project panel can't
     // accidentally bind a stale DS that the user can no longer see in the
-    // form (the picker is hidden for image/video/audio).
+    // form (the picker is hidden for image/video).
     const { primary: primaryDs, inspirations } =
       buildDesignSystemCreateSelection(showDesignSystemPicker, selectedDsIds);
     const promptTemplatePick =
@@ -750,10 +751,6 @@ export function NewProjectPanel({
       videoModel,
       videoAspect,
       videoLength,
-      audioKind,
-      audioModel,
-      audioDuration,
-      voice,
       inspirationIds: inspirations,
       promptTemplate: promptTemplatePick,
     });
@@ -1074,6 +1071,7 @@ export function NewProjectPanel({
             mediaProviders={mediaProviders}
             onImageModel={setImageModel}
             onImageAspect={setImageAspect}
+            {...(onOpenMediaSettings ? { onOpenSettings: onOpenMediaSettings } : {})}
           />
         ) : null}
 
@@ -1087,27 +1085,7 @@ export function NewProjectPanel({
             onVideoModel={handleVideoModel}
             onVideoAspect={setVideoAspect}
             onVideoLength={setVideoLength}
-          />
-        ) : null}
-
-        {tab === 'media' && mediaSurface === 'audio' ? (
-          <MediaProjectOptions
-            surface="audio"
-            audioKind={audioKind}
-            audioModel={audioModel}
-            audioDuration={audioDuration}
-            voice={voice}
-            mediaProviders={mediaProviders}
-            onAudioKind={(kind) => {
-              setAudioKind(kind);
-              setAudioModel(DEFAULT_AUDIO_MODEL[kind]);
-              if (kind === 'sfx') {
-                setAudioDuration((duration) => Math.min(duration, SFX_AUDIO_DURATIONS_SEC.at(-1) ?? 30));
-              }
-            }}
-            onAudioModel={setAudioModel}
-            onAudioDuration={setAudioDuration}
-            onVoice={setVoice}
+            {...(onOpenMediaSettings ? { onOpenSettings: onOpenMediaSettings } : {})}
           />
         ) : null}
 
@@ -2645,6 +2623,7 @@ function MediaProjectOptions(props:
       mediaProviders?: Record<string, MediaProviderCredentials>;
       onImageModel: (value: string) => void;
       onImageAspect: (value: MediaAspect) => void;
+      onOpenSettings?: () => void;
     }
   | {
       surface: 'video';
@@ -2655,34 +2634,21 @@ function MediaProjectOptions(props:
       onVideoModel: (value: string) => void;
       onVideoAspect: (value: MediaAspect) => void;
       onVideoLength: (value: number) => void;
-    }
-  | {
-      surface: 'audio';
-      audioKind: AudioKind;
-      audioModel: string;
-      audioDuration: number;
-      voice: string;
-      mediaProviders?: Record<string, MediaProviderCredentials>;
-      onAudioKind: (value: AudioKind) => void;
-      onAudioModel: (value: string) => void;
-      onAudioDuration: (value: number) => void;
-      onVoice: (value: string) => void;
+      onOpenSettings?: () => void;
     }
 ) {
   const t = useT();
-  const aihubmixImageModels = useAIHubMixImageModels();
-  const aihubmixVideoModels = useAIHubMixVideoModels();
-  const aihubmixAudioModels = useAIHubMixAudioModels();
 
   if (props.surface === 'image') {
     return (
       <div className="newproj-media-options">
         <MediaModelCards
           label={t('newproj.modelLabel')}
-          models={supportedModels('image', mergeAihubmixModels(IMAGE_MODELS, aihubmixImageModels))}
+          models={supportedModels(IMAGE_MODELS)}
           mediaProviders={props.mediaProviders}
           value={props.imageModel}
           onChange={props.onImageModel}
+          onOpenSettings={props.onOpenSettings}
         />
         <AspectCards
           label={t('newproj.aspectLabel')}
@@ -2693,91 +2659,49 @@ function MediaProjectOptions(props:
     );
   }
 
-  if (props.surface === 'video') {
-    return (
-      <div className="newproj-media-options">
-        <MediaModelCards
-          label={t('newproj.modelLabel')}
-          models={supportedModels('video', mergeAihubmixModels(VIDEO_MODELS, aihubmixVideoModels))}
-          mediaProviders={props.mediaProviders}
-          value={props.videoModel}
-          onChange={props.onVideoModel}
-        />
-        <AspectCards
-          label={t('newproj.aspectLabel')}
-          value={props.videoAspect}
-          onChange={props.onVideoAspect}
-        />
-        <label className="newproj-label">
-          <span>{t('newproj.videoLengthLabel')}</span>
-          <select value={props.videoLength} onChange={(e) => props.onVideoLength(Number(e.target.value))}>
-            {VIDEO_LENGTHS_SEC.map((sec) => (
-              <option key={sec} value={sec}>{t('newproj.videoLengthSeconds', { n: sec })}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-    );
-  }
-
-  // AIHubMix's live catalogue is speech (TTS) only; music/sfx stay static.
-  const audioBase =
-    props.audioKind === 'speech'
-      ? mergeAihubmixModels(AUDIO_MODELS_BY_KIND.speech, aihubmixAudioModels)
-      : AUDIO_MODELS_BY_KIND[props.audioKind];
-  const models = supportedModels('audio', audioBase);
-  const audioDurations = props.audioKind === 'sfx'
-    ? SFX_AUDIO_DURATIONS_SEC
-    : AUDIO_DURATIONS_SEC;
   return (
     <div className="newproj-media-options">
-      <OptionCards
-        label={t('newproj.audioKindLabel')}
-        options={[
-          { value: 'speech' as const, title: t('newproj.audioKindSpeech') },
-          { value: 'sfx' as const, title: t('newproj.audioKindSfx') },
-        ]}
-        value={props.audioKind}
-        onChange={props.onAudioKind}
-      />
       <MediaModelCards
         label={t('newproj.modelLabel')}
-        models={models}
+        models={supportedModels(VIDEO_MODELS)}
         mediaProviders={props.mediaProviders}
-        value={props.audioModel}
-        onChange={props.onAudioModel}
+        value={props.videoModel}
+        onChange={props.onVideoModel}
+        onOpenSettings={props.onOpenSettings}
+      />
+      <AspectCards
+        label={t('newproj.aspectLabel')}
+        value={props.videoAspect}
+        onChange={props.onVideoAspect}
       />
       <label className="newproj-label">
-        <span>{t('newproj.audioDurationLabel')}</span>
-        <select value={props.audioDuration} onChange={(e) => props.onAudioDuration(Number(e.target.value))}>
-          {audioDurations.map((sec) => (
-            <option key={sec} value={sec}>{t('newproj.audioDurationSeconds', { n: sec })}</option>
+        <span>{t('newproj.videoLengthLabel')}</span>
+        <select value={props.videoLength} onChange={(e) => props.onVideoLength(Number(e.target.value))}>
+          {VIDEO_LENGTHS_SEC.map((sec) => (
+            <option key={sec} value={sec}>{t('newproj.videoLengthSeconds', { n: sec })}</option>
           ))}
         </select>
       </label>
-      {props.audioKind === 'speech' ? (
-        <label className="newproj-label">
-          <span>{t('newproj.voiceLabel')}</span>
-          <input
-            value={props.voice}
-            placeholder={t('newproj.voicePlaceholder')}
-            onChange={(e) => props.onVoice(e.target.value)}
-          />
-        </label>
-      ) : null}
     </div>
   );
 }
 
-export function supportedModels(surface: 'image' | 'video' | 'audio', models: MediaModel[]): MediaModel[] {
-  const supportedProviders: Record<'image' | 'video' | 'audio', Set<string>> = {
-    image: new Set(['openai', 'volcengine', 'grok', 'nanobanana', 'openrouter', 'imagerouter', 'leonardo', 'custom-image', 'aihubmix', 'minimax']),
-    video: new Set(['volcengine', 'hyperframes', 'grok', 'openrouter', 'imagerouter', 'aihubmix']),
-    audio: new Set(['minimax', 'fishaudio', 'senseaudio', 'elevenlabs', 'openai', 'volcengine', 'aihubmix']),
-  };
+/**
+ * Providers whose models the New Project media pickers may offer. Every id
+ * here is one of the seven providers the daemon still ships a client for; the
+ * surface catalogue handed to {@link supportedModels} is the authority on
+ * which of them serve a given surface. Whether a listed provider is actually
+ * *usable* is decided per-user by `isMediaProviderPickerReady` — this filter
+ * only drops models whose provider has no renderer behind it at all.
+ */
+export const SUPPORTED_MEDIA_PROVIDER_IDS: ReadonlySet<string> = new Set(
+  MEDIA_PROVIDERS.map((provider) => provider.id),
+);
+
+export function supportedModels(models: MediaModel[]): MediaModel[] {
   return models.filter((model) => {
     const provider = findProvider(model.provider);
-    return provider?.integrated === true && supportedProviders[surface].has(model.provider);
+    return provider?.integrated === true && SUPPORTED_MEDIA_PROVIDER_IDS.has(model.provider);
   });
 }
 
@@ -2787,12 +2711,14 @@ function MediaModelCards({
   mediaProviders,
   value,
   onChange,
+  onOpenSettings,
 }: {
   label: string;
   models: MediaModel[];
   mediaProviders?: Record<string, MediaProviderCredentials>;
   value: string;
   onChange: (value: string) => void;
+  onOpenSettings?: () => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -2920,6 +2846,42 @@ function MediaModelCards({
       : `${selected.group.providerLabel} · ${selected.model.hint}`
     : t('newproj.modelMissingSub');
 
+  // No provider behind this surface is usable yet — `isMediaProviderPickerReady`
+  // dropped every group. Rendering an empty listbox would leave the user with a
+  // dead control and no explanation, so the picker is replaced by guidance
+  // pointing at Settings → Media providers instead of offering a model the run
+  // cannot dispatch.
+  if (groups.length === 0) {
+    return (
+      <div
+        className="newproj-section model-picker model-picker-empty"
+        ref={wrapRef}
+        data-testid="model-picker-empty"
+      >
+        <label className="newproj-label">{label}</label>
+        <div className="newproj-model-empty" role="status">
+          <span className="newproj-model-empty-title">
+            {t('newproj.modelNoProviderTitle')}
+          </span>
+          <span className="newproj-model-empty-sub">
+            {t('newproj.modelNoProviderBody')}
+          </span>
+          {onOpenSettings ? (
+            <button
+              type="button"
+              className="ghost newproj-model-empty-action"
+              data-testid="model-picker-empty-settings"
+              onClick={onOpenSettings}
+            >
+              <Icon name="settings" size={14} />
+              <span>{t('newproj.modelNoProviderAction')}</span>
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="newproj-section ds-picker model-picker" ref={wrapRef}>
       <label className="newproj-label">{label}</label>
@@ -2985,11 +2947,6 @@ function MediaModelCards({
                         <span className="ds-picker-item-text">
                           <span className="ds-picker-item-title">
                             {model.label}
-                            {model.default ? (
-                              <span className="ds-picker-item-badge">
-                                {t('newproj.modelRecommended')}
-                              </span>
-                            ) : null}
                           </span>
                           <span className="ds-picker-item-sub">{model.hint}</span>
                         </span>
@@ -3051,38 +3008,6 @@ function AspectCards({
   );
 }
 
-function OptionCards<T extends string | number>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: Array<{ value: T; title: string; hint?: string }>;
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="newproj-media-field">
-      <div className="newproj-label">{label}</div>
-      <div className="newproj-option-grid compact">
-        {options.map((option) => (
-          <button
-            key={String(option.value)}
-            type="button"
-            className={`newproj-card newproj-option-card${value === option.value ? ' active' : ''}`}
-            onClick={() => onChange(option.value)}
-            aria-pressed={value === option.value}
-          >
-            <span>{option.title}</span>
-            {option.hint ? <small>{option.hint}</small> : null}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function buildMetadata(input: {
   tab: CreateTab;
   mediaSurface: MediaSurface;
@@ -3099,10 +3024,6 @@ function buildMetadata(input: {
   videoModel: string;
   videoAspect: MediaAspect;
   videoLength: number;
-  audioKind: AudioKind;
-  audioModel: string;
-  audioDuration: number;
-  voice: string;
   inspirationIds: string[];
   promptTemplate: PromptTemplatePick | null;
 }): ProjectMetadata {
@@ -3168,26 +3089,16 @@ function buildMetadata(input: {
         ...inspirations,
       };
     }
-    if (input.mediaSurface === 'video') {
-      const videoModel = input.videoModel.trim();
-      return {
-        kind,
-        ...(videoModel ? { videoModel } : {}),
-        videoAspect: input.videoAspect,
-        videoLength: input.videoLength,
-        ...buildPromptTemplateMetadata(input.promptTemplate),
-        ...inspirations,
-      };
-    }
-    const audioModel = input.audioModel.trim();
+    // `mediaSurface` is image | video; the audio surface left the contract
+    // along with its `audio*` metadata fields, so every remaining media
+    // project binds a model on one of those two.
+    const videoModel = input.videoModel.trim();
     return {
-      kind,
-      audioKind: input.audioKind,
-      ...(audioModel ? { audioModel } : {}),
-      audioDuration: input.audioDuration,
-      ...(input.audioKind === 'speech' && input.voice.trim()
-        ? { voice: input.voice.trim() }
-        : {}),
+      kind: 'video',
+      ...(videoModel ? { videoModel } : {}),
+      videoAspect: input.videoAspect,
+      videoLength: input.videoLength,
+      ...buildPromptTemplateMetadata(input.promptTemplate),
       ...inspirations,
     };
   }
@@ -3289,14 +3200,10 @@ function titleForTab(
       return t('newproj.titleTemplate');
     case 'media': {
       // Title tracks the active surface so the heading still reads "New
-      // image" / "New video" / "New audio" — the shared "Media" label only
-      // appears on the tab strip itself.
+      // image" / "New video" — the shared "Media" label only appears on the
+      // tab strip itself.
       const key: keyof Dict =
-        mediaSurface === 'image'
-          ? 'newproj.titleImage'
-          : mediaSurface === 'video'
-            ? 'newproj.titleVideo'
-            : 'newproj.titleAudio';
+        mediaSurface === 'image' ? 'newproj.titleImage' : 'newproj.titleVideo';
       return t(key);
     }
     case 'other':
@@ -3310,8 +3217,8 @@ function autoName(
   t: TranslateFn,
 ): string {
   const stamp = new Date().toLocaleDateString();
-  // For the Media tab the auto name reads "Image · {date}" / "Video · …" /
-  // "Audio · …" so the project list still surfaces the actual surface.
+  // For the Media tab the auto name reads "Image · {date}" / "Video · …" so
+  // the project list still surfaces the actual surface.
   const labelKey: keyof Dict =
     tab === 'media' ? MEDIA_SURFACE_LABEL_KEYS[mediaSurface] : TAB_LABEL_KEYS[tab];
   return `${t(labelKey)} · ${stamp}`;

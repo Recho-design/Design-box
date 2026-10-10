@@ -13,7 +13,7 @@ from typing import Any
 from lib.github import GitHubError, append_outputs, event_payload, latest_run_artifact
 
 SCHEMA_VERSION = 1
-KINDS = {"comment", "autofix", "report", "convergence"}
+KINDS = {"comment", "autofix", "convergence"}
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -58,8 +58,6 @@ def payload_path(root: Path, kind: str, handoff_id: str) -> Path:
         else "patch.diff"
         if kind == "autofix"
         else "candidate.json"
-        if kind == "convergence"
-        else "request.json"
     )
     return handoff_dir(root, kind, handoff_id) / filename
 
@@ -171,20 +169,6 @@ def require_artifact_pattern(value: Any, label: str) -> str:
     return pattern
 
 
-def validate_report(entry_dir: Path) -> dict[str, Any]:
-    metadata = load_metadata(entry_dir / "metadata.json")
-    normalized = validate_common(entry_dir, "report")
-    normalized.update(
-        {
-            "report_type": require_slug(require_text(metadata.get("report_type"), "report_type"), "report_type"),
-            "artifact_pattern": require_artifact_pattern(metadata.get("artifact_pattern"), "artifact_pattern"),
-            "output_comment_id": require_slug(require_text(metadata.get("output_comment_id"), "output_comment_id"), "output_comment_id"),
-            "marker": require_text(metadata.get("marker"), "marker"),
-        }
-    )
-    return normalized
-
-
 def validate_convergence(entry_dir: Path) -> dict[str, Any]:
     metadata = load_metadata(entry_dir / "metadata.json")
     expected = {
@@ -265,9 +249,7 @@ def validate_entry(kind: str, entry_dir: Path) -> dict[str, Any]:
         return validate_comment(entry_dir)
     if kind == "autofix":
         return validate_autofix(entry_dir)
-    if kind == "convergence":
-        return validate_convergence(entry_dir)
-    return validate_report(entry_dir)
+    return validate_convergence(entry_dir)
 
 
 def write_convergence(root: Path, handoff_id: str, candidate: dict[str, Any]) -> Path:
@@ -389,26 +371,6 @@ def self_check() -> None:
             ),
             encoding="utf-8",
         )
-        report = handoff_dir(root, "report", "visual-pr")
-        report.mkdir(parents=True)
-        (report / "metadata.json").write_text(
-            json.dumps(
-                {
-                    "schema_version": SCHEMA_VERSION,
-                    "kind": "report",
-                    "id": "visual-pr",
-                    "pr_number": 12,
-                    "head_sha": "a" * 40,
-                    "base_sha": "b" * 40,
-                    "run_id": 34,
-                    "report_type": "visual-pr",
-                    "artifact_pattern": "visual-pr-capture-12-34-*",
-                    "output_comment_id": "visual-pr-report",
-                    "marker": "<!-- visual-regression-bot -->",
-                }
-            ),
-            encoding="utf-8",
-        )
         candidate = {
             "repositoryId": 56,
             "repository": "nexu-io/open-design",
@@ -426,15 +388,12 @@ def self_check() -> None:
         convergence = write_convergence(root, "ci-results", candidate)
         assert artifact_name("comment", "visual-pr-app") == "handoff-comment-visual-pr-app"
         assert artifact_pattern("autofix") == "handoff-autofix-*"
-        assert artifact_name("report", "visual-pr") == "handoff-report-visual-pr"
         assert artifact_name("convergence", "ci-results") == "handoff-convergence-ci-results"
         assert validate_entry("comment", comment)["marker"] == marker
         assert validate_entry("autofix", autofix)["allowed_paths"] == ["generated/example.txt"]
-        assert validate_entry("report", report)["artifact_pattern"] == "visual-pr-capture-12-34-*"
         assert validate_entry("convergence", convergence)["policy"] == "ci-v1"
         assert len(candidate_entry_dirs(root, "comment")) == 1
         assert len(candidate_entry_dirs(root, "autofix")) == 1
-        assert len(candidate_entry_dirs(root, "report")) == 1
         assert len(candidate_entry_dirs(root, "convergence")) == 1
     print("handoff self-check passed")
 

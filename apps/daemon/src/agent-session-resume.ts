@@ -308,8 +308,8 @@ export function resolveResumeContinuationSeed(input: {
  * Persist a captured upstream session for a successful run.
  *
  * A missing captured session on a successful run means the adapter could not
- * safely identify the child session it just created (for example, ambiguous pi
- * `.jsonl` writes in a shared cwd). Clear the stored row so the next turn does
+ * safely identify the child session it just created (for example, ambiguous
+ * session-file writes in a shared cwd). Clear the stored row so the next turn does
  * not resume stale history; it will start fresh and seed from the transcript.
  */
 export function persistCapturedAgentSession(
@@ -491,6 +491,6 @@ export function isAgentResumeFailure(
   }
   if (agentId === 'codex') return isCodexResumeFailure(stderr);
   if (agentId === 'opencode') return isOpencodeResumeFailure(stderr);
-  // claude + codebuddy share Claude Code's stream-json result shape.
+  // claude uses Claude Code's stream-json result shape.
   return isClaudeResumeFailure(stderr, stdout);
 }

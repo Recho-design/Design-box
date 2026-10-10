@@ -251,19 +251,18 @@ export interface ConnectionTestDiagnostics {
 export type ConnectionTestProtocol =
   | 'anthropic'
   | 'openai'
-  | 'azure'
   | 'google'
-  | 'ollama'
-  | 'senseaudio'
-  | 'aihubmix'
-  | 'bedrock';
+  | 'deepseek'
+  | 'xai'
+  | 'custom';
 
 export interface ProviderTestRequest extends ReasoningExecutionRequestFields {
   protocol: ConnectionTestProtocol;
   baseUrl: string;
   apiKey: string;
   model: string;
-  // Azure only. When omitted, the daemon falls back to its default api-version.
+  // Retained for shape compatibility with saved configs; the daemon no longer
+  // branches on it for any protocol.
   apiVersion?: string;
 }
 

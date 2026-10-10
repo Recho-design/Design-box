@@ -3421,17 +3421,8 @@ interface ModelOptionIconSpec {
   tone:
     | 'openai'
     | 'dalle'
-    | 'seed'
-    | 'sense'
     | 'grok'
     | 'google'
-    | 'router'
-    | 'flux'
-    | 'elevenlabs'
-    | 'fishaudio'
-    | 'minimax'
-    | 'suno'
-    | 'audio'
     | 'custom';
   src?: string;
 }
@@ -3573,43 +3564,21 @@ function footerInputValueIcon(field: InputFieldSpec, value: string): IconName | 
   return undefined;
 }
 
+// Brand mark for a media model id. Only the four renderer families the
+// catalogue still ships get artwork — everything else (hyperframes-html,
+// custom-image, a hand-typed override) falls back to derived initials rather
+// than borrowing another vendor's logo.
 function modelOptionIcon(value: string, label: string): ModelOptionIconSpec {
   const normalized = `${value} ${label}`.toLowerCase();
   if (normalized.includes('dall-e')) return { label: 'OpenAI', tone: 'dalle', src: '/model-icons/openai.svg' };
   if (normalized.includes('gpt-image') || normalized.includes('openai') || normalized.includes('sora')) {
     return { label: 'OpenAI', tone: 'openai', src: '/model-icons/openai.svg' };
   }
-  if (normalized.includes('seedream') || normalized.includes('seededit') || normalized.includes('seedance') || normalized.includes('doubao') || normalized.includes('bytedance')) {
-    return { label: 'ByteDance', tone: 'seed', src: '/model-icons/bytedance.svg' };
-  }
-  if (normalized.includes('senseaudio')) return { label: 'SA', tone: 'sense' };
   if (normalized.includes('grok') || normalized.includes('xai') || normalized.includes('xai/')) {
     return { label: 'xAI', tone: 'grok', src: '/model-icons/x.svg' };
   }
   if (normalized.includes('gemini') || normalized.includes('imagen') || normalized.includes('veo') || normalized.includes('google') || normalized.includes('nano-banana')) {
     return { label: 'Google Gemini', tone: 'google', src: '/model-icons/google-gemini.svg' };
-  }
-  if (normalized.includes('flux') || normalized.includes('bfl') || normalized.includes('black-forest')) {
-    return { label: 'FLUX', tone: 'flux', src: '/model-icons/flux.svg' };
-  }
-  if (normalized.includes('openrouter')) return { label: 'OpenRouter', tone: 'router', src: '/model-icons/openrouter.svg' };
-  if (normalized.includes('imagerouter') || normalized.includes('/')) return { label: 'IR', tone: 'router' };
-  if (normalized.includes('eleven')) {
-    return { label: 'ElevenLabs', tone: 'elevenlabs', src: '/model-icons/elevenlabs.svg' };
-  }
-  if (normalized.includes('fish')) {
-    return { label: 'Fish Audio', tone: 'fishaudio', src: '/model-icons/fishaudio.svg' };
-  }
-  if (normalized.includes('minimax')) {
-    return { label: 'MiniMax', tone: 'minimax', src: '/model-icons/minimax.svg' };
-  }
-  if (normalized.includes('suno')) return { label: 'Suno', tone: 'suno', src: '/model-icons/suno.svg' };
-  if (
-    normalized.includes('udio') ||
-    normalized.includes('audio') ||
-    normalized.includes('voice')
-  ) {
-    return { label: modelInitials(label), tone: 'audio' };
   }
   return { label: modelInitials(label || value), tone: 'custom' };
 }
@@ -4662,12 +4631,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Create a 3-second logo outro using line convergence, subtle elasticity, and the brand color system",
       "Make an animated flight-route map showing city nodes, route growth, mileage data, and a final summary frame",
     ],
-    audio: [
-      "Generate a product startup sound that feels light, trustworthy, slightly futuristic, and suitable for a desktop app launch",
-      "Create a 20-second podcast intro bed with a warm opening, clear pulse, and a clean handoff into voiceover",
-      "Make a seamless ambient loop for a meditation app using soft nature textures, low-frequency warmth, and calm pacing",
-      "Generate a branded notification sound set for success, reminder, and error states while keeping one sonic identity",
-    ],
   },
   "id": {
     prototype: [
@@ -4700,12 +4663,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Buat outro logo 3 detik menggunakan pertemuan garis, elastisitas halus, dan sistem warna brand",
       "Buat peta rute penerbangan beranimasi yang menampilkan node kota, pertumbuhan rute, data jarak tempuh, dan frame ringkasan akhir",
     ],
-    audio: [
-      "Buat suara startup produk yang terasa ringan, terpercaya, sedikit futuristik, dan cocok untuk peluncuran app desktop",
-      "Buat bed intro podcast 20 detik dengan pembuka hangat, pulsa yang jelas, dan transisi mulus ke voiceover",
-      "Buat loop ambient mulus untuk app meditasi menggunakan tekstur alam yang lembut, kehangatan frekuensi rendah, dan tempo yang tenang",
-      "Buat set suara notifikasi berbranding untuk state sukses, pengingat, dan error dengan tetap menjaga satu identitas sonik",
-    ],
   },
   "de": {
     prototype: [
@@ -4737,12 +4694,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Generiere eine audioreaktive Datenvisualisierung, bei der Balken, Partikel und Titel auf den Rhythmus der Erzählung reagieren",
       "Erstelle ein 3-sekündiges Logo-Outro mit zusammenlaufenden Linien, subtiler Elastizität und dem Markenfarbsystem",
       "Erstelle eine animierte Flugrouten-Karte mit Stadtknoten, wachsenden Routen, Meilendaten und einem abschließenden Zusammenfassungsframe",
-    ],
-    audio: [
-      "Generiere einen Produkt-Startsound, der sich leicht, vertrauenswürdig, leicht futuristisch anfühlt und für den Launch einer Desktop-App geeignet ist",
-      "Erstelle ein 20-sekündiges Podcast-Intro-Bett mit warmem Einstieg, klarem Puls und sauberem Übergang in den Voiceover",
-      "Erstelle einen nahtlosen Ambient-Loop für eine Meditations-App mit sanften Naturtexturen, tieffrequenter Wärme und ruhigem Tempo",
-      "Generiere ein gebrandetes Benachrichtigungston-Set für Erfolgs-, Erinnerungs- und Fehlerzustände mit einer einheitlichen Klangidentität",
     ],
   },
   "zh-CN": {
@@ -4779,12 +4730,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "制作 logo outro 动效，用线条收束、轻微弹性和品牌色完成 3 秒结尾动画",
       "做一个航线地图动态演示，展示城市节点、路径增长、里程数据和最终汇总画面",
     ],
-    audio: [
-      "生成一段产品启动音效，听起来轻盈、可信、带一点未来感，适合桌面 App 打开时播放",
-      "制作 20 秒播客片头音乐，包含温暖前奏、清晰节拍和适合人声进入的收尾",
-      "做一个冥想 App 的环境音循环，使用柔和自然声、低频铺底和无缝循环结构",
-      "生成一组品牌通知提示音，区分成功、提醒和错误状态，但保持同一声音识别度",
-    ],
   },
   "zh-TW": {
     prototype: [
@@ -4816,12 +4761,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "產生一個聲音反應式資料視覺化，讓長條、粒子與標題隨旁白節拍律動",
       "運用線條匯聚、細膩彈性動態與品牌色彩系統，製作一個 3 秒的 logo 收尾動畫",
       "製作一張動態飛行航線地圖，呈現城市節點、航線延伸、里程數據與最終摘要畫面",
-    ],
-    audio: [
-      "產生一個產品啟動音效，感覺輕盈、值得信賴、略帶未來感，適合桌面 app 啟動使用",
-      "製作一段 20 秒的 Podcast 開場墊樂，溫暖開場、脈動清晰，並乾淨地接入旁白",
-      "為冥想 app 製作無縫環境音循環，運用柔和的自然音質、低頻溫暖感與沉穩的節奏",
-      "產生一組品牌通知音效，涵蓋成功、提醒與錯誤狀態，並維持一致的聲音識別",
     ],
   },
   "pt-BR": {
@@ -4855,12 +4794,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Crie um outro de logo de 3 segundos usando convergência de linhas, elasticidade sutil e o sistema de cores da marca",
       "Faça um mapa animado de rotas de voo mostrando nós de cidades, crescimento das rotas, dados de milhagem e um quadro final de resumo",
     ],
-    audio: [
-      "Gere um som de inicialização de produto que soe leve, confiável, levemente futurista e adequado para o lançamento de um app desktop",
-      "Crie uma base de abertura de podcast de 20 segundos com início acolhedor, pulso nítido e uma transição limpa para a locução",
-      "Faça um loop ambiente contínuo para um app de meditação usando texturas suaves da natureza, calor de baixa frequência e ritmo tranquilo",
-      "Gere um conjunto de sons de notificação da marca para os estados de sucesso, lembrete e erro mantendo uma única identidade sonora",
-    ],
   },
   "es-ES": {
     prototype: [
@@ -4892,12 +4825,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Genera una visualización de datos reactiva al audio donde barras, partículas y títulos respondan al ritmo de la narración",
       "Crea un outro de logo de 3 segundos con líneas que convergen, una elasticidad sutil y el sistema de color de la marca",
       "Crea un mapa animado de rutas de vuelo que muestre nodos de ciudades, el crecimiento de las rutas, datos de millas y un fotograma final de resumen",
-    ],
-    audio: [
-      "Genera un sonido de inicio de producto que transmita ligereza, confianza y un toque futurista, ideal para el lanzamiento de una app de escritorio",
-      "Crea una base de intro de pódcast de 20 segundos con una apertura cálida, un pulso claro y una transición limpia hacia la voz en off",
-      "Crea un loop ambiental fluido para una app de meditación con texturas suaves de la naturaleza, calidez de baja frecuencia y un ritmo tranquilo",
-      "Genera un set de sonidos de notificación de marca para los estados de éxito, recordatorio y error manteniendo una misma identidad sonora",
     ],
   },
   "ru": {
@@ -4931,12 +4858,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Создайте 3-секундную заставку с logo на основе схождения линий, лёгкой упругости и фирменной цветовой системы",
       "Сделайте анимированную карту авиамаршрутов с узлами городов, ростом маршрутов, данными о километраже и итоговым кадром",
     ],
-    audio: [
-      "Сгенерируйте звук запуска продукта — лёгкий, вызывающий доверие, слегка футуристичный и подходящий для запуска десктопного app",
-      "Создайте 20-секундную подложку для интро подкаста с тёплым началом, чётким пульсом и плавным переходом к озвучке",
-      "Сделайте бесшовный эмбиент-луп для приложения для медитации с мягкими природными текстурами, низкочастотным теплом и спокойным темпом",
-      "Сгенерируйте набор фирменных звуков уведомлений для успеха, напоминания и ошибки, сохранив единую звуковую идентичность",
-    ],
   },
   "fa": {
     prototype: [
@@ -4968,12 +4889,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "یک مصورسازی داده واکنش‌گرا به صدا بساز که میله‌ها، ذرات و عنوان‌ها به ضرب‌آهنگ روایت پاسخ بدهند",
       "یک اوترو logo سه‌ثانیه‌ای بساز با همگرایی خطوط، کشسانی ظریف و سیستم رنگ برند",
       "یک نقشه مسیر پرواز متحرک بساز که نقاط شهرها، رشد مسیر، داده‌های مسافت و یک فریم خلاصه نهایی را نشان بدهد",
-    ],
-    audio: [
-      "یک صدای راه‌اندازی محصول بساز که سبک، قابل‌اعتماد، کمی آینده‌نگرانه و مناسب عرضه یک app دسکتاپ باشد",
-      "یک بستر آغازین پادکست ۲۰ ثانیه‌ای بساز با شروعی گرم، ضربان شفاف و واگذاری تمیز به صدای گوینده",
-      "یک لوپ محیطی یکپارچه برای یک app مدیتیشن بساز با بافت‌های نرم طبیعت، گرمای فرکانس پایین و ریتم آرام",
-      "یک مجموعه صدای اعلان برند برای حالت‌های موفقیت، یادآوری و خطا بساز در حالی که یک هویت صوتی واحد حفظ شود",
     ],
   },
   "ar": {
@@ -5007,12 +4922,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "أنشئ خاتمة للشعار مدتها 3 ثوانٍ باستخدام تقارب الخطوط ومرونة خفيفة ونظام ألوان العلامة",
       "اصنع خريطة متحركة لمسارات الطيران تُظهر عُقد المدن ونمو المسارات وبيانات الأميال وإطار ملخص نهائي",
     ],
-    audio: [
-      "أنشئ صوت بدء تشغيل لمنتج يبدو خفيفًا وموثوقًا ومستقبليًا قليلًا ومناسبًا لإطلاق app على سطح المكتب",
-      "أنشئ مقدمة موسيقية لبودكاست مدتها 20 ثانية ببداية دافئة ونبض واضح وانتقال سلس إلى التعليق الصوتي",
-      "اصنع حلقة صوتية محيطة متواصلة لتطبيق تأمل باستخدام نسائج طبيعية ناعمة ودفء بترددات منخفضة وإيقاع هادئ",
-      "أنشئ مجموعة أصوات إشعارات للعلامة لحالات النجاح والتذكير والخطأ مع الحفاظ على هوية صوتية واحدة",
-    ],
   },
   "ja": {
     prototype: [
@@ -5044,12 +4953,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "バー・パーティクル・タイトルがナレーションのビートに反応する、オーディオリアクティブなデータ可視化を生成して",
       "線の収束・わずかな弾性・ブランドカラーを使った、3 秒の logo アウトロを作って",
       "都市ノード・経路の伸び・距離データ・最終サマリーフレームを見せる、アニメーションのフライトルートマップを作って",
-    ],
-    audio: [
-      "軽やかで信頼感があり、少し未来的で、デスクトップ App の起動時に流すのにふさわしいプロダクト起動音を生成して",
-      "温かいオープニング・明確なパルス・ナレーションへのスムーズな受け渡しを備えた、20 秒のポッドキャストイントロを作って",
-      "柔らかな自然音・低域の温かみ・穏やかなテンポを使った、瞑想 App 向けのシームレスな環境音ループを作って",
-      "成功・リマインド・エラーの状態を区別しつつ、ひとつの音のアイデンティティを保ったブランド通知音セットを生成して",
     ],
   },
   "ko": {
@@ -5083,12 +4986,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "라인 수렴, 은은한 탄성, 브랜드 컬러 시스템을 활용한 3초 logo 아웃트로를 만들어 줘",
       "도시 노드, 노선 성장, 마일리지 데이터, 최종 요약 프레임을 보여주는 비행 경로 애니메이션 지도를 만들어 줘",
     ],
-    audio: [
-      "가볍고 신뢰감 있으며 살짝 미래적인, 데스크톱 app 출시에 어울리는 제품 시작음을 생성해 줘",
-      "따뜻한 도입부, 또렷한 펄스, 보이스오버로 매끄럽게 이어지는 20초 팟캐스트 인트로 베드를 만들어 줘",
-      "부드러운 자연음 텍스처, 저주파의 따스함, 차분한 페이싱을 활용한 명상 app용 끊김 없는 앰비언트 루프를 만들어 줘",
-      "하나의 사운드 아이덴티티를 유지하면서 성공, 알림, 오류 상태를 위한 브랜드 알림음 세트를 생성해 줘",
-    ],
   },
   "pl": {
     prototype: [
@@ -5120,12 +5017,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Wygeneruj wizualizację danych reagującą na dźwięk, gdzie słupki, cząsteczki i napisy odpowiadają na rytm narracji",
       "Stwórz 3-sekundowe zakończenie z logo wykorzystujące zbieżność linii, subtelną elastyczność i system kolorów marki",
       "Przygotuj animowaną mapę tras lotów pokazującą węzły miast, rozwój tras, dane o milach i końcową klatkę podsumowania",
-    ],
-    audio: [
-      "Wygeneruj dźwięk uruchomienia produktu, który brzmi lekko, godnie zaufania, lekko futurystycznie i pasuje do premiery aplikacji desktopowej",
-      "Stwórz 20-sekundowy podkład intro do podcastu z ciepłym otwarciem, wyraźnym pulsem i czystym przejściem w lektora",
-      "Przygotuj bezszwową pętlę ambientową do aplikacji do medytacji z miękkimi teksturami natury, niskoczęstotliwościowym ciepłem i spokojnym tempem",
-      "Wygeneruj markowy zestaw dźwięków powiadomień dla statusów sukcesu, przypomnienia i błędu, zachowując jedną tożsamość dźwiękową",
     ],
   },
   "hu": {
@@ -5159,12 +5050,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Készíts 3 másodperces logo-zárót vonalak összetartásával, finom rugalmassággal és a márka színrendszerével",
       "Készíts animált útvonaltérképet, amely városcsomópontokat, útvonalak növekedését, távolsági adatokat és egy záró összefoglaló képkockát mutat",
     ],
-    audio: [
-      "Készíts termékindítási hangot, amely könnyed, megbízható, kissé futurisztikus, és alkalmas egy asztali app indításához",
-      "Készíts 20 másodperces podcast intro alapot meleg nyitással, tiszta lüktetéssel és letisztult átmenettel a narrációba",
-      "Készíts zökkenőmentes ambient loopot egy meditációs apphoz lágy természeti textúrákkal, mély frekvenciás melegséggel és nyugodt tempóval",
-      "Készíts márkázott értesítési hangcsomagot a sikeres, emlékeztető és hiba állapotokhoz, megőrizve egyetlen hangzásbeli identitást",
-    ],
   },
   "fr": {
     prototype: [
@@ -5196,12 +5081,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Générez une visualisation de données réactive à l'audio où barres, particules et titres répondent au rythme de la narration",
       "Créez un outro de logo de 3 secondes avec convergence de lignes, légère élasticité et le système de couleurs de la marque",
       "Réalisez une carte animée d'itinéraires aériens montrant les nœuds des villes, la croissance des routes, les données de kilométrage et un cadre de synthèse final",
-    ],
-    audio: [
-      "Générez un son de démarrage produit léger, rassurant, légèrement futuriste et adapté au lancement d'une app desktop",
-      "Créez un lit sonore d'intro de podcast de 20 secondes avec une ouverture chaleureuse, une pulsation nette et un enchaînement propre vers la voix off",
-      "Réalisez une boucle d'ambiance fluide pour une app de méditation, avec de douces textures naturelles, une chaleur basse fréquence et un rythme apaisant",
-      "Générez un jeu de sons de notification de marque pour les états de succès, de rappel et d'erreur, en conservant une seule identité sonore",
     ],
   },
   "uk": {
@@ -5235,12 +5114,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Створіть 3-секундну фінальну заставку з logo, використовуючи сходження ліній, легку пружність і колірну систему бренду",
       "Зробіть анімовану карту авіамаршрутів із вузлами міст, ростом маршрутів, даними про відстань і фінальним кадром-підсумком",
     ],
-    audio: [
-      "Згенеруйте звук запуску продукту, що звучить легко, надійно, трохи футуристично й підходить для запуску десктопного app",
-      "Створіть 20-секундну музичну підкладку для вступу подкасту з теплим початком, чітким пульсом і плавним переходом до озвучення",
-      "Зробіть безшовний ембієнт-луп для застосунку медитації з м’якими природними текстурами, низькочастотним теплом і спокійним темпом",
-      "Згенеруйте набір фірмових звуків сповіщень для станів успіху, нагадування та помилки, зберігаючи єдину звукову ідентичність",
-    ],
   },
   "tr": {
     prototype: [
@@ -5272,12 +5145,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Çubukların, parçacıkların ve başlıkların anlatım ritmine tepki verdiği, sese duyarlı bir veri görselleştirmesi oluştur",
       "Çizgi birleşimi, ince bir esneklik ve marka renk sistemini kullanan 3 saniyelik bir logo outro'su oluştur",
       "Şehir düğümleri, rota büyümesi, mesafe verileri ve son bir özet kareyi gösteren animasyonlu bir uçuş rotası haritası hazırla",
-    ],
-    audio: [
-      "Hafif, güven veren, hafifçe fütüristik bir his veren ve bir masaüstü app lansmanına uygun bir ürün açılış sesi oluştur",
-      "Sıcak bir açılış, net bir nabız ve seslendirmeye temiz bir geçiş içeren 20 saniyelik bir podcast intro müziği oluştur",
-      "Yumuşak doğa dokuları, düşük frekanslı sıcaklık ve sakin bir tempo kullanan bir meditasyon app'i için kusursuz bir ambiyans döngüsü hazırla",
-      "Tek bir sonik kimliği korurken başarı, hatırlatma ve hata durumları için markalı bir bildirim sesi seti oluştur",
     ],
   },
   "th": {
@@ -5311,12 +5178,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "สร้าง outro ของ logo ความยาว 3 วินาที โดยใช้เส้นที่ลู่เข้าหากัน ความยืดหยุ่นเล็กน้อย และระบบสีของแบรนด์",
       "ทำแผนที่เส้นทางการบินแบบเคลื่อนไหว ที่แสดงจุดเมือง การขยายเส้นทาง ข้อมูลระยะทาง และเฟรมสรุปตอนจบ",
     ],
-    audio: [
-      "สร้างเสียงเปิดผลิตภัณฑ์ที่ให้ความรู้สึกเบาสบาย น่าเชื่อถือ ล้ำสมัยเล็กน้อย และเหมาะกับการเปิดตัว app บนเดสก์ท็อป",
-      "สร้างดนตรีเปิดพอดแคสต์ความยาว 20 วินาที พร้อมการเปิดที่อบอุ่น จังหวะที่ชัดเจน และส่งต่อเข้าสู่เสียงบรรยายอย่างราบรื่น",
-      "ทำลูปเสียงบรรยากาศแบบไร้รอยต่อสำหรับ app นั่งสมาธิ โดยใช้พื้นผิวเสียงธรรมชาติที่นุ่มนวล ความอบอุ่นของย่านความถี่ต่ำ และจังหวะที่ผ่อนคลาย",
-      "สร้างชุดเสียงแจ้งเตือนของแบรนด์สำหรับสถานะสำเร็จ เตือนความจำ และข้อผิดพลาด โดยคงเอกลักษณ์เสียงเดียวกันไว้",
-    ],
   },
   "it": {
     prototype: [
@@ -5348,12 +5209,6 @@ const HOME_PROMPT_EXAMPLES: Record<Locale, Record<string, string[]>> = {
       "Genera una visualizzazione dati audio-reattiva in cui barre, particelle e titoli reagiscono al ritmo della narrazione",
       "Crea un outro del logo di 3 secondi con convergenza di linee, una leggera elasticità e il sistema di colori del brand",
       "Realizza una mappa animata di rotte di volo che mostra i nodi delle città, la crescita delle rotte, i dati di chilometraggio e un frame riassuntivo finale",
-    ],
-    audio: [
-      "Genera un suono di avvio prodotto che risulti leggero, affidabile, leggermente futuristico e adatto al lancio di una app desktop",
-      "Crea un intro bed per podcast di 20 secondi con un'apertura calda, un pulse chiaro e un passaggio pulito verso il voiceover",
-      "Realizza un loop ambient continuo per una app di meditazione con texture naturali soffuse, calore sulle basse frequenze e un ritmo calmo",
-      "Genera un set di suoni di notifica brandizzati per gli stati di successo, promemoria ed errore mantenendo un'unica identità sonora",
     ],
   },
 };

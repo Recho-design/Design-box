@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * mock-agent.mjs — pretends to be one of OD's supported agent CLIs
- * (claude / opencode / codex / deepseek / qwen / grok) by streaming a
+ * (claude / opencode / codex / deepseek / grok) by streaming a
  * pre-recorded session in that CLI's native stdout protocol. Zero LLM
  * tokens.
  *
@@ -20,10 +20,7 @@ import { renderAsOpencode }    from './lib/format-opencode.mjs';
 import { renderAsCodex }       from './lib/format-codex.mjs';
 import { renderAsClaude }      from './lib/format-claude.mjs';
 import { renderAsGemini }      from './lib/format-gemini.mjs';
-import { renderAsCursorAgent } from './lib/format-cursor-agent.mjs';
-import { renderAsKimi }        from './lib/format-kimi.mjs';
 import { renderAsPlain }       from './lib/format-plain.mjs';
-import { runAcpServer }        from './lib/format-acp.mjs';
 
 function parseArgs(argv) {
   const opts = { as: null, noDelay: false, reportFile: null, positionals: [] };
@@ -74,25 +71,12 @@ async function main() {
   if (!opts.as) {
     failUsage(
       '--as <agent> required\n' +
-      '  supported: opencode | claude | amp | codex | gemini | cursor-agent |\n' +
-      '             deepseek | qwen | grok | plain |\n' +
-      '             kimi                                         (stream-json)\n' +
-      '             devin | hermes | kilo | kiro | vibe          (ACP)\n',
+      '  supported: opencode | claude | codex | gemini |\n' +
+      '             deepseek | grok | plain\n',
     );
   }
 
-  // Modern Kimi rejects the old `kimi acp ...` launch shape; keep the
-  // shared mock aligned so adapter regressions fail fast in tests.
-  if (opts.as === 'kimi' && opts.positionals.length > 0) {
-    failUsage(`too many arguments: ${opts.positionals.join(' ')}`);
-  }
-
-  // ACP agents read JSON-RPC messages off stdin one line at a time, so the
-  // bulk-prompt buffering logic below doesn't apply — pickRecording sees no
-  // prompt for hash-mode (use OD_MOCKS_TRACE or _POOL instead).
-  const ACP_AGENTS = new Set(['devin', 'hermes', 'kilo', 'kiro', 'vibe']);
-  const isAcp = ACP_AGENTS.has(opts.as);
-  const prompt = isAcp ? '' : await readStdinIfPiped();
+  const prompt = await readStdinIfPiped();
   const picked = await pickRecording({ prompt });
   if (!picked) {
     process.stderr.write(
@@ -100,7 +84,7 @@ async function main() {
       'The recording corpus is hosted on Cloudflare R2 (see mocks/manifest.json)\n' +
       'and is fetched on demand. Run:\n' +
       '\n' +
-      '  bash mocks/scripts/fetch-recordings.sh             # all 179 (~30s, 4.5MB)\n' +
+      '  bash mocks/scripts/fetch-recordings.sh             # all 164 (~30s, 4.5MB)\n' +
       '  bash mocks/scripts/fetch-recordings.sh --agent claude   # subset\n' +
       '\n' +
       'Or set OD_MOCKS_RECORDINGS_DIR if you stashed them elsewhere.\n',
@@ -120,21 +104,11 @@ async function main() {
   switch (opts.as) {
     case 'opencode':     await renderAsOpencode(events, renderOpts);    break;
     case 'codex':        await renderAsCodex(events, renderOpts);       break;
-    case 'claude':
-    case 'amp':          await renderAsClaude(events, renderOpts);      break;
+    case 'claude':       await renderAsClaude(events, renderOpts);      break;
     case 'gemini':       await renderAsGemini(events, renderOpts);      break;
-    case 'cursor-agent': await renderAsCursorAgent(events, renderOpts); break;
     case 'deepseek':
-    case 'qwen':
     case 'grok':
     case 'plain':        await renderAsPlain(events, renderOpts);       break;
-    case 'kimi':         await renderAsKimi(events, renderOpts);        break;
-    // ACP family — JSON-RPC server over stdio.
-    case 'devin':
-    case 'hermes':
-    case 'kilo':
-    case 'kiro':
-    case 'vibe':         await runAcpServer(events, renderOpts);        break;
     default:
       failUsage(`unknown agent "${opts.as}"`);
   }

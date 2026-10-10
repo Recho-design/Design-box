@@ -14,40 +14,17 @@ from lib.github import append_outputs, append_summary
 
 
 CONFIDENCE = {"medium": 0, "certain": 1}
-DAEMON_UNIT_WORKLOADS = {f"daemon_unit_{shard}" for shard in range(1, 5)}
-WEB_WORKSPACE_WORKLOADS = {f"web_workspace_{shard}" for shard in range(1, 3)}
-UI_P0_WORKLOADS = {
-    "ui_p0_entry_settings",
-    "ui_p0_project_workspace",
-    "ui_p0_project_workspace_editor",
-    "ui_p0_project_runtime",
-    "ui_p0_workspace_restoration",
-}
 WORKLOADS = {
     "platform_build",
-    "platform_tests",
     "static_gate",
     "preflight",
-    "workspace_unit_tests",
-    *DAEMON_UNIT_WORKLOADS,
-    "windows_tools_pack_payload_tests",
-    *WEB_WORKSPACE_WORKLOADS,
-    "e2e_vitest",
-    "playwright_critical",
-    *UI_P0_WORKLOADS,
-    "playwright_visual",
-}
-SELECTION_ALIASES = {
-    "daemon_unit_tests": DAEMON_UNIT_WORKLOADS,
-    "web_workspace_tests": WEB_WORKSPACE_WORKLOADS,
-    "ui_p0": UI_P0_WORKLOADS,
 }
 
 
 class ScopeContract:
     def __init__(self, path: Path):
         value = object_value(load_json(path), "scopes")
-        expected = {"schema", "effects", "matches", "rules", "matrices", "uiP0Shadow"}
+        expected = {"schema", "effects", "matches", "rules"}
         if set(value) != expected:
             raise ConfigError(f"scopes keys must be {sorted(expected)}")
         schema_v1(value, "scopes")
@@ -56,8 +33,6 @@ class ScopeContract:
             raise ConfigError("scopes.effects contains duplicates")
         self.matches = object_value(value["matches"], "scopes.matches")
         self.rules = value["rules"]
-        self.matrices = object_value(value["matrices"], "scopes.matrices")
-        self.shadow = object_value(value["uiP0Shadow"], "scopes.uiP0Shadow")
         self._validate()
 
     @staticmethod
@@ -118,36 +93,6 @@ class ScopeContract:
                 raise ConfigError(f"scope rule {rule_id} has unknown effects {sorted(unknown)}")
             if rule["confidence"] not in CONFIDENCE:
                 raise ConfigError(f"scope rule {rule_id} has invalid confidence")
-        if set(self.matrices) != {"ui_p0", "visual"}:
-            raise ConfigError("scopes.matrices must contain ui_p0 and visual")
-        matrix_names = {}
-        for matrix_name, fields in (("ui_p0", {"name", "shard"}), ("visual", {"name", "files"})):
-            entries = self.matrices[matrix_name]
-            if not isinstance(entries, list) or not entries:
-                raise ConfigError(f"scopes.matrices.{matrix_name} must be a non-empty array")
-            names = []
-            for index, entry in enumerate(entries):
-                entry = object_value(entry, f"scopes.matrices.{matrix_name}[{index}]")
-                if set(entry) != fields:
-                    raise ConfigError(f"scopes.matrices.{matrix_name}[{index}] keys must be {sorted(fields)}")
-                for field in fields:
-                    if not isinstance(entry[field], str) or not entry[field]:
-                        raise ConfigError(f"scopes.matrices.{matrix_name}[{index}].{field} must be a non-empty string")
-                names.append(entry["name"])
-            if len(set(names)) != len(names):
-                raise ConfigError(f"scopes.matrices.{matrix_name} contains duplicate names")
-            matrix_names[matrix_name] = set(names)
-        if set(self.shadow) != {"match", "matrixNames"}:
-            raise ConfigError("scopes.uiP0Shadow keys must be match and matrixNames")
-        shadow_match = self.shadow.get("match")
-        if shadow_match not in self.matches:
-            raise ConfigError("scopes.uiP0Shadow.match is unknown")
-        shadow_names = self._string_list(self.shadow.get("matrixNames"), "scopes.uiP0Shadow.matrixNames")
-        if len(set(shadow_names)) != len(shadow_names):
-            raise ConfigError("scopes.uiP0Shadow.matrixNames contains duplicates")
-        unknown_shadow_names = set(shadow_names) - matrix_names["ui_p0"]
-        if unknown_shadow_names:
-            raise ConfigError(f"scopes.uiP0Shadow.matrixNames contains unknown names {sorted(unknown_shadow_names)}")
 
     def _token_matches(self, file, token):
         if token.startswith("match://"):
@@ -171,7 +116,7 @@ def empty_effects(contract):
     return {effect: False for effect in contract.effects}
 
 
-def evaluate(contract, files, threshold, derive_workspace):
+def evaluate(contract, files, threshold):
     outputs = empty_effects(contract)
     decisions = []
     for file in files:
@@ -189,48 +134,30 @@ def evaluate(contract, files, threshold, derive_workspace):
             for effect in rule["effects"]:
                 outputs[effect] = True
         decisions.append({"file": file, "matchedRules": matched_ids, "escalated": False})
-    if derive_workspace and any(outputs[name] for name in (
-        "daemon_tests_required", "web_tests_required", "tools_dev_tests_required", "tools_pack_tests_required"
-    )):
-        outputs["workspace_validation_required"] = True
     return outputs, decisions
 
 
 def enabled_workloads(outputs, ci_mode, full_lanes):
     any_scope = any(outputs.values())
     broad = full_lanes or ci_mode == "hot" or any_scope
-    ui_p0 = full_lanes or outputs["ui_p0_validation_required"]
     enabled = {
         "platform_build": broad,
-        "platform_tests": broad,
         "static_gate": True,
         "preflight": True,
-        "workspace_unit_tests": broad,
-        **{name: outputs["daemon_tests_required"] for name in DAEMON_UNIT_WORKLOADS},
-        "windows_tools_pack_payload_tests": full_lanes or outputs["windows_tools_pack_payload_tests_required"],
-        **{name: full_lanes or outputs["web_tests_required"] for name in WEB_WORKSPACE_WORKLOADS},
-        "e2e_vitest": full_lanes or outputs["web_tests_required"] or outputs["ui_p0_validation_required"],
-        "playwright_critical": outputs["ui_critical_validation_required"] and not ui_p0,
-        **{name: ui_p0 for name in UI_P0_WORKLOADS},
-        "playwright_visual": full_lanes or outputs["visual_validation_required"],
     }
     if set(enabled) != WORKLOADS:
         raise AssertionError("scope workload map drifted")
     return enabled, broad
 
 
-def build_plan(contract, files, source, threshold, ci_mode, full_lanes, derive_workspace, resolved=True):
+def build_plan(contract, files, source, threshold, ci_mode, full_lanes, resolved=True):
     if threshold is None:
         outputs = {effect: True for effect in contract.effects}
         decisions = []
     else:
-        outputs, decisions = evaluate(contract, files, threshold, derive_workspace)
+        outputs, decisions = evaluate(contract, files, threshold)
     enabled, broad = enabled_workloads(outputs, ci_mode, full_lanes)
     hits = Counter(rule for decision in decisions for rule in decision["matchedRules"])
-    shadow_match = contract.matches[contract.shadow["match"]]
-    candidate = bool(files) and resolved and all(contract.match(file, shadow_match) for file in files)
-    shadow_names = set(contract.shadow["matrixNames"])
-    shadow_matrix = [entry for entry in contract.matrices["ui_p0"] if entry["name"] in shadow_names] if candidate else contract.matrices["ui_p0"]
     scopes = {
         **outputs,
         "ci_mode": ci_mode,
@@ -241,7 +168,6 @@ def build_plan(contract, files, source, threshold, ci_mode, full_lanes, derive_w
         "source": source,
         "scopes": scopes,
         "enabled": enabled,
-        "matrices": contract.matrices,
         "trace": {
             "threshold": threshold or "none",
             "filesResolved": resolved,
@@ -251,10 +177,6 @@ def build_plan(contract, files, source, threshold, ci_mode, full_lanes, derive_w
                 {"file": item["file"], "reason": item["reason"]}
                 for item in decisions if item["escalated"]
             ],
-            "uiP0Shadow": {
-                "mode": "candidate" if candidate else "full-fallback",
-                "matrix": shadow_matrix,
-            },
         },
     }
 
@@ -285,7 +207,7 @@ def changed_files_for_environment():
         if number is None:
             raise ConfigError("pull_request.number is required")
         output = run_gh(["api", "--paginate", f"repos/{repository}/pulls/{number}/files", "--jq", ".[] | .filename, (.previous_filename // empty)"])
-        return event_name, output.splitlines(), "medium", "hot", False, True, True
+        return event_name, output.splitlines(), "medium", "hot", False, True
     if event_name == "workflow_dispatch":
         mode = event.get("inputs", {}).get("ci_mode", "full")
         if mode not in {"hot", "full"}:
@@ -293,8 +215,8 @@ def changed_files_for_environment():
         if mode == "hot":
             sha = required_env("GITHUB_SHA")
             output = run_gh(["api", "--paginate", f"repos/{repository}/compare/main...{sha}", "--jq", "(.files // [])[] | .filename, (.previous_filename // empty)"])
-            return "workflow_dispatch:hot", output.splitlines(), "medium", "hot", False, False, True
-        return event_name, [], None, "full", True, False, False
+            return "workflow_dispatch:hot", output.splitlines(), "medium", "hot", False, False
+        return event_name, [], None, "full", True, False
     if event_name == "merge_group":
         group = event.get("merge_group", {})
         base, head = group.get("base_sha"), group.get("head_sha")
@@ -307,12 +229,12 @@ def changed_files_for_environment():
                 raise ConfigError("merge_group comparison reached the 300-file ceiling")
             files = [name for record in records for name in (record.get("filename"), record.get("previous_filename")) if isinstance(name, str)]
             if not files:
-                return "merge_group:empty-resolution", [], None, "full", True, True, False
-            return event_name, files, "certain", "full", False, True, True
+                return "merge_group:empty-resolution", [], None, "full", True, True
+            return event_name, files, "certain", "full", False, True
         except (subprocess.SubprocessError, json.JSONDecodeError, ConfigError) as error:
             print(f"::warning::merge_group resolution failed; using full plan: {error}", file=sys.stderr)
-            return "merge_group:resolution-error", [], None, "full", True, True, False
-    return event_name, [], None, "full", True, False, False
+            return "merge_group:resolution-error", [], None, "full", True, True
+    return event_name, [], None, "full", True, False
 
 
 def emit_plan(plan, output_path=None):
@@ -322,15 +244,12 @@ def emit_plan(plan, output_path=None):
     append_outputs({
         "enabled": compact_json(plan["enabled"]),
         "scopes": compact_json(plan["scopes"]),
-        "ui_p0_matrix": compact_json(plan["matrices"]["ui_p0"]),
-        "visual_matrix": compact_json(plan["matrices"]["visual"]),
     })
     trace = plan["trace"]
     lines = [
         "### Scope decision trace", "",
         f"- source: `{plan['source']}`, trust threshold: `{trace['threshold']}`",
         f"- files: {trace['fileCount'] if trace['filesResolved'] else 'not resolved'}, escalated: {len(trace['escalations'])}",
-        f"- UI P0 shadow: `{trace['uiP0Shadow']['mode']}`",
     ]
     if trace["ruleHits"]:
         lines += ["", "| Rule | Hits |", "| --- | ---: |"]
@@ -366,17 +285,16 @@ def main():
             print(f"{rule['id']}\n  confidence: {rule['confidence']}\n  effects: {', '.join(rule['effects']) or '(none)'}")
         return 0
     if args.command == "github-output":
-        source, files, threshold, mode, full_lanes, derive, resolved = changed_files_for_environment()
-        plan = build_plan(contract, files, source, threshold, mode, full_lanes, derive, resolved)
+        source, files, threshold, mode, full_lanes, resolved = changed_files_for_environment()
+        plan = build_plan(contract, files, source, threshold, mode, full_lanes, resolved)
         selection = os.environ.get("CI_WORKLOADS", "").strip()
         if selection:
             if os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch":
                 raise ConfigError("explicit workload selection requires workflow_dispatch")
             requested = set(selection.split(","))
-            if not requested.issubset(WORKLOADS | set(SELECTION_ALIASES)):
+            if not requested.issubset(WORKLOADS):
                 raise ConfigError("explicit selection contains unknown workload identities")
-            selected = set().union(*(SELECTION_ALIASES.get(name, {name}) for name in requested))
-            plan["enabled"] = {name: name in selected for name in WORKLOADS}
+            plan["enabled"] = {name: name in requested for name in WORKLOADS}
             plan["source"] = "workflow_dispatch:selected"
             plan["selection"] = sorted(requested)
         emit_plan(plan, args.output)
@@ -386,13 +304,13 @@ def main():
         content = sys.stdin.read() if args.files_from == "-" else Path(args.files_from).read_text(encoding="utf-8")
         files += [line for line in content.splitlines() if line]
     if args.context == "full":
-        settings = (None, "full", True, False, False)
+        settings = (None, "full", True, False)
     elif args.context == "merge-queue":
-        settings = ("certain", "full", False, True, True)
+        settings = ("certain", "full", False, True)
     else:
-        settings = ("medium", "hot", False, True, True)
-    threshold, mode, full_lanes, derive, resolved = settings
-    print(json.dumps(build_plan(contract, files, f"cli:{args.context}", threshold, mode, full_lanes, derive, resolved), indent=2, sort_keys=True))
+        settings = ("medium", "hot", False, True)
+    threshold, mode, full_lanes, resolved = settings
+    print(json.dumps(build_plan(contract, files, f"cli:{args.context}", threshold, mode, full_lanes, resolved), indent=2, sort_keys=True))
     return 0
 
 

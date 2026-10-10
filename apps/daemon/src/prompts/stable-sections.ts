@@ -72,8 +72,6 @@ const SECTION_INPUTS = {
   media: [
     'mediaExecution',
     'byokMediaDefaults',
-    'audioVoiceOptions',
-    'audioVoiceOptionsError',
   ],
   critique: ['critique', 'critiqueBrand', 'critiqueSkill'],
   // Dormant by design: #5336 moved the connected-MCP directive out of the

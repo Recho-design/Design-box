@@ -26,20 +26,27 @@ events. It doesn't tell you whether the events have the *right shape*
 — a parser change in `apps/daemon/src/runtimes/claude-stream.ts` or
 `runtimes/json-event-stream.ts` could silently drop a field, rename
 `sessionID` → `sessionId`, or stop emitting `turn_end`. The goldens
-are diffed by `apps/daemon/tests/mocks-golden.test.ts`; a regression
-makes that test fail loudly.
+pin the expected shape so such a change is visible; the daemon test
+that diffed them automatically was removed with the repository's test
+layer, so after a parser change compare a live replay against the
+committed snapshot manually (or with `mocks/scripts/smoke-test.sh`
+output redirected to a file) and treat any diff the same way: if it
+matches what the parser refactor intended, regenerate; if it doesn't,
+the refactor broke something.
 
 ## Updating after an intentional parser change
 
+Re-run a mock CLI recording through the daemon and write the new event
+sequence to the matching `mocks/golden/<trace-id>.events.json`, then
+let the diff be the part the reviewer eyeballs:
+
 ```bash
-MOCKS_GOLDEN_UPDATE=1 pnpm --filter @open-design/daemon test mocks-golden
 git diff mocks/golden/
 git add mocks/golden/ && git commit -m "mocks: refresh goldens — parser X now emits Y"
 ```
 
-The diff is the part the reviewer eyeballs. If the change matches what
-the parser refactor intended, ship. If it doesn't, the refactor broke
-something.
+If the change matches what the parser refactor intended, ship. If it
+doesn't, the refactor broke something.
 
 ## Coverage
 
@@ -51,10 +58,8 @@ something.
 
 Other agents are not golden-tested here for different reasons:
 
-- `cursor-agent` and plain streams do not emit structured tool events and are
-  covered by simpler unit tests.
+- Plain streams (`deepseek`, `grok`) do not emit structured tool events.
 - The retained Gemini parser emits structured `tool_use` / `tool_result`
-  events and is covered by `apps/daemon/tests/runtimes/json-event-stream.test.ts`,
-  but has no committed golden.
+  events but has no committed golden.
 - ACP agents use JSON-RPC over stdio rather than streamed stdout and need a
-  different harness; see `apps/daemon/tests/acp.test.ts`.
+  different harness.

@@ -9695,7 +9695,6 @@
         "pipeline:*",
         "media:image",
         "media:video",
-        "media:audio",
         "fs:write"
       ],
       "description": "Hidden fallback scenario for free-form Home prompts. It infers the task type and asks only when the brief cannot be routed reliably.",
@@ -9779,7 +9778,6 @@
         "prompt:inject",
         "media:image",
         "media:video",
-        "media:audio",
         "fs:write"
       ],
       "description": "Default scenario plugin for image, video, and audio projects. Routes through the media-* atoms based on the project kind and wraps the result in a live artifact.",

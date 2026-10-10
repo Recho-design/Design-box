@@ -237,7 +237,9 @@ the active-run staging implementation is in
   events settle the same row with diff statistics and execution status.
   This covers `apply_patch`, not arbitrary shell command arguments. The
   upstream feature remains opt-in; absence of preview events does not block
-  completion. See [patch-stream validation](testing/codex-patch-streaming.md).
+  completion. (The historical patch-stream validation document,
+  `docs/testing/codex-patch-streaming.md`, was removed with the repository's
+  test layer.)
 - `OD_CODEX_TRANSPORT=exec-json` selects the legacy transport:
   `codex exec --json --skip-git-repo-check` with the effective sandbox,
   create-only `-C`/`--add-dir`, and optional model/reasoning overrides.

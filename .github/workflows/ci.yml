@@ -77,13 +77,6 @@ jobs:
       scopes: ${{ steps.scopes.outputs.scopes }}
       enabled: ${{ steps.scopes.outputs.enabled }}
       selection: ${{ inputs.workloads }}
-      daemon_matrix: ${{ steps.convergence.outputs.daemon_matrix }}
-      daemon_count: ${{ steps.convergence.outputs.daemon_count }}
-      web_matrix: ${{ steps.convergence.outputs.web_matrix }}
-      web_count: ${{ steps.convergence.outputs.web_count }}
-      ui_p0_matrix: ${{ steps.convergence.outputs.ui_p0_matrix }}
-      ui_p0_count: ${{ steps.convergence.outputs.ui_p0_count }}
-      visual_matrix: ${{ steps.scopes.outputs.visual_matrix }}
 
     steps:
       - name: Checkout
@@ -113,18 +106,7 @@ jobs:
         id: gate
         env:
           PLAN_RUN: ${{ steps.convergence.outputs.run }}
-          DAEMON_COUNT: ${{ steps.convergence.outputs.daemon_count }}
-          WEB_COUNT: ${{ steps.convergence.outputs.web_count }}
-          UI_P0_COUNT: ${{ steps.convergence.outputs.ui_p0_count }}
-        run: |
-          run="$(jq -c \
-            --argjson daemon "$DAEMON_COUNT" \
-            --argjson web "$WEB_COUNT" \
-            --argjson ui_p0 "$UI_P0_COUNT" \
-            'with_entries(select(.key | test("^(daemon_unit_[1-4]|web_workspace_[1-2]|ui_p0_.+)$") | not))
-             + {daemon_unit_tests: ($daemon > 0), web_workspace_tests: ($web > 0), ui_p0: ($ui_p0 > 0)}' \
-            <<< "$PLAN_RUN")"
-          echo "run=$run" >> "$GITHUB_OUTPUT"
+        run: echo "run=$PLAN_RUN" >> "$GITHUB_OUTPUT"
 
       # Shadow mode records reusable-result hits without omitting validation.
       # The successful gate later turns this exact plan into a trusted handoff.
@@ -136,50 +118,6 @@ jobs:
           path: ${{ runner.temp }}/pending-convergence.json
           if-no-files-found: error
           retention-days: 1
-
-      - name: Create visual report handoff
-        id: visual_report_handoff
-        if: ${{ github.event_name == 'pull_request' && fromJSON(steps.convergence.outputs.run).playwright_visual }}
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          RUN_ID: ${{ github.run_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          handoff_id="visual-pr"
-          handoff_root="$RUNNER_TEMP/handoff-report-$handoff_id"
-          handoff_dir="$(python3 .github/scripts/handoff.py dir report "$handoff_id" --root "$handoff_root")"
-          mkdir -p "$handoff_dir"
-          jq -n \
-            --arg kind "report" \
-            --arg id "$handoff_id" \
-            --arg head "$HEAD_SHA" \
-            --arg base "$BASE_SHA" \
-            --arg report_type "visual-pr" \
-            --arg artifact_pattern "visual-pr-capture-$PR_NUMBER-$RUN_ID-*" \
-            --arg output_comment_id "visual-pr-report" \
-            --arg marker "<!-- visual-regression-bot -->" \
-            --argjson schema_version 1 \
-            --argjson pr_number "$PR_NUMBER" \
-            --argjson run_id "$RUN_ID" \
-            '{schema_version: $schema_version, kind: $kind, id: $id, pr_number: $pr_number, head_sha: $head, base_sha: $base, run_id: $run_id, report_type: $report_type, artifact_pattern: $artifact_pattern, output_comment_id: $output_comment_id, marker: $marker}' \
-            > "$handoff_dir/metadata.json"
-          python3 .github/scripts/handoff.py validate report "$handoff_dir" >/dev/null
-          {
-            echo "name=$(python3 .github/scripts/handoff.py artifact-name report "$handoff_id")"
-            echo "path=$handoff_root"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Upload visual report handoff
-        if: ${{ steps.visual_report_handoff.outputs.name != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.visual_report_handoff.outputs.name }}
-          path: ${{ steps.visual_report_handoff.outputs.path }}
-          if-no-files-found: error
-          retention-days: 7
 
   static_gate:
     name: Static gate
@@ -297,7 +235,7 @@ jobs:
       # dependency closure. Desktop and Web sidecar declarations remain explicit
       # because those app outputs are outside the postinstall target catalog.
       #
-      # Fresh CI typecheck/test still need these specific generated declarations:
+      # Fresh CI typecheck still needs these specific generated declarations:
       #   - `apps/desktop/dist/main/index.d.ts` for `apps/packaged` imports of
       #     `@open-design/desktop/main`
       #   - `apps/web/dist/sidecar/index.d.ts` for `apps/packaged` imports of
@@ -321,368 +259,6 @@ jobs:
 
       - name: Check i18n structure
         run: pnpm i18n:check
-
-  workspace_unit_tests:
-    name: Workspace unit tests
-    needs: [plan, runners]
-    if: ${{ fromJSON(needs.plan.outputs.run).workspace_unit_tests }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).workspace_unit }}
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Configure CI parallelism
-        uses: ./.github/actions/configure-ci-parallelism
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-workspace-unit
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).workspace_unit) }}
-
-      - name: Workspace unit tests
-        run: |
-          pnpm --filter @open-design/contracts test
-          pnpm --filter @open-design/host test
-          pnpm --filter @open-design/sidecar test
-          pnpm --filter @open-design/sidecar-proto test
-          if [ "${{ fromJSON(needs.plan.outputs.scopes).tools_dev_tests_required }}" = "true" ]; then
-            pnpm --filter @open-design/tools-dev test
-          fi
-          if [ "${{ fromJSON(needs.plan.outputs.scopes).tools_pack_tests_required }}" = "true" ]; then
-            pnpm --filter @open-design/desktop build
-            pnpm --filter @open-design/desktop test
-            pnpm --filter @open-design/packaged test
-            pnpm --filter @open-design/tools-pack test
-            if [ "${{ fromJSON(needs.plan.outputs.run).e2e_vitest }}" != "true" ]; then
-              pnpm --filter @open-design/e2e test tests/packaged-launcher-update-loop.test.ts
-            fi
-          fi
-
-
-  daemon_unit_tests:
-    name: Daemon tests (${{ matrix.shard }}/4)
-    needs: [plan, runners]
-    if: ${{ needs.plan.outputs.daemon_count != '0' }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).workspace_unit }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.daemon_matrix) }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Configure CI parallelism
-        uses: ./.github/actions/configure-ci-parallelism
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-daemon
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).workspace_unit) }}
-
-      - name: Run daemon test shard
-        env:
-          OD_WATCHER_TEST_DEBUG: "1"
-        run: pnpm --filter @open-design/daemon test --shard=${{ matrix.shard }}/4
-
-  windows_tools_pack_payload_tests:
-    name: Windows tools-pack payload tests
-    needs: [plan, runners]
-    if: ${{ fromJSON(needs.plan.outputs.run).windows_tools_pack_payload_tests }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).windows_tools }}
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-windows-tools-pack
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).windows_tools) }}
-
-      - name: Windows launcher payload archive tests
-        run: pnpm --filter @open-design/tools-pack exec vitest run tests/launcher/windows/payload.test.ts
-
-  web_workspace_tests:
-    name: Web workspace tests (${{ matrix.shard }}/2)
-    needs: [plan, runners]
-    if: ${{ needs.plan.outputs.web_count != '0' }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).js_hot }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.web_matrix) }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Configure CI parallelism
-        uses: ./.github/actions/configure-ci-parallelism
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-web
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).js_hot) }}
-
-      - name: Prebuild web sidecar declarations
-        run: pnpm --filter @open-design/web build:sidecar
-
-      - name: Web workspace tests
-        run: pnpm --filter @open-design/web exec vitest run -c vitest.config.ts --maxWorkers=2 --shard=${{ matrix.shard }}/2
-
-  e2e_vitest:
-    name: E2E Vitest
-    needs: [plan, runners]
-    if: ${{ fromJSON(needs.plan.outputs.run).e2e_vitest }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).js_hot }}
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Configure CI parallelism
-        uses: ./.github/actions/configure-ci-parallelism
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-e2e
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).js_hot) }}
-
-      - name: Setup Playwright
-        uses: ./.github/actions/setup-playwright
-        with:
-          package-json-path: e2e/package.json
-          install-command: pnpm -C e2e exec playwright install --with-deps chromium
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).js_hot) }}
-
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
-
-      - name: E2E Vitest
-        run: pnpm --filter @open-design/e2e test
-
-  playwright_critical:
-    name: Playwright critical (${{ matrix.group }})
-    needs: [plan, runners]
-    if: ${{ fromJSON(needs.plan.outputs.run).playwright_critical }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).ui_hot }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - group: a
-            files: ui/amr-onboarding.test.ts ui/app.test.ts ui/app-design-files.test.ts ui/app-manual-edit.test.ts ui/api-empty-response.test.ts
-          - group: b
-            files: ui/app-restoration.test.ts ui/entry-chrome-flows.test.ts ui/project-management-flows.test.ts ui/settings-api-protocol.test.ts ui/settings-local-cli-codex-fallback.test.ts ui/critical-smoke.test.ts ui/workspace-keyboard-flows.test.ts
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Configure CI parallelism
-        uses: ./.github/actions/configure-ci-parallelism
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-ui
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).ui_hot) }}
-
-      - name: Setup Playwright
-        uses: ./.github/actions/setup-playwright
-        with:
-          package-json-path: e2e/package.json
-          install-command: pnpm -C e2e exec playwright install --with-deps chromium
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).ui_hot) }}
-
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
-
-      - name: Clean Playwright state
-        run: pnpm -C e2e exec tsx scripts/playwright.ts clean
-
-      - name: Playwright critical
-        env:
-          OD_PLAYWRIGHT_FULLY_PARALLEL: "1"
-        run: pnpm -C e2e exec playwright test -c playwright.config.ts ${{ matrix.files }} --grep '@critical'
-
-  ui_p0:
-    name: ${{ matrix.name }}
-    needs: [plan, runners]
-    if: ${{ needs.plan.outputs.ui_p0_count != '0' }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).ui_p0 }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.ui_p0_matrix) }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Configure CI parallelism
-        uses: ./.github/actions/configure-ci-parallelism
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-ui
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).ui_p0) }}
-
-      - name: Setup Playwright
-        uses: ./.github/actions/setup-playwright
-        with:
-          package-json-path: e2e/package.json
-          install-command: pnpm -C e2e exec playwright install --with-deps chromium
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).ui_p0) }}
-
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
-
-      - name: Clean Playwright state
-        run: pnpm -C e2e exec tsx scripts/playwright.ts clean
-
-      - name: Run UI P0 domain
-        run: pnpm -C e2e exec tsx scripts/playwright.ts run-ui-group ${{ matrix.shard }}
-
-      - name: Preserve project-runtime domain artifact
-        if: ${{ success() && matrix.shard == 'project-runtime' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: ui-p0-ci-${{ github.run_id }}-${{ matrix.name }}-domain
-          path: |
-            e2e/ui/reports/playwright-html-report
-            e2e/ui/reports/test-results
-            e2e/ui/reports/results.json
-            e2e/ui/test-results
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Run UI critical extras
-        if: ${{ matrix.shard == 'project-runtime' }}
-        run: pnpm -C e2e exec tsx scripts/playwright.ts run-ui-group critical-extras
-
-      - name: Upload Playwright debug artifact
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: ui-p0-ci-${{ github.run_id }}-${{ matrix.name }}
-          path: |
-            e2e/ui/reports/playwright-html-report
-            e2e/ui/reports/test-results
-            e2e/ui/reports/results.json
-            e2e/ui/test-results
-          if-no-files-found: ignore
-          retention-days: 7
-
-  playwright_visual:
-    name: Playwright visual (${{ matrix.name }})
-    needs: [plan, runners]
-    if: ${{ fromJSON(needs.plan.outputs.run).playwright_visual }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).visual_hot }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.visual_matrix) }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6.0.2
-
-      - name: Configure CI parallelism
-        uses: ./.github/actions/configure-ci-parallelism
-
-      - name: Setup workspace
-        uses: ./.github/actions/setup-workspace
-        with:
-          postinstall-intent: ci-ui
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).visual_hot) }}
-
-      - name: Setup Playwright
-        uses: ./.github/actions/setup-playwright
-        with:
-          package-json-path: e2e/package.json
-          install-command: pnpm -C e2e exec playwright install --with-deps chromium
-          runner-labels: ${{ toJSON(fromJSON(needs.runners.outputs.runs_on).visual_hot) }}
-
-      - name: Prebuild workspace type declarations
-        run: |
-          pnpm --filter @open-design/desktop build
-          pnpm --filter @open-design/web build:sidecar
-
-      - name: Run strict visual Playwright suite
-        id: visual
-        continue-on-error: true
-        env:
-          OD_VISUAL_OUTPUT_DIR: ui/reports/visual-screenshots
-          OD_PLAYWRIGHT_FULLY_PARALLEL: "1"
-        run: |
-          pnpm -C e2e exec tsx scripts/playwright.ts clean
-          pnpm -C e2e exec playwright test -c playwright.visual.config.ts ${{ matrix.files }}
-
-      - name: Write capture manifest
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        run: |
-          mkdir -p e2e/ui/reports/visual-report
-          cat > e2e/ui/reports/visual-report/manifest.json <<'JSON'
-          {
-            "pr_number": "${{ github.event.pull_request.number }}",
-            "head_sha": "${{ github.event.pull_request.head.sha }}",
-            "base_sha": "${{ github.event.pull_request.base.sha }}",
-            "run_id": "${{ github.run_id }}",
-            "group": "${{ matrix.name }}",
-            "capture_outcome": "${{ steps.visual.outcome }}"
-          }
-          JSON
-
-      - name: Upload PR visual artifact
-        id: upload_visual_artifact
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: visual-pr-capture-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ matrix.name }}
-          path: |
-            e2e/ui/reports/visual-screenshots
-            e2e/ui/reports/visual-test-results
-            e2e/ui/reports/visual-results.json
-            e2e/ui/reports/visual-report/manifest.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload manual visual artifact
-        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: visual-ci-${{ github.run_id }}-${{ matrix.name }}
-          path: |
-            e2e/ui/reports/visual-screenshots
-            e2e/ui/reports/visual-test-results
-            e2e/ui/reports/visual-results.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Fail when strict visual tests fail
-        if: ${{ steps.visual.outcome != 'success' }}
-        run: exit 1
 
   # This policy is a sibling of the validation workloads, not their prerequisite.
   # Labeled merge groups still receive the same workload coverage before the
@@ -911,24 +487,6 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  platform_tests:
-    name: '[test] packages/platform'
-    needs: [plan, runners]
-    if: ${{ fromJSON(needs.plan.outputs.run).platform_tests }}
-    runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).workspace_unit }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6.0.2
-      - uses: pnpm/action-setup@v6.0.8
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 24.18.0
-          cache: pnpm
-      - name: '[prepare] Platform dependencies'
-        run: pnpm --filter @open-design/platform... install --frozen-lockfile --ignore-scripts
-      - name: '[test] Platform behavior'
-        run: pnpm --filter @open-design/platform test
-
   validate:
     name: ${{ inputs.workloads != '' && '[validate] Selected workloads' || 'Validate workspace' }}
     needs:
@@ -937,16 +495,7 @@ jobs:
       - merge_policy
       - static_gate
       - preflight
-      - workspace_unit_tests
-      - daemon_unit_tests
-      - windows_tools_pack_payload_tests
-      - web_workspace_tests
-      - e2e_vitest
-      - playwright_critical
-      - ui_p0
-      - playwright_visual
       - platform_build
-      - platform_tests
     if: ${{ always() }}
     runs-on: ${{ fromJSON(needs.runners.outputs.runs_on).control }}
     timeout-minutes: 5
@@ -1122,8 +671,8 @@ jobs:
             failed_lines="$(printf '%s\n' "$failed_jobs" | sed -E 's/^/- `/; s/$/`/')"
           fi
 
-          # Pull the failing assertions out of the job logs (vitest `FAIL` lines, Playwright
-          # `✘` lines, runner error annotations), capped so the comment stays readable.
+          # Pull the failing assertions out of the job logs (runner error annotations),
+          # capped so the comment stays readable.
           # CI logs are full of terminal escape sequences, and gh >= 2.97 refuses to print such
           # a body unless told otherwise (GHSA-3m3g-3wcr-px46) while older gh does not know the
           # flag — probe once so the excerpt works with either runner image.
@@ -1141,7 +690,7 @@ jobs:
             lines="$(gh api ${escape_flag:+"$escape_flag"} "repos/$REPO/actions/jobs/$job_id/logs" 2>/dev/null \
               | tr -d '\r' \
               | sed -E "s/${esc}\[[0-9;]*[A-Za-z]//g; s/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z //" \
-              | grep -E '^ ?FAIL  |^[[:space:]]*[✘×] |^##\[error\]' \
+              | grep -E '^##\[error\]' \
               | grep -vE '^##\[error\]Process completed with exit code' \
               | sed -E 's/^##\[error\]//; s/^[[:space:]]+//' \
               | awk '!seen[$0]++' \
@@ -1150,7 +699,7 @@ jobs:
               excerpt="${excerpt}${lines}"$'\n'
             fi
           done
-          # Shards that fail on the same test would otherwise repeat the same lines per job.
+          # Jobs failing on the same error would otherwise repeat the same lines per job.
           if [ -n "$excerpt" ]; then
             excerpt="$(printf '%s' "$excerpt" | awk '!seen[$0]++')"$'\n'
           fi

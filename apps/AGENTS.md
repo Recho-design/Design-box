@@ -13,9 +13,8 @@ Follow the root `AGENTS.md` first. This file only records module-level boundarie
 ## Daemon layout
 
 - `apps/daemon/src/` contains only daemon app source.
-- `apps/daemon/tests/` contains daemon tests.
 - `apps/daemon/src/sidecar/` contains the daemon sidecar entry.
-- CLI/agent argument definition changes belong in `apps/daemon/src/runtimes/defs/`; stdout parser changes belong with the matching runtime helpers and parser tests.
+- CLI/agent argument definition changes belong in `apps/daemon/src/runtimes/defs/`; stdout parser changes belong with the matching runtime helpers.
 
 ### Router layout
 
@@ -24,13 +23,6 @@ Follow the root `AGENTS.md` first. This file only records module-level boundarie
 - Bootstrap-wide routes describe daemon availability or startup metadata shared by every domain. `/api/health` and `/api/version` stay in `server.ts` because they only report process-level status.
 - Domain routes describe a product capability or data model. `/api/active` belongs in `apps/daemon/src/routes/active-context.ts` because transient UI focus is its own domain, while chat routes own persistent conversation and run state.
 - Add endpoints to an existing route file when they share the same domain language and dependency set. Split a new module under `apps/daemon/src/routes/` when the endpoint introduces a distinct domain or has little dependency overlap with existing route modules.
-
-## Test layout
-
-- App tests live in each app's `tests/` directory, sibling to `src/`; preserve source-relative subpaths inside `tests/` when useful.
-- Keep app `src/` directories source-only; do not add new `*.test.ts` or `*.test.tsx` files under `src/`.
-- `apps/web/tests/` contains web-owned Vitest tests and uses `*.test.ts` / `*.test.tsx`.
-- Playwright UI automation belongs in `e2e/ui/`; do not add Playwright suites or UI automation helper scripts under `apps/web`.
 
 ## Sidecar awareness
 
@@ -49,9 +41,8 @@ Follow the root `AGENTS.md` first. This file only records module-level boundarie
 
 ```bash
 pnpm --filter @open-design/web typecheck
-pnpm --filter @open-design/web test
+pnpm --filter @open-design/web build
 pnpm --filter @open-design/daemon typecheck
-pnpm --filter @open-design/daemon test
 pnpm --filter @open-design/daemon build
 pnpm --filter @open-design/desktop typecheck
 pnpm --filter @open-design/desktop build

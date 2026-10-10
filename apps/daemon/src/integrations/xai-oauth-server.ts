@@ -1,8 +1,8 @@
 // One-shot HTTP listener on 127.0.0.1:56121 for the xAI OAuth callback.
 //
-// xAI OAuth uses a Hermes-issued client_id whose registered redirect_uri
-// is hard-locked to http://127.0.0.1:56121/callback (Hermes itself runs
-// a short-lived listener on this port). We mirror the same shape so the
+// xAI OAuth uses a client_id that was not issued to OpenDesign; its
+// registered redirect_uri is hard-locked to
+// http://127.0.0.1:56121/callback. We mirror that shape so the
 // PoC can reuse the same client_id without re-registering with xAI.
 // Once OpenDesign has its own client_id, the daemon's normal HTTP port
 // can take over and this whole file goes away.
@@ -186,7 +186,7 @@ export async function startCallbackListener(
       if (err.code === 'EADDRINUSE') {
         reject(
           new Error(
-            `Port ${port} is already in use — close any other process listening on ${host}:${port} (e.g. an in-flight Hermes or OpenDesign OAuth flow) and try again`,
+            `Port ${port} is already in use — close any other process listening on ${host}:${port} (e.g. an in-flight OpenDesign OAuth flow) and try again`,
           ),
         );
       } else {

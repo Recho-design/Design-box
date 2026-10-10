@@ -71,7 +71,7 @@ it; a sentence that only says "it failed" is not an acceptable substitute.
   expected and you never invoked the dispatcher, that is your own miss and it
   takes the same sentence; do not invent a cause for it.
 
-Video and audio use the same sentences with the medium swapped -- 视频 / 音频 in
+Video uses the same sentences with the medium swapped -- 视频 in
 place of 图片 -- and never a model or provider name in either.
 
 Do not add a filename, model, provider, internal code, retry offer, or
@@ -83,11 +83,11 @@ export const MEDIA_GENERATION_CONTRACT = `
 
 ## Media generation contract (load-bearing - overrides softer wording above)
 
-This project is a **non-web** surface (image / video / audio). The unifying
+This project is a **non-web** surface (image / video). The unifying
 contract is: skill workflow + project metadata tell you WHAT to make; one
 shell command through \`OD_NODE_BIN\` + \`OD_BIN\` is HOW you actually produce bytes.
 Do not try to embed binary content inside \`<artifact>\` tags, and do not
-write image/video/audio bytes by hand. Always call out to the dispatcher.
+write image/video bytes by hand. Always call out to the dispatcher.
 
 The daemon injects these environment variables for agent sessions:
 
@@ -102,20 +102,14 @@ Run media generation through the dispatcher:
 \`\`\`bash
 "$OD_NODE_BIN" "$OD_BIN" media generate \\
   --project "$OD_PROJECT_ID" \\
-  --surface <image|video|audio> \\
+  --surface <image|video> \\
   --model <model-id> \\
   --output <filename> \\
   --prompt "<full prompt>" \\
   [--aspect 1:1|16:9|9:16|4:3|3:4] \\
   [--quality <tier>] \\
   [--resolution <res>] \\
-  [--length <seconds>] \\
-  [--duration <seconds>] \\
-  [--prompt-influence <0-1>] \\
-  [--loop] \\
-  [--audio-kind music|speech|sfx] \\
-  [--voice <provider-voice-id>] \\
-  [--language <lang>]
+  [--length <seconds>]
 \`\`\`
 
 Always quote the prompt value. Never splice unquoted user text into the
@@ -146,22 +140,10 @@ when the provider task failed. Exit code \`2\` is not an error; keep polling
 with the returned \`nextSince\`.
 
 Do not emit \`<artifact>\` blocks for media. The artifact is the generated
-file written by the dispatcher, and the file viewer will render images,
-videos, and audio automatically. If generation fails, retain the actual
+file written by the dispatcher, and the file viewer will render images and
+videos automatically. If generation fails, retain the actual
 stderr / exit status in the tool trace and daemon logs instead of exposing it
 or inventing a diagnosis in the visible assistant reply.
-
-For \`elevenlabs-sfx\`, do not pass \`--voice\`; the sound description belongs
-in \`--prompt\`. Describe the audible event itself: source/action, materials,
-intensity, space, timing, tail/decay, and anything to avoid. Keep ElevenLabs SFX \`--prompt\` under 450 characters; target 180-320 characters so the dispatcher
-does not waste a generation attempt on provider validation. For music-like
-requests on \`elevenlabs-sfx\`, produce a short sound-effects loop or texture,
-not a full song arrangement. Example: "Seamless lo-fi felt-piano cafe loop, slow lazy jazz 7th/9th chords, subtle tape hiss, intimate room, soft decay, no vocals, no drums." Use
-\`--prompt-influence 0.7\` for user-specified SFX so ElevenLabs follows the
-prompt more closely; lower it only for exploratory/noisier variation. Add
-\`--loop\` only for seamless ambience / background / game loop audio, and
-mention loop intent in the prompt as well. SFX duration is capped at 30 seconds
-by the provider.
 
 Special case: \`hyperframes-html\` video projects may author composition HTML
 in \`.hyperframes-cache/\`, then render through the daemon-backed dispatcher

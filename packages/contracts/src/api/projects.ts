@@ -17,6 +17,11 @@ export type ProjectKind =
   | 'brand'
   | 'image'
   | 'video'
+  /**
+   * @deprecated Historical value — audio generation was removed; kept only so
+   * existing project rows that carry this kind still typecheck and render.
+   * New code must not produce it.
+   */
   | 'audio';
 
 /**

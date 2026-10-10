@@ -42,11 +42,9 @@ import {
   composeOdNextStrategyRequestPromptV2,
   type OdNextStrategyRequestRecipeV2,
 } from './od-next-strategy.js';
-import { SETTINGS_MEDIA_PROVIDERS_PATH } from '../settings-nav.js';
 import { normalizePromptLocale, promptLanguageName } from './ui-locale.js';
 
 export const BASE_SYSTEM_PROMPT = OFFICIAL_DESIGNER_PROMPT;
-const ELEVENLABS_VOICE_PROMPT_OPTION_LIMIT = 100;
 const SEMANTIC_OUTPUT_FILE_NAMES = `## Semantic output file names
 
 For new user-facing deliverables, choose a short semantic project-relative filename derived from the user's brief, product, screen, or artifact type. Do not call every new artifact \`index.html\`.
@@ -54,26 +52,6 @@ For new user-facing deliverables, choose a short semantic project-relative filen
 Good examples: \`investor-pitch-deck.html\`, \`ai-community-pr-deck.html\`, \`refund-ops-dashboard.html\`, \`pricing-page.html\`, \`screens/ios-checkout.html\`, \`daily-digest.md\`, \`image-manifest.json\`.
 
 When editing an existing artifact, preserve its existing filename unless the user asks for a copy or version. Use \`index.html\` only for fixed runtime conventions or a lightweight launcher/overview: live-artifact generated previews, HyperFrames compositions, static SPA/deploy entry mapping, plugin previews/examples, \`ui_kits/app/index.html\`, or a multi-screen overview that links to semantic screen files. If an active skill or template says to copy a seed to \`index.html\`, adapt the destination to a semantic filename unless the task is one of those fixed-path exceptions.`;
-
-export interface AudioVoiceOption {
-  name: string;
-  voiceId: string;
-  category?: string | null;
-  labels?: Record<string, string> | null;
-}
-
-const ELEVENLABS_VOICE_OPTIONS_PROMPT_PREFIX = 'ElevenLabs voice list could not be loaded';
-const PROMPT_SAFE_HTTP_STATUS_LABELS: Record<string, string> = {
-  '400': 'Bad Request',
-  '401': 'Unauthorized',
-  '403': 'Forbidden',
-  '404': 'Not Found',
-  '429': 'Too Many Requests',
-  '500': 'Internal Server Error',
-  '502': 'Bad Gateway',
-  '503': 'Service Unavailable',
-  '504': 'Gateway Timeout',
-};
 
 function renderUiLocalePrompt(locale: string | undefined): string {
   const normalized = normalizePromptLocale(locale);
@@ -99,36 +77,6 @@ function renderUiLocalePrompt(locale: string | undefined): string {
     );
   }
   return lines.join('\n');
-}
-
-function normalizePromptText(value: string): string {
-  return value
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-export function formatElevenLabsVoiceOptionsErrorForPrompt(
-  error: string | undefined,
-): string | undefined {
-  const trimmed = normalizePromptText(error ?? '');
-  if (!trimmed) return undefined;
-
-  if (/no ElevenLabs API key/i.test(trimmed)) {
-    return `${ELEVENLABS_VOICE_OPTIONS_PROMPT_PREFIX} because the ElevenLabs API key is missing. Tell the user to configure it in ${SETTINGS_MEDIA_PROVIDERS_PATH} or paste a voice id manually.`;
-  }
-
-  const statusMatch = trimmed.match(
-    /(?:\((\d{3})(?:\s+([^)]+))?\)|\b(\d{3})(?:\s+([A-Za-z][A-Za-z -]{0,40}))?\b)/,
-  );
-  if (statusMatch) {
-    const statusCode = statusMatch[1] ?? statusMatch[3];
-    const statusText = statusCode ? PROMPT_SAFE_HTTP_STATUS_LABELS[statusCode] ?? '' : '';
-    const suffix = statusText ? ` ${statusText}` : '';
-    return `${ELEVENLABS_VOICE_OPTIONS_PROMPT_PREFIX} (${statusCode}${suffix}). Tell the user to retry the lookup or paste a voice id manually.`;
-  }
-
-  return `${ELEVENLABS_VOICE_OPTIONS_PROMPT_PREFIX}. Tell the user to retry the lookup or paste a voice id manually.`;
 }
 
 export const SKIP_DISCOVERY_BRIEF_OVERRIDE = `# Automated project mode — skip discovery form
@@ -248,15 +196,6 @@ export interface ComposeInput {
   // contracts composer simply splices them in after the plugin block;
   // every block is already self-contained markdown.
   activeStageBlocks?: ReadonlyArray<string> | undefined;
-  // Provider voice choices fetched by the app before composing the
-  // prompt. Used for ElevenLabs speech discovery so the agent can
-  // render a select question-form instead of asking the user to paste
-  // raw ids.
-  audioVoiceOptions?: AudioVoiceOption[] | undefined;
-  // When voice discovery fails, surface the error reason so the agent
-  // can tell the user why the dropdown is unavailable instead of
-  // pretending there were simply no voices.
-  audioVoiceOptionsError?: string | undefined;
   // When set to 'plain', suppresses tool_calls so API/BYOK-mode models
   // only emit <artifact> blocks (they cannot execute tools).
   streamFormat?: string | undefined;
@@ -305,8 +244,6 @@ export function composeSystemPrompt({
   template,
   pluginBlock,
   activeStageBlocks,
-  audioVoiceOptions,
-  audioVoiceOptionsError,
   streamFormat,
   sessionMode,
   locale,
@@ -364,10 +301,8 @@ export function composeSystemPrompt({
   const isMediaSurfaceEarly =
     skillMode === 'image' ||
     skillMode === 'video' ||
-    skillMode === 'audio' ||
     metadata?.kind === 'image' ||
-    metadata?.kind === 'video' ||
-    metadata?.kind === 'audio';
+    metadata?.kind === 'video';
 
   // API/BYOK mode (streamFormat === 'plain'): no tools are wired through
   // to the model, but the discovery layer + base prompt below still tell
@@ -532,7 +467,7 @@ export function composeSystemPrompt({
     }
   }
 
-  const metaBlock = renderMetadataBlock(metadata, template, audioVoiceOptions, audioVoiceOptionsError);
+  const metaBlock = renderMetadataBlock(metadata, template);
   if (metaBlock) parts.push(metaBlock);
 
   // Decks have a load-bearing framework (nav, counter, scroll JS, print
@@ -674,8 +609,6 @@ If this is a plain API run where filesystem tools are unavailable, output the sa
 function renderMetadataBlock(
   metadata: ProjectMetadata | undefined,
   template: ProjectTemplate | undefined,
-  audioVoiceOptions: AudioVoiceOption[] | undefined,
-  audioVoiceOptionsError: string | undefined,
 ): string {
   if (!metadata) return '';
   const lines: string[] = [];
@@ -693,7 +626,6 @@ function renderMetadataBlock(
   lines.push(...kindDetailLines(metadata));
   lines.push(...imageLines(metadata));
   lines.push(...videoLines(metadata));
-  lines.push(...audioLines(metadata, audioVoiceOptions, audioVoiceOptionsError));
   lines.push(...inspirationLines(metadata));
   lines.push(...contextPluginLines(metadata));
   lines.push(...promptTemplateReferenceLines(metadata));
@@ -893,63 +825,6 @@ function videoLines(
   return out;
 }
 
-function audioLines(
-  metadata: ProjectMetadata,
-  audioVoiceOptions: AudioVoiceOption[] | undefined,
-  audioVoiceOptionsError: string | undefined,
-): string[] {
-  const out: string[] = [];
-  if (metadata.kind === 'audio') {
-    out.push(
-      `- **audioKind**: ${metadata.audioKind ?? '(not provided; common choices include music, speech, or sfx)'}`,
-    );
-    out.push(
-      `- **audioModel**: ${metadata.audioModel ?? '(not provided)'}`,
-    );
-    out.push(
-      `- **durationSeconds**: ${typeof metadata.audioDuration === 'number' ? metadata.audioDuration : '(not provided)'}`,
-    );
-    if (metadata.voice) {
-      out.push(`- **voice**: ${metadata.voice}`);
-    } else if (metadata.audioKind === 'speech') {
-      out.push('- **voice**: (not provided; relevant dimensions include voice id, accent, and pacing)');
-    }
-    const voiceOptions = shouldRenderElevenLabsVoiceOptions(metadata, audioVoiceOptions)
-      ? audioVoiceOptions ?? []
-      : [];
-    if (voiceOptions.length > 0) {
-      out.push(
-        '- **ElevenLabs voice selection policy**: First infer from the current request, conversation, Plugin inputs, and available context. If the provider default can safely satisfy the brief, omit `--voice` and do not ask. Only when voice selection would materially change the requested result and no safe default can be inferred, emit the dropdown template below. Its visible labels are voice descriptions; the selected value must be the exact `voice_id` passed to `--voice`. Do not ask the user to type an id.',
-      );
-      if (voiceOptions.length > ELEVENLABS_VOICE_PROMPT_OPTION_LIMIT) {
-        out.push(`- **ElevenLabs voice options**: showing the first ${ELEVENLABS_VOICE_PROMPT_OPTION_LIMIT} of ${voiceOptions.length} available voices.`);
-      }
-      out.push('');
-      out.push('Conditional template — do not emit unless the voice-selection policy above requires clarification:');
-      out.push('<question-form id="elevenlabs-voice" title="Choose an ElevenLabs voice">');
-      out.push(JSON.stringify(renderElevenLabsVoiceQuestionForm(voiceOptions), null, 2));
-      out.push('</question-form>');
-    } else {
-      const audioVoiceOptionsPromptError = formatElevenLabsVoiceOptionsErrorForPrompt(audioVoiceOptionsError);
-      if (audioVoiceOptionsPromptError) {
-        out.push(
-          `- **ElevenLabs voice options**: ${audioVoiceOptionsPromptError}`,
-        );
-      }
-    }
-    if (metadata.audioKind === 'sfx') {
-      out.push(
-        '- **SFX discovery**: If the audible event cannot be inferred and a missing detail would materially change the result, clarify only the highest-impact unresolved dimensions. Relevant dimensions include sound source/action, materials, intensity, acoustic space, timing/tail, loop/non-loop, and "avoid" constraints. Do not ask for language or voice for SFX.',
-      );
-    }
-    out.push('');
-    out.push(
-      'This is an **audio** project. Lock the content intent first, then dispatch via the **media generation contract** using `"$OD_NODE_BIN" "$OD_BIN" media generate --surface audio --audio-kind <kind> --model <audioModel> --duration <seconds>` and add `--voice <voice-id>` for speech when you have a provider-specific voice id. Do NOT emit `<artifact>` HTML.',
-    );
-  }
-  return out;
-}
-
 function inspirationLines(
   metadata: ProjectMetadata,
 ): string[] {
@@ -1080,74 +955,6 @@ function templateReferenceLines(
     }
   }
   return out;
-}
-
-function shouldRenderElevenLabsVoiceOptions(
-  metadata: ProjectMetadata,
-  audioVoiceOptions: AudioVoiceOption[] | undefined,
-): boolean {
-  return metadata.kind === 'audio'
-    && metadata.audioKind === 'speech'
-    && metadata.audioModel === 'elevenlabs-v3'
-    && !metadata.voice
-    && Array.isArray(audioVoiceOptions)
-    && audioVoiceOptions.length > 0;
-}
-
-/**
- * OPEND-2707. 与 `apps/daemon/src/prompts/system.ts` 的同名函数是手抄件,必须同步。
- *
- * 「交上去的是 voice_id,不是你看到的那行描述」原本写在每题副标题(help 字段)里。
- * 澄清卡不再渲染副标题之后那句话写了就丢,所以它并进了 `label` ——
- * `FormQuestion` 没有题级 `description`,`placeholder` 归 "Choose a voice" 占着,
- * `label` 是唯一还会渲染、又属于这道题本身的位置。
- *
- * 这份 JSON 会被整段 `JSON.stringify` 进系统提示词,所以它同时是模型看到的
- * 「一道题可以长这样」的范例 —— 留一个 help 键在这里,撤发问就撤了个寂寞。
- * 钉在 `packages/contracts/tests/system-prompt-audio-voices.test.ts`。
- */
-function renderElevenLabsVoiceQuestionForm(voiceOptions: AudioVoiceOption[]): {
-  questions: Array<{
-    id: string;
-    label: string;
-    type: 'select';
-    required: boolean;
-    allowCustom: false;
-    placeholder: string;
-    options: Array<{ label: string; value: string }>;
-  }>;
-  submitLabel: string;
-} {
-  const options = voiceOptions.slice(0, ELEVENLABS_VOICE_PROMPT_OPTION_LIMIT).map((option) => ({
-    label: formatElevenLabsVoiceLabel(option),
-    value: option.voiceId,
-  }));
-  return {
-    questions: [
-      {
-        id: 'voice',
-        label: 'Voice — the answer submits the matching Voice ID',
-        type: 'select',
-        required: true,
-        allowCustom: false,
-        placeholder: 'Choose a voice',
-        options,
-      },
-    ],
-    submitLabel: 'Use voice',
-  };
-}
-
-function formatElevenLabsVoiceLabel(option: AudioVoiceOption): string {
-  const labels = option.labels && typeof option.labels === 'object'
-    ? Object.values(option.labels)
-        .map((value) => (typeof value === 'string' ? value.trim() : ''))
-        .filter(Boolean)
-    : [];
-  const bits = [...labels];
-  if (bits.length > 0) return `${option.name} — ${bits.join(' · ')}`;
-  const category = typeof option.category === 'string' ? option.category.trim() : '';
-  return category ? `${option.name} — ${category}` : option.name;
 }
 
 /**

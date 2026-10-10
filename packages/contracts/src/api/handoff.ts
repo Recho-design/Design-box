@@ -21,8 +21,8 @@ export const HANDOFF_SCHEMA_VERSION = 2;
  * Request body for `POST /api/projects/:id/handoff`.
  *
  * Mirrors `FinalizeAnthropicRequest` (./finalize.ts) — `baseUrl` is
- * optional so standard Anthropic users do not need to set it; Bedrock
- * / self-hosted-proxy users still can.
+ * optional so standard Anthropic users do not need to set it;
+ * self-hosted-proxy / custom-endpoint users still can.
  */
 export interface HandoffRequest {
   /**

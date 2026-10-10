@@ -20,7 +20,6 @@ function sha256(value: string): string {
 
 function handleKindForAgent(agentId: string | null): NativeSessionHandleKind {
   if (agentId === 'codex') return 'cli-thread-id';
-  if (agentId === 'pi') return 'session-file-path';
   if (agentId) return 'opaque-id';
   return 'unknown';
 }
@@ -30,7 +29,6 @@ function handleKindForRuntime(
 ): NativeSessionHandleKind {
   if (def.resumesSessionViaAcpLoad === true) return 'acp-session-handle';
   if (def.resumesSessionViaProfileStdio === true) return 'profile-session-id';
-  if (def.id === 'pi') return 'session-file-path';
   if (def.capturesSessionIdFromStream === true) return 'cli-thread-id';
   return handleKindForAgent(def.id);
 }
@@ -59,7 +57,6 @@ function acquisitionForRuntime(
   if (!supported) return 'none';
   if (def.resumesSessionViaAcpLoad === true) return 'acp-session-load';
   if (def.resumesSessionViaProfileStdio === true) return 'profile-session-frame';
-  if (def.id === 'pi') return 'session-file-discovered';
   if (def.capturesSessionIdFromStream === true) return 'stream-captured';
   if (def.resumesSessionViaCli === true) return 'daemon-specified';
   return 'unknown';
@@ -72,7 +69,6 @@ function continuationForRuntime(
   if (!supported) return 'none';
   if (def.resumesSessionViaAcpLoad === true) return 'acp-session-load';
   if (def.resumesSessionViaProfileStdio === true) return 'profile-stdio-resume';
-  if (def.id === 'pi') return 'session-file-resume';
   if (runtimeResumesSessionById(def)) return 'native-resume-by-id';
   return 'unknown';
 }

@@ -9,9 +9,10 @@ import type { ApiProtocol, AppConfig } from '../types';
 const FINALIZE_PROTOCOLS = new Set<FinalizeProviderProtocol>([
   'anthropic',
   'openai',
-  'azure',
   'google',
-  'ollama',
+  'deepseek',
+  'xai',
+  'custom',
 ]);
 
 export interface FinalizeCredentialsMissingToast {
@@ -32,7 +33,6 @@ function resolveByokFields(config: AppConfig, protocol: ApiProtocol) {
     apiKey: (saved?.apiKey ?? config.apiKey ?? '').trim(),
     baseUrl: (saved?.baseUrl ?? config.baseUrl ?? '').trim(),
     model: (saved?.model ?? config.model ?? '').trim(),
-    apiVersion: (saved?.apiVersion ?? config.apiVersion ?? '').trim(),
   };
 }
 
@@ -46,10 +46,7 @@ export function buildFinalizeRequest(
   config: AppConfig,
 ): FinalizeAnthropicRequest | null {
   const protocol = resolveFinalizeProtocol(config);
-  const { apiKey, baseUrl, model, apiVersion } = resolveByokFields(
-    config,
-    protocol,
-  );
+  const { apiKey, baseUrl, model } = resolveByokFields(config, protocol);
   if (!apiKey || !model) return null;
 
   return {
@@ -58,7 +55,6 @@ export function buildFinalizeRequest(
     ...(baseUrl ? { baseUrl } : {}),
     model,
     maxTokens: effectiveMaxTokens(config),
-    ...(protocol === 'azure' && apiVersion ? { apiVersion } : {}),
   };
 }
 

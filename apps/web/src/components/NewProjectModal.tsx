@@ -48,6 +48,7 @@ interface Props {
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onImportFolderResponse?: (response: OpenDesignHostProjectImportSuccess) => Promise<void> | void;
   onOpenConnectorsTab?: () => void;
+  onOpenMediaSettings?: () => void;
   onClose: () => void;
   initialTab?: CreateTab;
 }
@@ -84,6 +85,7 @@ function NewProjectModalBody({
   onImportFolder,
   onImportFolderResponse,
   onOpenConnectorsTab,
+  onOpenMediaSettings,
   onClose,
   initialTab,
 }: Omit<Props, 'open'>) {
@@ -187,6 +189,7 @@ function NewProjectModalBody({
             {...(onImportFolder ? { onImportFolder } : {})}
             {...(onImportFolderResponse ? { onImportFolderResponse } : {})}
             {...(onOpenConnectorsTab ? { onOpenConnectorsTab } : {})}
+            {...(onOpenMediaSettings ? { onOpenMediaSettings } : {})}
             {...(initialTab ? { initialTab } : {})}
           />
           {creating ? (

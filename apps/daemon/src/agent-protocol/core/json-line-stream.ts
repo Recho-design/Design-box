@@ -1,7 +1,7 @@
 /** @module agent-protocol/core/json-line-stream
  * Streaming JSON-line parser that reassembles pretty-printed and multiline
  * JSON-RPC messages across chunk boundaries. Shared transport used by both the
- * acp/ and pi-rpc/ protocol adapters; this file has no dependencies on any
+ * acp/ protocol adapter; this file has no dependencies on any
  * other agent-protocol sibling.
  */
 
@@ -12,7 +12,7 @@
  * up to 256 lines and 128 kB before abandoning and re-trying the current line
  * as a fresh candidate.
  *
- * Used as the shared ACP transport: both the acp/ and pi-rpc/ adapters call
+ * Used as the shared ACP transport: the acp/ adapter calls
  * this to decode JSON-RPC frames from a subprocess's stdout.
  *
  * @param onMessage - Called for each successfully parsed JSON value along with

@@ -673,7 +673,7 @@ Goal: make updates reproducible and safe enough for CI/enterprise use.
 ## Suggested First PR Split
 
 1. **Provenance fix**
-   - Files: `packages/contracts/src/plugins/*`, `apps/daemon/src/plugins/marketplaces.ts`, `apps/daemon/src/plugins/installer.ts`, `apps/daemon/src/plugins/registry.ts`, `apps/daemon/src/server.ts`, daemon tests.
+   - Files: `packages/contracts/src/plugins/*`, `apps/daemon/src/plugins/marketplaces.ts`, `apps/daemon/src/plugins/installer.ts`, `apps/daemon/src/plugins/registry.ts`, `apps/daemon/src/server.ts`.
    - Outcome: marketplace installs are auditable.
 
 2. **Trust vocabulary cleanup**
@@ -685,15 +685,15 @@ Goal: make updates reproducible and safe enough for CI/enterprise use.
    - Outcome: UI can browse not-yet-installed entries without scraping cached manifests client-side.
 
 4. **Plugins UI source management**
-   - Files: `PluginsView`, marketplace state helpers, CSS, web tests.
+   - Files: `PluginsView`, marketplace state helpers, CSS.
    - Outcome: add/refresh/remove/trust source operations in-app.
 
 5. **GitHub publish dry run**
-   - Files: `publish.ts`, CLI publish route, tests, docs.
+   - Files: `publish.ts`, CLI publish route, docs.
    - Outcome: authors can see the exact registry PR body/entry before mutation.
 
 6. **GitHub CLI auth wrapper**
-   - Files: CLI install/bootstrap docs, `apps/daemon/src/cli.ts`, new `GhClient` adapter, tests.
+   - Files: CLI install/bootstrap docs, `apps/daemon/src/cli.ts`, new `GhClient` adapter.
    - Outcome: `od plugin login/whoami` provide the product auth surface while reusing the user's `gh` session.
 
 ## Validation Bar
@@ -703,18 +703,17 @@ Minimum validation for regular registry work:
 ```bash
 pnpm guard
 pnpm typecheck
-pnpm --filter @open-design/daemon test
-pnpm --filter @open-design/web test
 ```
 
-Additional validation by area:
+The repository no longer carries a test layer. Validation by area is real-path
+based:
 
-- Contract/schema changes: add parser/schema fixtures in `packages/plugin-runtime/tests` and contracts tests where appropriate.
-- CLI changes: add daemon CLI tests or command-level tests matching the existing harness.
-- UI changes: add web component/state tests; use Browser/Playwright screenshots for larger visual route changes.
-- Publish/GitHub changes: tests must run without real network by injecting a fake `GhClient` or dry-run backend.
-- Enterprise/private source changes: tests must assert GitHub credentials stay in `gh` and are never serialized into marketplace manifests or daemon SQLite.
-- Registry product evaluation cases are tracked in `docs/testing/plugin-registry-eval-cases.md`; keep it updated whenever Sources, Available, Installed, GitHub publish, or enterprise backend behavior changes.
+- Contract/schema changes: exercise the parser/schema through `od plugin validate` and `od plugin pack` against representative plugin fixtures.
+- CLI changes: exercise the affected `od plugin` subcommands directly in a running daemon.
+- UI changes: exercise the PluginsView flow in a running web runtime; use manual browser inspection for larger visual route changes.
+- Publish/GitHub changes: validate against `gh` dry-run or a throwaway test repo rather than real network publishing.
+- Enterprise/private source changes: verify through a real export/dump that GitHub credentials stay in `gh` and are never serialized into marketplace manifests or daemon SQLite.
+- The registry product evaluation cases previously tracked in `docs/testing/plugin-registry-eval-cases.md` were removed with the test layer. Sources, Available, Installed, GitHub publish, and enterprise backend behavior changes are verified against a running daemon when they change.
 
 ## Open Questions
 

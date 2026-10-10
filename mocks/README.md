@@ -1,8 +1,7 @@
 # `mocks/` — replay-based mock CLIs and protocol fixtures
 
-A PATH-overlay replay harness for selected agent CLI contracts (`amp`, `claude`, `opencode`,
-`codex`, `gemini`, `cursor-agent`, `deepseek`, `qwen`, `grok`, the
-ACP family `devin` / `hermes` / `kilo` / `kimi` / `kiro` / `vibe`) that
+A PATH-overlay replay harness for selected agent CLI contracts (`claude`, `opencode`,
+`codex`, `gemini`, `deepseek`, `grok`) that
 replays pre-recorded sessions in each CLI's
 native protocol — stdout streaming for most, JSON-RPC over stdio for
 ACP. **Zero LLM tokens.**
@@ -25,7 +24,7 @@ Used by:
   charter / parser change; diff the events the daemon surfaces.
 
 The recordings are anonymized exports from open-design's Langfuse
-project (179 traces across 9 agents and 5+ skills as of this commit).
+project (164 traces across 6 agents and 5+ skills as of this commit).
 
 ---
 
@@ -58,7 +57,7 @@ mode below).
 
 ## Recordings live on R2, not in this repo
 
-The 179-recording corpus (~4.5 MB) is hosted on Cloudflare R2 at
+The 164-recording corpus (~4.2 MB) is hosted on Cloudflare R2 at
 `open-design-mocks` and fetched **on demand** — `pnpm install` does NOT
 pull them, and the repo stays small. Recordings only land in
 `mocks/recordings/` when:
@@ -114,18 +113,17 @@ re-harvest.
 ### Golden daemon-event snapshots
 
 `mocks/golden/<trace>.events.json` holds the exact event sequence the
-OD daemon emits when fed each (mock CLI → handler) pipeline. Diffed
-on every `pnpm --filter @open-design/daemon test` run by
-`apps/daemon/tests/mocks-golden.test.ts`.
+OD daemon emits when fed each (mock CLI → handler) pipeline.
 
 A parser refactor that semantically changes events (drops a field,
-renames `sessionId`, stops emitting `turn_end`) fails the diff loudly.
-After an intentional parser change, regenerate:
+renames `sessionId`, stops emitting `turn_end`) diverges from the
+committed snapshot. The daemon test that diffed them automatically was
+removed with the repository's test layer; after an intentional parser
+change, regenerate the goldens (see `mocks/golden/README.md`) and
+eyeball the diff:
 
 ```bash
-MOCKS_GOLDEN_UPDATE=1 pnpm --filter @open-design/daemon test mocks-golden
 git diff mocks/golden/    # eyeball the new shapes
-git add mocks/golden/ && git commit -m "mocks: refresh goldens for <parser change>"
 ```
 
 Per-spawn volatile fields (currently just claude's generated
@@ -155,35 +153,9 @@ replay gaps:
 |---|---|---|
 | `opencode`        | `json-event-stream` (opencode kind)     | `runtimes/json-event-stream.ts:handleOpenCodeEvent`   |
 | `codex`           | `json-event-stream` (codex kind)        | `runtimes/json-event-stream.ts:handleCodexEvent`      |
-| `amp` `claude`    | `claude-stream-json`                    | `runtimes/claude-stream.ts:createClaudeStreamHandler` |
+| `claude`          | `claude-stream-json`                    | `runtimes/claude-stream.ts:createClaudeStreamHandler` |
 | `gemini` (legacy fixture; no registered runtime) | `json-event-stream` (gemini kind) | `runtimes/json-event-stream.ts:handleGeminiEvent` |
-| `cursor-agent`    | `json-event-stream` (cursor-agent kind) | `runtimes/json-event-stream.ts:handleCursorEvent`     |
-| `deepseek` `qwen` `grok` | `plain`                          | `server.ts` (raw stdout = final assistant text) |
-| `kimi`            | `acp-json-rpc` in the live daemon; the replay wrapper still uses obsolete `json-event-stream` | `agent-protocol/acp/session.ts:attachAcpSession` |
-| `devin` `hermes` `kilo` `kiro` `vibe` | `acp-json-rpc` | `agent-protocol/acp/session.ts:attachAcpSession`         |
-
-> **Note on `cursor-agent`**: OD's parser does NOT recognize tool-call
-> events — only init / assistant text / usage. The renderer therefore emits
-> only the final assistant text wrapped in the expected init/text/usage
-> envelope. Tool calls present in the source recording are silently dropped.
-> The retained `gemini` parser and renderer recognize `stream-json` tool_use /
-> tool_result frames and replay recorded tool calls through that envelope.
-
-> **Note on live ACP agents** (`devin` / `hermes` / `kilo` / `kimi` / `kiro` /
-> `vibe`): These do NOT stream stdout — they speak JSON-RPC v2 over stdio.
-> OD's daemon sends `initialize` → `session/new` → (optional `session/set_model`)
-> → `session/prompt`; the mock responds in order, streams text via
-> `session/update` notifications carrying `agent_message_chunk` parts,
-> then responds to the prompt request with usage stats. Live agents may also
-> send `tool_call` / `tool_call_update` notifications; the daemon maps completed
-> artifact-write calls to canonical `tool_use` / `tool_result` events. The
-> current generic ACP mock emits only message-chunk text, so it does not cover
-> that part of the live contract.
-
-> **Note on `kimi`**: Open Design's registered runtime now launches `kimi acp`
-> and uses ACP JSON-RPC. The current `mocks/bin/kimi` replay wrapper still
-> models the retired prompt-mode stream-json contract; do not treat it as live
-> Kimi contract coverage until the wrapper and its smoke test are migrated.
+| `deepseek` `grok` | `plain`                                 | `server.ts` (raw stdout = final assistant text) |
 
 Each tool call from the recording is rendered with the original input
 arguments and tool output. The agents' assistant text is rendered as
@@ -226,7 +198,7 @@ The recordings live as one JSONL file per Langfuse trace under
 {
   "type": "meta",
   "source": {"provider": "langfuse", "trace_id": "...", "project_id": "..."},
-  "agent": "claude" | "codex" | "opencode" | "gemini" | "cursor-agent" | "qwen" | "copilot" | "deepseek" | "antigravity",
+  "agent": "claude" | "codex" | "opencode" | "gemini" | "deepseek" | "grok" | "antigravity",
   "model": "...",
   "outcome": "succeeded" | "failed" | "errored" | "interrupted",
   "duration_ms": 33620,
@@ -267,10 +239,10 @@ jq '[.entries[] | select(.skills | index("agent-browser"))] | sort_by(-.tool_cou
 
 | Dimension | Distribution |
 |---|---|
-| Agents | claude 57 · opencode 41 · codex 38 · gemini 25 · cursor-agent 11 · qwen/copilot/deepseek 2 each · antigravity 1 |
-| Outcomes | succeeded 144 · failed 35 |
-| Skills | default 71 · ad-creative 50 · algorithmic-art 30 · agent-browser 22 · video-hyperframes 2 · magazine-web-ppt / brainstorming / data-report / penpot-flutter 1 each |
-| Multi-turn | 124 traces tied to a session with ≥2 turns |
+| Agents | claude 57 · opencode 41 · codex 38 · gemini 25 · deepseek 2 · antigravity 1 |
+| Outcomes | succeeded 130 · failed 34 |
+| Skills | default 70 · ad-creative 45 · agent-browser 22 · algorithmic-art 21 · video-hyperframes 2 · magazine-web-ppt / brainstorming / data-report / penpot-flutter 1 each |
+| Multi-turn | 111 traces tied to a session with ≥2 turns |
 | Artifact | 18 traces produce `<artifact>` output |
 
 ---
@@ -410,16 +382,12 @@ mocks/
 │   ├── format-codex.mjs          ← matches handleCodexEvent
 │   ├── format-claude.mjs         ← matches createClaudeStreamHandler
 │   ├── format-gemini.mjs         ← matches handleGeminiEvent
-│   ├── format-cursor-agent.mjs   ← matches handleCursorEvent
-│   ├── format-acp.mjs            ← JSON-RPC server matching attachAcpSession
-│   ├── format-kimi.mjs           ← retained obsolete Kimi stream-json renderer
-│   └── format-plain.mjs          ← raw stdout (deepseek/qwen/grok)
+│   └── format-plain.mjs          ← raw stdout (deepseek/grok)
 ├── bin/
-│   ├── amp  claude  codex  opencode  opencode-cli
-│   ├── gemini    cursor-agent
-│   ├── deepseek  qwen    grok
-│   └── devin hermes kilo kimi kiro kiro-cli vibe vibe-acp
-├── manifest.json                 ← committed: 179 entries' metadata + sha256 + provenance + R2 storage hints
+│   ├── claude  codex  opencode  opencode-cli
+│   ├── gemini
+│   └── deepseek  grok
+├── manifest.json                 ← committed: 164 entries' metadata + sha256 + provenance + R2 storage hints
 ├── golden/                       ← committed: daemon-event regression snapshots
 │   ├── README.md
 │   └── *.events.json             ← 3 representative traces (claude/codex/opencode)
@@ -441,14 +409,6 @@ under any Node ≥18.
 
 ## Limitations
 
-- `copilot`, `qoder`, `pi` (the niche `copilot-stream-json` /
-  `qoder-stream-json` / `pi-rpc` formats) are recorded but not yet
-  rendered as their native protocols — they fall back to the plain
-  renderer for now. If you need them, add a `format-<agent>.mjs`
-  following the same pattern as `format-codex.mjs`; the parsers are
-  in `apps/daemon/src/copilot-stream.ts`,
-  `apps/daemon/src/runtimes/qoder-stream.ts`, and
-  `apps/daemon/src/agent-protocol/pi-rpc/session.ts`.
 - The mock does not honor CLI flags that change semantics (`--model`,
   `--permission-mode`, `--allowed-tools`). They're silently ignored.
 

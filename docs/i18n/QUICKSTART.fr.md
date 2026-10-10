@@ -195,7 +195,7 @@ Le catalogue **Templates** vient de [`design-templates/`](../../design-templates
 ```bash
 pnpm tools-dev                 # daemon + web + desktop en arrière-plan
 pnpm tools-dev start web       # daemon + web en arrière-plan
-pnpm tools-dev run web         # daemon + web au premier plan (e2e/dev server)
+pnpm tools-dev run web         # daemon + web au premier plan (dev server)
 pnpm tools-dev restart         # redémarre daemon + web + desktop
 pnpm tools-dev restart --daemon-port 7457 --web-port 5175
 pnpm tools-dev status          # inspecte les runtimes gérés
@@ -302,8 +302,7 @@ open-design/
 │   │       │   └── defs/          # définitions de lancement et d’arguments par runtime
 │   │       ├── skills.ts          # loader SKILL.md (frontmatter parser)
 │   │       └── design-systems/    # loader DESIGN.md et services
-│   │   ├── sidecar/           # wrapper sidecar daemon pour tools-dev
-│   │   └── tests/             # tests du package daemon
+│   │   └── sidecar/           # wrapper sidecar daemon pour tools-dev
 │   ├── web/                   # Next.js 16 App Router + client React
 │       ├── app/               # entrypoints App Router
 │       ├── src/               # modules client/runtime React + TypeScript
@@ -322,13 +321,12 @@ open-design/
 │   ├── sidecar/               # primitives runtime sidecar génériques
 │   └── platform/              # primitives process/platform génériques
 ├── tools/dev/                 # lifecycle `pnpm tools-dev` et inspect CLI
-├── e2e/                       # UI Playwright + harness intégration externe/Vitest
 ├── skills/                    # capacités fonctionnelles invoquées pendant le travail
 ├── design-templates/          # catalogue de rendu : prototypes, decks, docs et médias
 ├── design-systems/            # paquets de marque basés sur DESIGN.md
 ├── scripts/sync-design-systems.ts    # réimport depuis le tarball getdesign upstream
 ├── docs/                      # vision produit + spec
-├── pnpm-workspace.yaml        # apps/* + packages/* + tools/* + e2e
+├── pnpm-workspace.yaml        # apps/* + packages/* + tools/*
 └── package.json               # scripts qualité root + bin `od`
 ```
 

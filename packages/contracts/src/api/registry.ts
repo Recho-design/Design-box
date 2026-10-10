@@ -49,7 +49,7 @@ export type AgentFixIntent =
   | { kind: 'rescan' }
   /**
    * Prompt the user to point OpenDesign at an explicit binary by writing
-   * `envKey` (e.g. `CURSOR_AGENT_BIN`) into `agentCliEnv`. Used when the CLI
+   * `envKey` (e.g. `CLAUDE_BIN`) into `agentCliEnv`. Used when the CLI
    * is installed somewhere PATH detection can't reach.
    */
   | { kind: 'setEnv'; envKey: string }
@@ -146,8 +146,7 @@ export interface AgentInfo {
   externalMcpInjection?:
     | 'claude-mcp-json'
     | 'acp-merge'
-    | 'opencode-env-content'
-    | 'mimo-env-content';
+    | 'opencode-env-content';
   /**
    * When `false`, the Settings model picker hides the "Custom (fill below)"
    * option and the free-text input. Use this for agents whose CLI doesn't

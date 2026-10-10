@@ -1818,15 +1818,15 @@ function isMediaGenerateCommand(command: string): boolean {
  * ⚠️ **不许从文件后缀反推**:进行中的格子还没有文件,而进行中恰恰是用户最需要
  * 知道「在生成什么」的那一档。
  */
-const MEDIA_SURFACE_FLAG_RE = /--surface[=\s]+(image|video|audio)\b/;
+const MEDIA_SURFACE_FLAG_RE = /--surface[=\s]+(image|video)\b/;
 
 function readMediaSurface(tasks: readonly ProjectMediaTask[], command: string): MediaSurface {
   for (const task of tasks) {
     const declared = task.surface;
-    if (declared === 'image' || declared === 'video' || declared === 'audio') return declared;
+    if (declared === 'image' || declared === 'video') return declared;
   }
   const flagged = MEDIA_SURFACE_FLAG_RE.exec(command)?.[1];
-  if (flagged === 'image' || flagged === 'video' || flagged === 'audio') return flagged;
+  if (flagged === 'image' || flagged === 'video') return flagged;
   return 'image';
 }
 

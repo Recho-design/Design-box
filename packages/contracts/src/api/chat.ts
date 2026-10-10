@@ -8,7 +8,6 @@ import type {
   PreviewAnnotationStyle,
   PreviewVisualMarkKind,
 } from './comments';
-import type { ResearchOptions } from './research';
 import type { RunContextSelection } from './context.js';
 import type { MediaExecutionPolicy, RunMediaTaskFailure } from './media.js';
 import type { AppliedPluginSnapshot } from '../plugins/apply.js';
@@ -81,27 +80,31 @@ export interface RunTerminalLifecycleStatus {
 export type ChatRole = 'user' | 'assistant';
 export type ChatSessionMode = 'design' | 'chat' | 'plan';
 export type ChatCommentSelectionKind = PreviewCommentSelectionKind | 'visual';
+/**
+ * The six chat protocols the daemon speaks. Anthropic / Google are native
+ * wires; `openai`, `deepseek`, `xai` and `custom` all run the same
+ * OpenAI-compatible chat-completions code path and differ only in their
+ * default base URL (`custom` has none — the user must supply one).
+ */
 export type ByokChatProtocol =
   | 'anthropic'
   | 'openai'
-  | 'azure'
   | 'google'
-  | 'ollama'
-  | 'senseaudio'
-  | 'aihubmix';
+  | 'deepseek'
+  | 'xai'
+  | 'custom';
 
 export interface ByokChatProviderConfig {
   protocol: ByokChatProtocol;
   apiKey: string;
   baseUrl?: string;
   apiVersion?: string;
-  /** Explicit run-scoped provider policy for presets that do not require bearer credentials. */
+  /** Explicit run-scoped provider policy for keyless OpenAI-compatible endpoints. */
   requiresApiKey?: boolean;
   /**
    * Run-scoped chat model id selected in the chat UI. Forwarded to the daemon
    * so BYOK-backed utilities (e.g. memory extraction) can honor the user's
-   * model picker instead of falling back to a hardcoded default. Optional
-   * because some presets (e.g. Ollama) infer the model from baseUrl/protocol.
+   * model picker instead of falling back to a hardcoded default.
    */
   model?: string;
 }
@@ -109,8 +112,6 @@ export interface ByokChatProviderConfig {
 export interface ByokMediaDefaults {
   imageModel?: string;
   videoModel?: string;
-  speechModel?: string;
-  speechVoice?: string;
 }
 
 export interface ChatRequest {
@@ -190,7 +191,6 @@ export interface ChatRequest {
   byokMediaDefaults?: ByokMediaDefaults;
   /** UI locale selected by the client, used by prompt composition for user-visible generated UI. */
   locale?: string;
-  research?: ResearchOptions;
   context?: RunContextSelection;
   appliedPluginSnapshotId?: string | null;
   /**

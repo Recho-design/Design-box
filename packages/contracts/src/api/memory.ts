@@ -130,23 +130,19 @@ export interface MemoryListResponse {
   extraction: MemoryExtractionMaskedConfig | null;
 }
 
-/** Provider/protocol the memory extractor calls. Mirrors the chat
- *  BYOK form's protocols — anthropic + openai-compatible + azure
- *  (openai-compatible at a different URL/header) + google gemini +
- *  ollama (also openai-compatible, just hosted on Ollama Cloud) +
- *  senseaudio (also openai-compatible, SenseAudio's OpenAI-shaped
- *  /v1/chat/completions gateway) — so the memory picker can offer the
- *  same options as the chat picker above it. The daemon routes both
- *  ollama and senseaudio through the same callOpenAI path since the
- *  wire protocol is identical. */
+/** Provider/protocol the memory extractor calls. Mirrors the chat BYOK
+ *  form's six protocols — anthropic + google gemini on their native wires,
+ *  and `openai` / `deepseek` / `xai` / `custom` on the shared
+ *  OpenAI-compatible `callOpenAI` path (they differ only in default base
+ *  URL; `custom` has none, so the user must supply one) — so the memory
+ *  picker can offer the same options as the chat picker above it. */
 export type MemoryExtractionProvider =
   | 'anthropic'
   | 'openai'
-  | 'azure'
   | 'google'
-  | 'ollama'
-  | 'senseaudio'
-  | 'aihubmix';
+  | 'deepseek'
+  | 'xai'
+  | 'custom';
 
 /** Masked version of MemoryExtractionConfig returned by GET endpoints —
  *  the api key field is replaced with a 4-char tail so the settings UI
@@ -155,9 +151,9 @@ export interface MemoryExtractionMaskedConfig {
   provider: MemoryExtractionProvider;
   model: string;
   baseUrl: string;
-  /** Azure-only: the `?api-version=…` query param value. Empty for the
-   *  other providers. The daemon falls back to a sensible default when
-   *  this is empty even on azure. */
+  /** Retained for shape compatibility with already-saved extraction configs;
+   *  the daemon no longer sends an `api-version` query param for any
+   *  provider. Empty for every protocol. */
   apiVersion: string;
   /** Last 4 chars of the configured key, or empty when unset. */
   apiKeyTail: string;
@@ -251,17 +247,18 @@ export interface MemoryConfigResponse {
 export interface MemoryExtractionConfig {
   provider: MemoryExtractionProvider;
   /** Override model id. When empty, the daemon picks a provider default
-   *  (`claude-haiku-4-5` for anthropic; `gpt-4o-mini` for openai/azure;
-   *  `gemini-2.0-flash` for google). For azure this is the deployment
-   *  name, not the underlying model family. */
+   *  (`claude-haiku-4-5` for anthropic; `gpt-4o-mini` for openai;
+   *  `gemini-3.5-flash` for google; `deepseek-chat` / `grok-4` for
+   *  deepseek / xai). `custom` has no default — the user must supply one. */
   model?: string;
   /** Override base URL. When empty, the daemon uses the provider default
-   *  (no default for azure — the user must supply their resource URL). */
+   *  (no default for custom — the user must supply their endpoint URL). */
   baseUrl?: string;
   /** Override API key. When empty, the daemon falls back to env vars and
    *  the media-config OpenAI key (openai provider only). */
   apiKey?: string;
-  /** Azure-only: `?api-version=…` query string. Ignored for other providers. */
+  /** Retained for shape compatibility with already-saved extraction
+   *  configs; ignored by the daemon. */
   apiVersion?: string;
 }
 
@@ -299,7 +296,8 @@ export interface ExtractMemoryRequest {
     provider: MemoryExtractionProvider;
     apiKey?: string;
     baseUrl?: string;
-    /** Azure-only `?api-version=…` value. Ignored for other providers. */
+    /** Retained for shape compatibility with existing callers; ignored by
+     *  the daemon. */
     apiVersion?: string;
     /** Optional — the daemon prefers a fast/cheap default per protocol
      *  (`claude-haiku-4-5` / `gpt-4o-mini` / etc.) over the chat model

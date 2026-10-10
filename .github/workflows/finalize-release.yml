@@ -153,7 +153,7 @@ jobs:
           # version. `npm pkg set version` touches only the top-level "version" field,
           # never a pinned dependency that happens to share the number (e.g. @xterm/addon-fit).
           changed=0
-          for f in package.json apps/*/package.json packages/*/package.json tools/*/package.json e2e/package.json; do
+          for f in package.json apps/*/package.json packages/*/package.json tools/*/package.json; do
             [ -f "$f" ] || continue
             v=$(node -p "require('./$f').version" 2>/dev/null || echo '')
             if [ "$v" = "$current" ]; then

@@ -11,18 +11,21 @@ const DEFAULT_OUTPUT_TOKEN_LIMIT = 16_384;
 const DEFAULT_BASE_URL_BY_PROTOCOL: Record<ByokChatProviderConfig['protocol'], string> = {
   anthropic: 'https://api.anthropic.com/v1',
   openai: 'https://api.openai.com/v1',
-  azure: '',
   google: 'https://generativelanguage.googleapis.com/v1beta',
-  ollama: 'https://ollama.com',
-  senseaudio: 'https://api.senseaudio.cn',
-  aihubmix: 'https://aihubmix.com/v1',
+  deepseek: 'https://api.deepseek.com',
+  xai: 'https://api.x.ai/v1',
+  // `custom` is an arbitrary OpenAI-compatible endpoint: there is no sensible
+  // default, so the user must supply one. An empty value here makes
+  // buildOpenCodeByokProviderConfig() return null (-> the run fails with
+  // BYOK_OPENCODE_PROVIDER_REQUIRED_MESSAGE) instead of silently calling a
+  // bogus URL.
+  custom: '',
 };
 
 type ProviderPackage =
   | '@ai-sdk/anthropic'
   | '@ai-sdk/openai'
   | '@ai-sdk/openai-compatible'
-  | '@ai-sdk/azure'
   | '@ai-sdk/google';
 
 export interface OpenCodeByokProviderConfig {
@@ -57,7 +60,7 @@ export function buildOpenCodeByokProviderConfig(
       ? provider.baseUrl.trim()
       : defaultBaseUrl,
   );
-  const needsApiKey = requiresApiKey(provider, baseUrl);
+  const needsApiKey = requiresApiKey(provider);
   if (needsApiKey && !apiKey) return null;
   if (!rawModel || rawModel.toLowerCase() === 'default') return null;
   if (!baseUrl) return null;
@@ -65,12 +68,7 @@ export function buildOpenCodeByokProviderConfig(
   const modelId = opencodeByokModelId(rawModel);
   if (!modelId) return null;
 
-  const providerEntry = buildProviderEntry(
-    protocol,
-    baseUrl,
-    provider.apiVersion,
-    needsApiKey,
-  );
+  const providerEntry = buildProviderEntry(protocol, baseUrl, needsApiKey);
   const config = {
     provider: {
       [BYOK_OPENCODE_PROVIDER_ID]: {
@@ -117,43 +115,13 @@ function normalizeProviderBaseUrl(
   if (protocol === 'google' && isExactOrigin(trimmed, 'https://generativelanguage.googleapis.com')) {
     return 'https://generativelanguage.googleapis.com/v1beta';
   }
-  if (protocol === 'ollama') {
-    if (isExactOrigin(trimmed, 'https://ollama.com')) return 'https://ollama.com/v1';
-    if (isLocalOllamaOriginPath(trimmed)) return `${trimmed}/v1`;
-    if (trimmed.endsWith('/api')) return `${trimmed.slice(0, -4)}/v1`;
-  }
   return trimmed;
 }
 
-function requiresApiKey(
-  provider: ByokChatProviderConfig,
-  baseUrl: string,
-): boolean {
-  const protocol = provider.protocol;
-  if (provider.requiresApiKey === false) return false;
-  return protocol !== 'ollama' || !isLocalOllamaBaseUrl(baseUrl);
-}
-
-function isLocalOllamaBaseUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    const hostname = parsed.hostname.toLowerCase();
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-  } catch {
-    return false;
-  }
-}
-
-function isLocalOllamaOriginPath(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return (
-      isLocalOllamaBaseUrl(value) &&
-      (parsed.pathname === '' || parsed.pathname === '/')
-    );
-  } catch {
-    return false;
-  }
+function requiresApiKey(provider: ByokChatProviderConfig): boolean {
+  // Only an explicit run-scoped `requiresApiKey: false` (keyless local
+  // OpenAI-compatible servers) exempts the run from a bearer credential.
+  return provider.requiresApiKey !== false;
 }
 
 function isExactOrigin(value: string, origin: string): boolean {
@@ -177,14 +145,11 @@ function isRealOpenAIHost(baseUrl: string): boolean {
 function buildProviderEntry(
   protocol: ByokChatProviderConfig['protocol'],
   baseUrl: string,
-  apiVersion: string | undefined,
   includeApiKey: boolean,
 ): { npm: ProviderPackage; options: Record<string, unknown> } {
   const apiKeyOption = includeApiKey
     ? { apiKey: `{env:${BYOK_OPENCODE_API_KEY_ENV}}` }
     : {};
-  const usesAzureOpenAICompatiblePath =
-    protocol === 'azure' && /\/openai\/v\d+(?:$|\/)/.test(safeUrlPathname(baseUrl));
   switch (protocol) {
     case 'anthropic':
       return {
@@ -192,18 +157,6 @@ function buildProviderEntry(
         options: {
           ...apiKeyOption,
           ...(baseUrl ? { baseURL: baseUrl } : {}),
-        },
-      };
-    case 'azure':
-      return {
-        npm: '@ai-sdk/azure',
-        options: {
-          ...apiKeyOption,
-          ...(baseUrl ? { baseURL: baseUrl } : {}),
-          ...(usesAzureOpenAICompatiblePath
-            ? {}
-            : { useDeploymentBasedUrls: true }),
-          ...apiVersionOption(apiVersion, usesAzureOpenAICompatiblePath),
         },
       };
     case 'google':
@@ -214,17 +167,9 @@ function buildProviderEntry(
           ...(baseUrl ? { baseURL: baseUrl } : {}),
         },
       };
-    case 'ollama':
-      return {
-        npm: '@ai-sdk/openai-compatible',
-        options: {
-          baseURL: baseUrl,
-          ...apiKeyOption,
-        },
-      };
     case 'openai':
       // Real OpenAI speaks the Responses API via @ai-sdk/openai. Every other
-      // host under the "openai" protocol (DeepSeek, vLLM, etc.) only serves
+      // host under the "openai" protocol (vLLM, OpenRouter, …) only serves
       // /chat/completions, so route it through @ai-sdk/openai-compatible.
       if (isRealOpenAIHost(baseUrl)) {
         return {
@@ -242,8 +187,13 @@ function buildProviderEntry(
           ...apiKeyOption,
         },
       };
-    case 'senseaudio':
-    case 'aihubmix':
+    case 'deepseek':
+    case 'xai':
+    case 'custom':
+      // All three are OpenAI-compatible by definition and only serve
+      // /chat/completions, so they must never take the Responses-API route —
+      // not even when baseUrl is blank (isRealOpenAIHost() treats an
+      // unparseable URL as "real OpenAI", which would be wrong here).
       return {
         npm: '@ai-sdk/openai-compatible',
         options: {
@@ -274,13 +224,4 @@ function appendVersionedApiPath(value: string): string {
   } catch {
     return `${value}/v1`;
   }
-}
-
-function apiVersionOption(
-  apiVersion: string | undefined,
-  omitWhenBlank: boolean,
-): Record<string, string> {
-  const trimmed = apiVersion?.trim() ?? '';
-  if (trimmed) return { apiVersion: trimmed };
-  return omitWhenBlank ? {} : { apiVersion: '2024-10-21' };
 }

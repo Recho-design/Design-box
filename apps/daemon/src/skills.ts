@@ -544,7 +544,7 @@ export function splitDerivedSkillId(id: unknown): DerivedSkillIdParts | null {
 //   2. The absolute repo path — a fallback for the cases the staged copy
 //      cannot exist for: `/api/runs` calls without a project (cwd falls
 //      back to the repo root, where the absolute path *is* an in-cwd
-//      path), or environments where staging fails. Claude/Copilot are
+//      path), or environments where staging fails. Claude is
 //      additionally given `--add-dir` for that absolute path, so the
 //      fallback round-trips even under their permission policy.
 //

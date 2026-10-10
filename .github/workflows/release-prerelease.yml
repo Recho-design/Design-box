@@ -22,16 +22,6 @@ on:
         required: false
         type: boolean
         default: true
-      enable_smoke:
-        description: "Run the packaged smoke suites (mac arm64, mac Intel, Windows). ON by default. Smoke no longer runs inside the build jobs and now costs this pipeline nothing but a dispatch: release-prerelease-smoke.yml picks it up after the packages are in R2 and re-downloads them from R2, so it exercises the artifact a user actually receives. Turn it off only to skip those runners entirely."
-        required: false
-        type: boolean
-        default: true
-      enable_tests:
-        description: "Dispatch the code test suites (P0 Functional E2E, E2E Vitest, daemon shards, verify) into release-prerelease-tests.yml. ON by default. They run against this build's commit in a workflow of their own, gate nothing here, and cost this pipeline only the seconds the dispatch takes."
-        required: false
-        type: boolean
-        default: true
       mac_sign_mode:
         description: "macOS signing depth for both mac lanes. 'sign-only' (default) codesigns with the Apple certificate but skips the Apple notary round-trip, which is minutes of waiting on Apple that no prerelease consumer needs. 'notarize' also notarizes and staples — use it for the last prerelease before a stable promotion, since stable ships notarized. 'no' skips signing entirely and will FAIL the stable promotion gate, which requires platforms.mac.signed == true."
         required: true
@@ -41,25 +31,6 @@ on:
           - "sign-only"
           - "notarize"
         default: "sign-only"
-      win_x64_smoke_mode:
-        description: "Windows x64 smoke coverage, applied only when enable_smoke is on. enable_smoke decides WHETHER packaged smoke runs; this input decides HOW DEEP the Windows one goes."
-        required: true
-        type: choice
-        options:
-          - skip
-          - core
-          - full
-        default: core
-      win_x64_update_metadata_url:
-        description: "Optional external updater metadata URL for full Windows x64 payload smoke."
-        required: false
-        type: string
-        default: ""
-      win_x64_update_target_version:
-        description: "Optional external updater target version expected by full Windows x64 payload smoke."
-        required: false
-        type: string
-        default: ""
   workflow_call:
     inputs:
       ref:
@@ -82,36 +53,11 @@ on:
         required: false
         type: boolean
         default: true
-      enable_smoke:
-        description: "Run the packaged smoke suites (mac arm64, mac Intel, Windows). ON by default. Smoke no longer runs inside the build jobs: release-prerelease-smoke.yml picks it up after the packages are in R2 and re-downloads them from R2, so it exercises the artifact a user actually receives."
-        required: false
-        type: boolean
-        default: true
-      enable_tests:
-        description: "Dispatch the code test suites (P0 Functional E2E, E2E Vitest, daemon shards, verify) into release-prerelease-tests.yml. ON by default. They run against this build's commit in a workflow of their own and gate nothing here."
-        required: false
-        type: boolean
-        default: true
       mac_sign_mode:
         description: "macOS signing depth for both mac lanes: no / sign-only / notarize. Defaults to sign-only — codesigned but not sent to Apple's notary service. Use notarize for the last prerelease before a stable promotion. 'no' fails the stable promotion gate, which requires platforms.mac.signed == true."
         required: false
         type: string
         default: "sign-only"
-      win_x64_smoke_mode:
-        description: "Windows x64 smoke coverage, applied only when enable_smoke is on: skip, core, or full."
-        required: false
-        type: string
-        default: "core"
-      win_x64_update_metadata_url:
-        description: "Optional external updater metadata URL for full Windows x64 payload smoke."
-        required: false
-        type: string
-        default: ""
-      win_x64_update_target_version:
-        description: "Optional external updater target version expected by full Windows x64 payload smoke."
-        required: false
-        type: string
-        default: ""
     outputs:
       release_version:
         description: "The prerelease version that was built."
@@ -128,26 +74,8 @@ on:
       previous_commit:
         description: "Commit SHA of the previously published prerelease; empty on cold start."
         value: ${{ jobs.metadata.outputs.previous_commit }}
-      # --- Advisory signals ------------------------------------------------
-      # Nothing below gates publication.
-      #
-      # The code tests and the packaged mac/Windows smoke no longer run in this
-      # workflow at all: they are dispatched into release-prerelease-tests.yml
-      # and release-prerelease-smoke.yml, which have concurrency groups of their
-      # own. That is the whole point — a validation job that outlives `publish`
-      # used to hold this workflow open, and this workflow's concurrency group
-      # is a single repository-wide string, so the next prerelease could not
-      # even START until the last one's tests finished. Their results reach a
-      # human through the progressive Feishu card (release-prerelease-card.yml),
-      # which watches all three runs, not through outputs here.
-      #
-      # Linux keeps its in-job smoke because the whole Linux lane is opt-in
-      # behind vars.ENABLE_STABLE_LINUX and is not on anyone's critical path.
-      linux_x64_smoke_result:
-        description: "Linux AppImage smoke outcome. Advisory; `skipped` unless vars.ENABLE_STABLE_LINUX is on."
-        value: ${{ jobs.build_linux.outputs.smoke_result }}
       version_metadata_url:
-        description: "Public R2 URL of this build's version metadata.json. This is the authoritative \"did a package actually ship?\" signal — it is non-empty only when the publish job wrote metadata. Do NOT read the overall workflow conclusion for that: it now goes red whenever an advisory test job fails, even though the package shipped."
+        description: "Public R2 URL of this build's version metadata.json. This is the authoritative \"did a package actually ship?\" signal — it is non-empty only when the publish job wrote metadata."
         value: ${{ jobs.publish.outputs.version_metadata_url }}
       mac_arm64_url:
         description: "macOS arm64 dmg download URL."
@@ -283,13 +211,6 @@ jobs:
     name: Dispatch prerelease validation
     # Fire-and-forget, and deliberately absent from every other job's `needs`.
     #
-    # This workflow holds ONE repository-wide concurrency group
-    # (`open-design-release-prerelease`, cancel-in-progress: false), so any job
-    # that outlives `publish` keeps that group held and stops the NEXT
-    # prerelease from STARTING — not from publishing, from starting. The test
-    # suites were doing exactly that. Handing them to workflows of their own
-    # costs this pipeline the seconds it takes to POST a dispatch.
-    #
     # A dispatch failure is loud (this job goes red) and harmless: nothing
     # depends on this job, so `publish` cannot see it.
     #
@@ -328,25 +249,12 @@ jobs:
           # the two are always in step; pinning it to the built commit would
           # break the moment a release branch carried an older .github tree.
           fetch-depth: 1
-      - name: Dispatch prerelease code tests
-        id: tests_dispatch
-        if: ${{ inputs.enable_tests }}
-        env:
-          COMMIT: ${{ needs.metadata.outputs.commit }}
-          VERSION: ${{ needs.metadata.outputs.release_version }}
-        run: |
-          bash .github/scripts/release/dispatch-validation.sh release-prerelease-tests.yml \
-            -f "commit=$COMMIT" \
-            -f "version=$VERSION" \
-            -f "origin_run_id=$GITHUB_RUN_ID"
       - name: Dispatch progressive Feishu card
         id: card_dispatch
         if: ${{ env.FEISHU_APP_ID != '' && env.FEISHU_RELEASE_CHAT_ID != '' }}
         env:
           BRANCH: ${{ needs.metadata.outputs.branch }}
           COMMIT: ${{ needs.metadata.outputs.commit }}
-          EXPECT_SMOKE: ${{ inputs.enable_smoke }}
-          EXPECT_TESTS: ${{ inputs.enable_tests }}
           PREVIOUS_COMMIT: ${{ needs.metadata.outputs.previous_commit }}
           VERSION: ${{ needs.metadata.outputs.release_version }}
         run: |
@@ -355,9 +263,7 @@ jobs:
             -f "commit=$COMMIT" \
             -f "branch=$BRANCH" \
             -f "previous_commit=$PREVIOUS_COMMIT" \
-            -f "origin_run_id=$GITHUB_RUN_ID" \
-            -f "expect_tests=$EXPECT_TESTS" \
-            -f "expect_smoke=$EXPECT_SMOKE"
+            -f "origin_run_id=$GITHUB_RUN_ID"
           # Only reached when the dispatch above actually succeeded — the helper
           # exits non-zero on every ref it could not dispatch on, and `run:`
           # blocks stop at the first failure. Empty therefore covers every way
@@ -401,7 +307,7 @@ jobs:
           CARD_DISPATCHED: ${{ steps.card_dispatch.outputs.dispatched }}
           CHANNEL_LABEL: Prerelease
           COMMIT: ${{ needs.metadata.outputs.commit }}
-          LANE_SUMMARY: "card dispatch=${{ steps.card_dispatch.outcome }} · tests dispatch=${{ steps.tests_dispatch.outcome }}"
+          LANE_SUMMARY: "card dispatch=${{ steps.card_dispatch.outcome }}"
           ORIGIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           # This job runs beside the build, so the packages are still coming.
           # A probe would be worse than useless here: a job cannot ask the API
@@ -443,14 +349,6 @@ jobs:
         run: node --experimental-strip-types tools/release/src/notifications/feishu-notice.ts
   build_mac:
     name: Build prerelease mac arm64
-    # Deliberately NOT gated on any test suite, and neither is `publish`. A
-    # prerelease exists so a person can install it and test it by hand;
-    # automated CI is a parallel opinion about the same commit, not a valve on
-    # delivery. Chaining the two meant a single flaky suite cost the team a
-    # whole day's package — the expensive failure mode, and the one this
-    # pipeline kept hitting. The suites still run on every prerelease, in
-    # release-prerelease-tests.yml, where they can take as long as they like
-    # without holding this workflow's concurrency group.
     needs: metadata
     runs-on: macos-14
     env:
@@ -757,9 +655,6 @@ jobs:
           RELEASE_REPORT_DIR: ${{ runner.temp }}/release-report/mac_arm64
           RELEASE_REPORT_JSON_PATH: ${{ runner.temp }}/release-report/mac_arm64/report.json
           RELEASE_REPORT_SUMMARY_PATH: ${{ runner.temp }}/release-report/mac_arm64/summary.md
-          # The build jobs no longer smoke; the packaged smoke lives in
-          # release-prerelease-smoke.yml and writes its own report there.
-          RELEASE_SMOKE_MODE: skip
           RELEASE_TARGET: mac_arm64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           REPORT_TITLE: mac_arm64 prerelease build
@@ -842,13 +737,8 @@ jobs:
           path: ${{ runner.temp }}/release-platform-manifests/mac_arm64.json
           if-no-files-found: error
           retention-days: 1
-      # The packaged smoke used to run here, after the publish manifest. It now
-      # runs in release-prerelease-smoke.yml against the DMG re-downloaded from
-      # R2 — closer to what a user installs, and off this workflow's
-      # concurrency group entirely.
   build_mac_intel:
     name: Build prerelease mac intel x64
-    # Tests never gate delivery on this channel — see build_mac.
     needs: metadata
     # On by default, and switchable. Intel is this pipeline's critical path: it
     # runs on the slower macos-15-intel fleet and takes ~33 min against ~21 min
@@ -1062,9 +952,6 @@ jobs:
           RELEASE_REPORT_DIR: ${{ runner.temp }}/release-report/mac_x64
           RELEASE_REPORT_JSON_PATH: ${{ runner.temp }}/release-report/mac_x64/report.json
           RELEASE_REPORT_SUMMARY_PATH: ${{ runner.temp }}/release-report/mac_x64/summary.md
-          # The build jobs no longer smoke; the packaged smoke lives in
-          # release-prerelease-smoke.yml and writes its own report there.
-          RELEASE_SMOKE_MODE: skip
           RELEASE_TARGET: mac_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           REPORT_TITLE: mac_x64 prerelease build
@@ -1147,10 +1034,8 @@ jobs:
           path: ${{ runner.temp }}/release-platform-manifests/mac_x64.json
           if-no-files-found: error
           retention-days: 1
-      # Packaged smoke moved to release-prerelease-smoke.yml — see build_mac.
   build_win:
     name: Build prerelease win x64
-    # Tests never gate delivery on this channel — see build_mac.
     needs: metadata
     runs-on: windows-latest
     env:
@@ -1300,8 +1185,6 @@ jobs:
           RELEASE_REPORT_DIR: ${{ runner.temp }}\release-report\win_x64
           RELEASE_REPORT_JSON_PATH: ${{ runner.temp }}\release-report\win_x64\report.json
           RELEASE_REPORT_SUMMARY_PATH: ${{ runner.temp }}\release-report\win_x64\summary.md
-          # See the mac lanes: packaged smoke moved out of this job.
-          RELEASE_SMOKE_MODE: skip
           RELEASE_TARGET: win_x64
           RELEASE_VERSION: ${{ needs.metadata.outputs.release_version }}
           REPORT_TITLE: win_x64 prerelease build
@@ -1377,18 +1260,11 @@ jobs:
           path: ${{ runner.temp }}\release-platform-manifests\win_x64.json
           if-no-files-found: error
           retention-days: 1
-      # The Windows update fixture and the packaged Windows smoke both moved
-      # to release-prerelease-smoke.yml, which rebuilds the fixture there when
-      # `full` coverage is requested and installs the setup.exe re-downloaded
-      # from R2 — see build_mac.
   build_linux:
     name: Build prerelease linux x64
-    # Tests never gate delivery on this channel — see build_mac.
     needs: metadata
     if: ${{ vars.ENABLE_STABLE_LINUX == 'true' }}
     runs-on: ubuntu-latest
-    outputs:
-      smoke_result: ${{ steps.linux_smoke.outcome }}
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_COMMIT: ${{ needs.metadata.outputs.commit }}
@@ -1433,42 +1309,6 @@ jobs:
             printf '%s\n' "$build_output" | tee "$report_dir/tools-pack.json"
             exit "$build_status"
           fi
-      - name: Smoke prerelease linux AppImage runtime
-        id: linux_smoke
-        continue-on-error: true
-        working-directory: e2e
-        env:
-          OD_PACKAGED_E2E_LINUX_APPIMAGE: "1"
-          OD_PACKAGED_E2E_NAMESPACE: release-prerelease-linux
-          OD_PACKAGED_E2E_SCREENSHOT_PATH: ${{ runner.temp }}/release-report/linux_x64/screenshots/open-design-linux-smoke.png
-          OD_PACKAGED_E2E_TOOLS_PACK_DIR: ${{ runner.temp }}/tools-pack
-        run: |
-          set -euo pipefail
-          report_dir="$RUNNER_TEMP/release-report/linux_x64"
-          mkdir -p "$report_dir/screenshots"
-          cat > "$report_dir/manifest.json" <<EOF
-          {
-            "channel": "prerelease",
-            "platform": "linux",
-            "releaseVersion": "${{ needs.metadata.outputs.release_version }}",
-            "spec": "specs/linux.spec.ts",
-            "namespace": "release-prerelease-linux",
-            "screenshot": "screenshots/open-design-linux-smoke.png",
-            "githubRunId": "$GITHUB_RUN_ID",
-            "githubRunAttempt": "$GITHUB_RUN_ATTEMPT",
-            "commit": "${{ needs.metadata.outputs.commit }}"
-          }
-          EOF
-          sudo apt-get update 2>&1 | tee "$report_dir/apt-get-update.log"
-          sudo apt-get install -y xvfb 2>&1 | tee "$report_dir/apt-get-install-xvfb.log"
-          xvfb-run -a pnpm test specs/linux.spec.ts 2>&1 | tee "$report_dir/vitest.log"
-      - name: Upload linux e2e spec report
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: open-design-prerelease-linux-e2e-report
-          path: ${{ runner.temp }}/release-report/linux_x64
-          if-no-files-found: warn
       - name: Prepare linux prerelease assets
         env:
           RELEASE_ASSET_SUFFIX: ""
@@ -1511,12 +1351,9 @@ jobs:
     # colleague's hands so a human can test it, and machine CI is a second,
     # parallel signal about the same commit — not a valve on the first one. A
     # flaky suite used to mean nobody got a build that day, which is a worse
-    # outcome than shipping an internal package alongside a red test. The
-    # suites now live in release-prerelease-tests.yml and the packaged smoke in
-    # release-prerelease-smoke.yml; the progressive Feishu card is what carries
-    # their verdict to a human. Stable is unaffected: its promotion gate reads
-    # the prerelease metadata through tools/release/src/metadata/prepare-stable.ts
-    # and runs its own checks.
+    # outcome than shipping an internal package alongside a red test. Stable is
+    # unaffected: its promotion gate reads the prerelease metadata through
+    # tools/release/src/metadata/prepare-stable.ts and runs its own checks.
     needs:
       - metadata
       - build_mac
@@ -1690,71 +1527,6 @@ jobs:
       - name: Cleanup workflow artifacts
         if: ${{ success() }}
         run: bash .github/scripts/release/github/cleanup-artifacts.sh
-  dispatch_smoke:
-    name: Dispatch packaged smoke
-    # Packaged smoke needs a package, so unlike dispatch_validation this one
-    # waits for `publish` — but it only waits long enough to POST the dispatch.
-    # The smoke itself downloads the artifacts back out of R2 in
-    # release-prerelease-smoke.yml, which is both closer to what a user installs
-    # and completely off this workflow's concurrency group.
-    needs:
-      - metadata
-      - publish
-    # `always() && !cancelled()` is load-bearing, not decoration.
-    #
-    # `build_linux` is skipped on every run (the repository has no
-    # ENABLE_STABLE_LINUX variable), and GitHub applies a skip "to all jobs in
-    # the dependency chain from the point of failure or skip onwards" unless a
-    # job uses a conditional expression that causes it to continue. That break
-    # is per job and is NOT inherited: `publish` carries the same prefix and so
-    # runs, but its own dependents are still downstream of build_linux's skip.
-    # Without a break of its own this job never evaluates the conditions below
-    # at all — GitHub's implicit `success()` skips it first.
-    #
-    # That is how release-prerelease-smoke.yml went 0-for-N. In run
-    # 34149795952 publish succeeded, version_metadata_url was published, and
-    # enable_smoke arrived as true; the job was still skipped with zero steps.
-    # The explicit publish gate below is what actually decides whether smoke is
-    # dispatched, and it is unchanged.
-    if: >-
-      ${{
-        always() && !cancelled() &&
-        inputs.enable_smoke &&
-        needs.publish.result == 'success' &&
-        needs.publish.outputs.version_metadata_url != ''
-      }}
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      PRIMARY_REF: ${{ needs.metadata.outputs.branch }}
-      FALLBACK_REF: ${{ github.event.repository.default_branch || 'main' }}
-    steps:
-      - name: Checkout dispatch helper
-        uses: actions/checkout@v6.0.2
-        with:
-          # Deliberately the ref this workflow was loaded from, NOT the built
-          # commit. The helper is infrastructure that ships with this file, so
-          # the two are always in step; pinning it to the built commit would
-          # break the moment a release branch carried an older .github tree.
-          fetch-depth: 1
-      - name: Dispatch packaged smoke
-        env:
-          COMMIT: ${{ needs.metadata.outputs.commit }}
-          VERSION: ${{ needs.metadata.outputs.release_version }}
-          VERSION_METADATA_URL: ${{ needs.publish.outputs.version_metadata_url }}
-          WIN_X64_SMOKE_MODE: ${{ inputs.win_x64_smoke_mode }}
-          WIN_X64_UPDATE_METADATA_URL: ${{ inputs.win_x64_update_metadata_url }}
-          WIN_X64_UPDATE_TARGET_VERSION: ${{ inputs.win_x64_update_target_version }}
-        run: |
-          bash .github/scripts/release/dispatch-validation.sh release-prerelease-smoke.yml \
-            -f "commit=$COMMIT" \
-            -f "version=$VERSION" \
-            -f "origin_run_id=$GITHUB_RUN_ID" \
-            -f "version_metadata_url=$VERSION_METADATA_URL" \
-            -f "win_x64_smoke_mode=$WIN_X64_SMOKE_MODE" \
-            -f "win_x64_update_metadata_url=$WIN_X64_UPDATE_METADATA_URL" \
-            -f "win_x64_update_target_version=$WIN_X64_UPDATE_TARGET_VERSION"
   cleanup_partial_release_assets:
     name: Cleanup unpublished prerelease asset artifacts
     needs:

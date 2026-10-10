@@ -2470,7 +2470,7 @@ export function createChatRunService({
     const targetChild = run.child;
     const targetProcessGroupId = run.processGroupId;
 
-    // Prefer RPC-level abort for agents that support it (pi, ACP adapters).
+    // Prefer RPC-level abort for agents that support it (ACP adapters).
     // If the adapter does not exit within its grace window, fall back to
     // process signals and finally SIGKILL the process group.
     if (run.acpSession?.abort) {

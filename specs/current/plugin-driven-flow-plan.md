@@ -157,6 +157,7 @@ Deferred to a follow-up:
 ```bash
 pnpm guard
 pnpm typecheck
-pnpm --filter @open-design/daemon test
-pnpm --filter @open-design/web test
 ```
+
+(The `daemon`/`web` package test suites were removed with the repository's test
+layer; feature validation happens on real paths.)

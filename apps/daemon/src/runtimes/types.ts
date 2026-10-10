@@ -216,18 +216,14 @@ export type RuntimeAgentDef = {
   //                            project cwd (Claude Code auto-loads it).
   //   'acp-merge'            — merge stdio entries into the existing
   //                            `mcpServers` array of an ACP launch
-  //                            descriptor (Hermes / Kimi / Kilo / Kiro
-  //                            / Vibe / Devin).
+  //                            descriptor.
   //   'opencode-env-content' — serialise to OpenCode's `mcp` config
   //                            schema and hand it through
   //                            `OPENCODE_CONFIG_CONTENT` in the spawn
   //                            env.
-  //   'mimo-env-content'      — same schema as opencode-env-content
-  //                            but emitted as `MIMOCODE_CONFIG_CONTENT`
-  //                            under MiMo's env namespace.
   //
   // Leave undefined for adapters that have no native MCP transport
-  // wired yet (codex, cursor-agent, copilot, qoder, pi). The
+  // wired yet (codex). The
   // settings UI reads this field to surface an explicit "external MCP
   // is not forwarded to <agent>; configure servers in <agent>'s own
   // config file instead" hint, replacing the previous silent-failure
@@ -235,8 +231,7 @@ export type RuntimeAgentDef = {
   externalMcpInjection?:
     | 'claude-mcp-json'
     | 'acp-merge'
-    | 'opencode-env-content'
-    | 'mimo-env-content';
+    | 'opencode-env-content';
   installUrl?: string;
   docsUrl?: string;
   // When `false`, the Settings model picker hides the "Custom (fill below)"
@@ -291,8 +286,7 @@ export type RuntimeAgentDef = {
   // Agent-recommended override for the chat-run inactivity watchdog.
   // The watchdog observes child stdout/stderr/SSE activity, not real
   // CPU progress, so agents whose CLIs go silent for long stretches
-  // during legitimate work (e.g. Copilot's deck-generation thinking
-  // phase from #2467) need a longer ceiling than the 10-minute global
+  // during legitimate work need a longer ceiling than the 10-minute global
   // default. Operators can still override per-process via
   // `OD_CHAT_RUN_INACTIVITY_TIMEOUT_MS` — that env wins.
   inactivityTimeoutMs?: number;
@@ -307,10 +301,9 @@ export type RuntimeAgentDef = {
   acpTurnEndCompletesPrompt?: boolean;
   // Declarative authentication probe. When set, detection spawns
   // `<bin> <args>` after the version check and classifies the combined
-  // stdout/stderr to derive `authStatus`. This replaces the previous
-  // hardcoded "only cursor-agent gets an auth probe" gate: an adapter
+  // stdout/stderr to derive `authStatus`: an adapter
   // opts in by declaring a cheap, side-effect-free status/whoami command
-  // (e.g. cursor-agent `status`). Adapters WITHOUT this field are never
+  // (e.g. `claude auth status`). Adapters WITHOUT this field are never
   // actively probed for auth — their auth status is only inferred later
   // from a real chat failure's error text (see classifyAgentServiceFailure).
   authProbe?: {
@@ -325,14 +318,13 @@ export type RuntimeAgentDef = {
     classifierAgentId?: string;
   };
   // Format for the `env` field in ACP `session/new` → `mcpServers[].env`.
-  // `'array'` (default) emits `[{name, value}]` — used by Hermes, Kimi,
-  // Kilo, Kiro, Vibe, and Devin.  `'map'` emits `{"KEY": "val"}` — used
-  // by reasonix ≥ 1.0 (Go) whose ACP implementation expects the standard
-  // MCP `map[string]string` shape. Leave `undefined` (defaults to 'array')
-  // for all other agents — the existing behavior is unchanged.
+  // `'array'` (default) emits `[{name, value}]`.  `'map'` emits
+  // `{"KEY": "val"}`, the standard MCP `map[string]string` shape. Leave
+  // `undefined` (defaults to 'array') unless an ACP peer expects the map
+  // shape — the existing behavior is unchanged.
   acpMcpEnvFormat?: 'array' | 'map';
   // First version of this agent whose ACP `session/new` handler rejects stdio
-  // MCP servers, e.g. `'0.37.0'` for Kimi Code CLI. When set, the ACP session
+  // MCP servers. When set, the ACP session
   // withholds stdio entries from any build at or above it and sends only the
   // transports that build still accepts. Leave `undefined` for every agent that
   // still ingests stdio MCP servers at all versions — the existing behavior is

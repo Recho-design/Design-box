@@ -266,7 +266,6 @@ function duplicatedProjectKind(plugin: InstalledPluginLike): ProjectMetadata['ki
     case 'deck':
     case 'image':
     case 'video':
-    case 'audio':
     case 'brand':
     case 'template':
     case 'prototype':

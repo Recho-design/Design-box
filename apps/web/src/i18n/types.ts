@@ -458,7 +458,6 @@ export interface Dict {
   'settings.fetchModelsMissingFields': string;
   'settings.fetchModelsInvalidBaseUrl': string;
   'settings.fetchModelsUnsupportedAzure': string;
-  'settings.fetchModelsUnsupportedOllama': string;
   'settings.fetchModelsSuccess': string;
   'settings.fetchModelsEmpty': string;
   'settings.fetchModelsUnsupported': string;
@@ -480,8 +479,6 @@ export interface Dict {
   'settings.byokImageModel': string;
   'settings.byokVideoModel': string;
   'settings.byokVideoI2vHint': string;
-  'settings.byokSpeechModel': string;
-  'settings.byokSpeechVoice': string;
   'settings.byokModelDefaultOption': string;
   'settings.apiHint': string;
   'settings.skipForNow': string;
@@ -2259,7 +2256,6 @@ export interface Dict {
   'newproj.titleTemplate': string;
   'newproj.titleImage': string;
   'newproj.titleVideo': string;
-  'newproj.titleAudio': string;
   'newproj.titleMedia': string;
   'newproj.titleOther': string;
   'newproj.namePlaceholder': string;
@@ -2328,24 +2324,18 @@ export interface Dict {
   'newproj.dsPrimaryFallback': string;
   'newproj.surfaceImage': string;
   'newproj.surfaceVideo': string;
-  'newproj.surfaceAudio': string;
   'newproj.modelLabel': string;
   'newproj.modelSearch': string;
   'newproj.modelEmpty': string;
-  'newproj.modelRecommended': string;
   'newproj.modelMissingTitle': string;
   'newproj.modelMissingSub': string;
+  /** Media model picker empty state — no provider configured for the surface. */
+  'newproj.modelNoProviderTitle': string;
+  'newproj.modelNoProviderBody': string;
+  'newproj.modelNoProviderAction': string;
   'newproj.aspectLabel': string;
   'newproj.videoLengthLabel': string;
   'newproj.videoLengthSeconds': string;
-  'newproj.audioKindLabel': string;
-  'newproj.audioKindMusic': string;
-  'newproj.audioKindSpeech': string;
-  'newproj.audioKindSfx': string;
-  'newproj.audioDurationLabel': string;
-  'newproj.audioDurationSeconds': string;
-  'newproj.voiceLabel': string;
-  'newproj.voicePlaceholder': string;
   'newproj.connectorsLabel': string;
   'newproj.connectorsHint': string;
   'newproj.connectorsEmptyTitle': string;
@@ -4654,8 +4644,6 @@ export interface Dict {
   'pet.slashPetTuck': string;
   'pet.slashHatch': string;
   'pet.slashHatchArg': string;
-  'pet.slashSearch': string;
-  'pet.slashSearchArg': string;
   // Recently-hatched section in pet settings
   'pet.codexTitle': string;
   'pet.codexSubtitle': string;

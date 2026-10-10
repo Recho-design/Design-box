@@ -55,8 +55,8 @@ export function applyAgentLaunchEnv(
   // `appendPathDirs` adds the user toolchain bin dirs (Homebrew, ~/.bun/bin,
   // version-manager dirs, …) to the END of PATH so a resolved binary's shebang
   // interpreter is findable at spawn time even when the daemon's own PATH is
-  // minimal (GUI launch). Without this, an agent like Pi — a `#!/usr/bin/env
-  // bun` script — resolves but the version probe / run spawn fails with exit
+  // minimal (GUI launch). Without this, an agent shipped as a `#!/usr/bin/env
+  // bun` script resolves but the version probe / run spawn fails with exit
   // 127 ("env: bun: No such file or directory"), so detection wrongly marks it
   // unavailable. Defaults to the real toolchain dirs; tests pass [] for
   // determinism.

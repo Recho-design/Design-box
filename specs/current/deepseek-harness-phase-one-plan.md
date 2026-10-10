@@ -360,12 +360,14 @@ Before phase-one completion:
 ```text
 pnpm guard
 pnpm typecheck
-pnpm --filter @open-design/daemon test
 profile package/install/probe smoke
 macOS/Linux real two-process smoke
 Windows process-tree smoke
 credentialed OD artifact E2E
 ```
+
+(The daemon test suite was removed with the repository's test layer; the
+smokes above are the real-path evidence.)
 
 No upstream DeepSeek PR and no OpenDesign-packaged Harness carrier are on the
 phase-one critical path.

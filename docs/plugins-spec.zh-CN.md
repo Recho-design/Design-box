@@ -73,7 +73,7 @@ OD 的核心不是「一次 prompt 一次输出」，而是 **long-running desig
 
 围绕这一点，spec 把已有的「一方 atoms」从扁平的 capability 列表升级为**可被插件组装的原子管线**：
 
-- **Atom（§10）**：OD daemon 与 first-party tools 暴露的具名能力（discovery-question-form、direction-picker、todo-write、file-read/write、research-search、media-image、live-artifact、critique-theater 等）。
+- **Atom（§10）**：OD daemon 与 first-party tools 暴露的具名能力（discovery-question-form、direction-picker、todo-write、file-read/write、media-image、live-artifact、critique-theater 等）。
 - **Pipeline（§5 / §10.1）**：插件通过 `od.pipeline` 把若干 atoms 组装成有序 stages；spec 默认提供一条「discovery → plan → generate → critique」的 reference pipeline，插件可以增删、重排或循环其中任何一步。
 - **Devloop（§10.2）**：当一条 stage 标记 `repeat: true` 并附带 `until` 终止条件（critique score、用户确认、preview 加载成功等）时，agent 基于上一轮 artifact 自动进入下一轮，直到条件满足或显式取消。
 - **Generative UI（§10.3）**：pipeline 的某个 stage 需要人类介入（提供信息、授权、方向选择、优化确认）时，agent 触发插件预先在 manifest `od.genui.surfaces[]` 中**声明**过的 surface；daemon 通过 OD 原生事件流广播给所有协作面（web / desktop / CLI / 其他 code agent），并可投影成 AG-UI canonical events 供外部 client 使用。用户回应后 daemon 把答案写回 project，run 继续。Surface 的 `persist` 字段决定答案在 run / conversation / project 三个层级中哪个层级被记住，让多轮对话不会反复打扰用户。
@@ -278,7 +278,7 @@ my-plugin/
       "mcp": [
         { "name": "tavily", "command": "npx", "args": ["-y", "@tavily/mcp"] }
       ],
-      "atoms": ["discovery-question-form", "todo-write", "research-search"]
+      "atoms": ["discovery-question-form", "todo-write"]
     },
 
     "pipeline": {
@@ -756,7 +756,6 @@ UI 上的 capability gate 是 modal + checklist；headless / CI / 第三方 code
 | `direction-picker` | 同上 | final 前的 3–5 个方向选择 | new-generation, tune-collab |
 | `todo-write` | 同上 | TodoWrite 驱动的计划 | all |
 | `file-read` / `file-write` / `file-edit` | code-agent native | 文件操作 | all |
-| `research-search` | `od research search`（[`apps/daemon/src/cli.ts`](../apps/daemon/src/cli.ts)） | Tavily web research | new-generation |
 | `media-image` / `media-video` / `media-audio` | `od media generate` | 带 provider config 的媒体生成 | new-generation, tune-collab |
 | `live-artifact` | MCP `mcp__live-artifacts__*` | 创建/刷新 live artifacts | all |
 | `connector` | MCP `mcp__connectors__*` | Composio connectors | all |
@@ -1419,7 +1418,6 @@ od config unset <key> [--json]                              # backed by app conf
 #### 现有 agent-callable tools（不变）
 
 ```
-od research search ...
 od media generate  ...
 od tools live-artifacts ...
 od tools connectors  ...
@@ -1486,7 +1484,7 @@ od files read "$PID" index.html > out.html
 
 ### 12.6 对现有 CLI 的含义
 
-上面每个 group 都是对 [`apps/daemon/src/cli.ts`](../apps/daemon/src/cli.ts) 的增量。当前默认 `od`（启动 daemon + 打开 web UI）保持不变。现有 `od media`、`od research`、`od tools`、`od mcp` 命令保持当前 contract。新增 groups 是对 `apps/daemon/src/server.ts` 中既有 desktop UI endpoints 的包装（project create/list、run start/watch、file upload/list/read），再加上 §11.5 的新插件/marketplace/atoms endpoints。
+上面每个 group 都是对 [`apps/daemon/src/cli.ts`](../apps/daemon/src/cli.ts) 的增量。当前默认 `od`（启动 daemon + 打开 web UI）保持不变。现有 `od media`、`od tools`、`od mcp` 命令保持当前 contract。新增 groups 是对 `apps/daemon/src/server.ts` 中既有 desktop UI endpoints 的包装（project create/list、run start/watch、file upload/list/read），再加上 §11.5 的新插件/marketplace/atoms endpoints。
 
 > **Implementation rule:** 如果 code agent 能通过 desktop UI 做某件事，它就必须能通过 `od …` 用相同参数和等价输出完成。不能有 silent UI-only capabilities。
 
@@ -1728,7 +1726,7 @@ adapter 之间保持相同 on-disk layout，因此 single-tenant deployment 迁�
 - Pure-TS contracts：`packages/contracts/src/plugins/{manifest,context,apply,marketplace,installed}.ts`。
 - Migration note：现有 `skills/`、`design-systems/`、`craft/` 100% 向后兼容。SKILL.md frontmatter 不变。
 
-Validation：`pnpm guard`、`pnpm typecheck`、`pnpm --filter @open-design/contracts test`。
+Validation：`pnpm guard`、`pnpm typecheck`。（原先挂在 `@open-design/contracts` 测试下的 parser fixtures 已随仓库的测试层移除；parser 行为改在真路径上复验 —— 用 `od plugin install` 装上 fixture 插件并确认 manifest 正常加载。）
 
 ### Phase 1 — Loader, installer, persistence + headless MVP CLI 闭环（5–7 天）
 
@@ -1746,8 +1744,7 @@ Phase 1 内容（合并原 Phase 1 + Phase 2C 的最小子集）：
 
 Validation：
 
-- `pnpm --filter @open-design/plugin-runtime test`（parser fixtures：pure SKILL.md、pure claude plugin、metadata-only open-design.json、三者组合、SKILL frontmatter mapping）。
-- `pnpm --filter @open-design/daemon test`。`pnpm guard`、`pnpm typecheck`。
+- `pnpm guard`、`pnpm typecheck`。（`plugin-runtime` 与 daemon 包的测试套件已随仓库的测试层移除；本 phase 的验收证据就是下面两条真路径 smoke。）
 - **End-to-end headless smoke**（与 §12.5 walkthrough 等价）：`od plugin install ./fixtures/sample-plugin` → `od project create --plugin <id> --json` → `od run start --project <pid> --plugin <id> --follow` → `od files read <pid> <artifact>`。要求 produced artifact bytes 与同一插件在 Phase 2A UI 流程下产出**完全相同**。
 - **Apply 纯净性 smoke：** 仅 `od plugin apply <id>` 后取消 send，project cwd 无 staged assets、无 `.mcp.json`、`applied_plugin_snapshots` 行存在但未被任何 run/project 引用。
 

@@ -7,14 +7,14 @@ name: release-prerelease-card
 # to whether the packages had actually shipped. This replaces it with a Feishu
 # *application* bot, which can PATCH a message it sent — so one card is created
 # on this job's first poll, while every platform is still queued, and is edited
-# in place as the platforms, the code tests, and the packaged smoke report in.
-# Each platform row carries its own build time and the footer carries the whole
-# round's, both read from the same jobs API this job already polls.
+# in place as the platforms report in. Each platform row carries its own build
+# time and the footer carries the whole round's, both read from the same jobs
+# API this job already polls.
 #
 # Exactly one job writes that card, on purpose. A PATCH replaces the whole card,
 # so three build jobs updating "their own" row would each erase the other two.
 # This job therefore owns the message and learns the state by polling the jobs
-# API of the three runs involved (build/publish, tests, smoke).
+# API of the build/publish run.
 #
 # It is dispatched by release-prerelease.yml's `dispatch_validation` job at the
 # moment the build commit is resolved — before any package exists — and it holds
@@ -52,22 +52,12 @@ on:
         description: "Run id of the release-prerelease pipeline this card is watching."
         required: true
         type: string
-      expect_tests:
-        description: "Whether release-prerelease-tests.yml was dispatched for this build. When false the card renders no test rows instead of waiting for results that will never arrive."
-        required: false
-        type: boolean
-        default: true
-      expect_smoke:
-        description: "Whether release-prerelease-smoke.yml will be dispatched once the packages publish."
-        required: false
-        type: boolean
-        default: true
 
 run-name: prerelease card · ${{ inputs.version }} · origin-run ${{ inputs.origin_run_id }}
 
 permissions:
-  # Reads the job state of the build, test, and smoke runs. It writes nothing to
-  # the repository — the only side effect is a Feishu message.
+  # Reads the job state of the build run. It writes nothing to the repository —
+  # the only side effect is a Feishu message.
   actions: read
   contents: read
 
@@ -81,9 +71,8 @@ jobs:
     if: github.repository == 'nexu-io/open-design'
     runs-on: ubuntu-latest
     # Long enough to outlive the slowest lane it watches (mac Intel build ~33
-    # min, P0 Functional E2E, then the packaged smoke after publish), with the
-    # watcher's own budget set below it so the card gets a final "timed out"
-    # update instead of being killed mid-poll.
+    # min), with the watcher's own budget set below it so the card gets a final
+    # "timed out" update instead of being killed mid-poll.
     timeout-minutes: 150
     outputs:
       # "The card's FINAL state is in the chat", written by the watcher itself.
@@ -174,8 +163,6 @@ jobs:
           CHANGELOG_FILE: ${{ steps.changelog.outputs.file }}
           CHANNEL_LABEL: Prerelease
           COMMIT: ${{ inputs.commit }}
-          EXPECT_SMOKE: ${{ inputs.expect_smoke }}
-          EXPECT_TESTS: ${{ inputs.expect_tests }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_RELEASE_CHAT_ID: ${{ secrets.FEISHU_RELEASE_CHAT_ID }}
@@ -193,8 +180,7 @@ jobs:
     # `always() && !cancelled()` is load-bearing, not decoration. GitHub applies
     # an implicit `success()` to a job with `needs`, which would skip this one in
     # exactly the case it exists for — a card job that died — without ever
-    # evaluating the conditions below. (The same trap skipped
-    # release-prerelease.yml's `dispatch_smoke` for N runs.) `card` is this
+    # evaluating the conditions below. `card` is this
     # workflow's only other job and sits downstream of nothing, so that break is
     # the whole reachability story here: the permanently-skipped `build_linux`
     # chain that poisons release-prerelease.yml's graph does not exist in this

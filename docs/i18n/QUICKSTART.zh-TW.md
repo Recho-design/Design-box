@@ -56,7 +56,7 @@ pnpm tools-dev # 在背景啟動 daemon + web + desktop
 ```bash
 pnpm tools-dev                 # 在背景啟動 daemon + web + desktop
 pnpm tools-dev start web       # 在背景啟動 daemon + web
-pnpm tools-dev run web         # 在前景啟動 daemon + web（e2e / dev server）
+pnpm tools-dev run web         # 在前景啟動 daemon + web（dev server）
 pnpm tools-dev restart         # 重新啟動 daemon + web + desktop
 pnpm tools-dev restart --daemon-port 7457 --web-port 5175
 pnpm tools-dev status          # 檢查受管理的 runtime 狀態
@@ -294,8 +294,7 @@ open-design/
 │   │       │   └── defs/          # 各 runtime 的啟動與參數定義
 │   │       ├── skills.ts          # SKILL.md loader（frontmatter 解析器）
 │   │       └── design-systems/    # DESIGN.md loader 與服務
-│   │   ├── sidecar/           # tools-dev daemon sidecar 包裝層
-│   │   └── tests/             # daemon 包的測試
+│   │   └── sidecar/           # tools-dev daemon sidecar 包裝層
 │   ├── web/                   # Next.js 16 App Router + React 客戶端
 │       ├── app/               # App Router 入口
 │       ├── src/               # React + TypeScript 客戶端 / runtime 模組
@@ -314,13 +313,12 @@ open-design/
 │   ├── sidecar/               # 通用 sidecar runtime 原語
 │   └── platform/              # 通用 process/platform 原語
 ├── tools/dev/                 # `pnpm tools-dev` 生命週期與 inspect CLI
-├── e2e/                       # Playwright UI + 外部整合 / Vitest 測試場
 ├── skills/                    # agent 在工作過程中呼叫的功能性能力
 ├── design-templates/          # 原型、deck、文件與媒體的渲染目錄
 ├── design-systems/            # 以 DESIGN.md 為基礎的品牌套件
 ├── scripts/sync-design-systems.ts    # 從上游 getdesign tarball 重新匯入
 ├── docs/                      # 產品願景 + spec
-├── pnpm-workspace.yaml        # apps/* + packages/* + tools/* + e2e
+├── pnpm-workspace.yaml        # apps/* + packages/* + tools/*
 └── package.json               # 頂層品質腳本 + `od` bin
 ```
 

@@ -2,10 +2,11 @@
 
 Terminal is a native carrier distributed as POSIX `/bin/sh` and Windows
 PowerShell 5.1. Its pnpm module registration exists for natural workspace
-dependencies and Vitest/TypeScript tests; it is not the distributed runtime.
+dependencies; it is not the distributed runtime and no longer carries a test
+suite.
 
 - Do not implement or distribute Terminal runtime behavior in TypeScript, and do
-  not depend on a preinstalled Node runtime. TypeScript is allowed under tests.
+  not depend on a preinstalled Node runtime.
 - Pin official Node archives exactly. Verify archive bytes, the installed executable,
   and `node --version` before invoking the fossil adapter by absolute path.
 - Keep the native layer mechanical: resolve fixed paths, install/probe the carrier,

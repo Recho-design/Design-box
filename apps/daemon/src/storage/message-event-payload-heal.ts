@@ -2,7 +2,7 @@
  * I3 — Existing oversized run-event rows are healed once.
  *
  * Before the run-event payload budget (`runtimes/run-event-payload-budget.ts`)
- * the daemon stored agent tool lines verbatim; a long cursor-agent
+ * the daemon stored agent tool lines verbatim; one long agent
  * conversation reached ~1.4 MB per turn in `messages.events_json` and
  * `message_event_batches`. The writer is bounded now, but those rows are still
  * on disk, and every conversation read has to bound them again until they are

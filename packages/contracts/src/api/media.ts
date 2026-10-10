@@ -8,7 +8,6 @@ export type MediaExecutionMode = (typeof MEDIA_EXECUTION_MODES)[number];
 export const MEDIA_SURFACES = [
   'image',
   'video',
-  'audio',
 ] as const;
 
 export type MediaSurface = (typeof MEDIA_SURFACES)[number];
@@ -113,7 +112,7 @@ export interface ProjectMediaTaskError {
 export interface RunMediaTaskFailure {
   /** The media task's id, so a consumer can fetch its full record. */
   taskId: string;
-  /** `image` | `video` | `audio`, as requested. Absent if the request never named one. */
+  /** `image` | `video`, as requested. Absent if the request never named one. */
   surface?: string;
   /** The requested media model id. */
   model?: string;
@@ -169,7 +168,7 @@ const MEDIA_FAILURE_NEXT_STEP_BY_CODE: Readonly<Record<string, MediaFailureNextS
 
 /**
  * Provider adapters throw a uniform `"<tag> <status>: <body>"` sentence
- * (`openai image 429: …`, `senseaudio tts 401: unauthorized`), and a few
+ * (`openai image 429: …`, `grok video submit 401: unauthorized`), and a few
  * throw the bare `"<verb> <status>"` form (`openai image fetch 404`). Those
  * two shapes are the only places an upstream status survives into a plain
  * `Error`, so they are the only ones read here. Both are anchored to the
@@ -180,7 +179,7 @@ const TAGGED_STATUS_RE = /^[A-Za-z][\w .\/-]{0,32}?\s([1-5]\d\d):\s/;
 const BARE_STATUS_RE =
   /^[A-Za-z][\w .\/-]{0,32}?\b(?:fetch|download|submit|poll|content)\s+([1-5]\d\d)\b/i;
 
-/** `no Fal API key — configure it in …`, `no OpenAI credential — …`. */
+/** `no OpenAI API key — configure it in …`, `no Grok credential — …`. */
 const MISSING_CREDENTIAL_RE = /\bno\s+(?:[\w.-]+\s+){0,3}(?:api key|credential)\b/i;
 /** Every long-poll adapter gives up with this exact phrase. */
 const RENDER_TIMED_OUT_RE = /\bdid not finish in time\b/i;

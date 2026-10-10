@@ -1,14 +1,11 @@
-// Watches one prerelease across three workflow runs and keeps a single Feishu
-// card up to date.
+// Watches one prerelease's build run and keeps a single Feishu card up to date.
 //
 // The single-writer rule is the whole design. A PATCH replaces the entire card,
 // so if the three build jobs each tried to update "their" row they would each
 // overwrite the other two — every one of them only knows its own state. Nothing
 // in the build path talks to Feishu at all: this job owns the message, and it
 // learns everything by polling the GitHub jobs API of
-//   * the release-prerelease run that is building and publishing,
-//   * the release-prerelease-tests run dispatched alongside it,
-//   * the release-prerelease-smoke run dispatched after publish.
+//   * the release-prerelease run that is building and publishing.
 //
 // It starts immediately and depends on nothing, so it costs the release
 // pipeline nothing; it lives in a workflow of its own so it cannot hold the
@@ -32,7 +29,6 @@ import {
   isTerminal,
   readChangelogLines,
   renderPrereleaseCard,
-  undiscoveredLaneStatus,
 } from "./prerelease-card.ts";
 import type {
   Changelog,
@@ -41,7 +37,6 @@ import type {
   PlatformKey,
   PlatformLane,
   PrereleaseCardState,
-  TestLane,
 } from "./prerelease-card.ts";
 
 type GithubJob = {
@@ -50,35 +45,6 @@ type GithubJob = {
   conclusion?: unknown;
   started_at?: unknown;
   completed_at?: unknown;
-};
-type GithubRun = {
-  id?: unknown;
-  name?: unknown;
-  html_url?: unknown;
-  status?: unknown;
-  conclusion?: unknown;
-  run_attempt?: unknown;
-  updated_at?: unknown;
-};
-type DispatchedRun = {
-  /**
-   * The run is completed AS OF THIS OBSERVATION — never "the run is finished
-   * forever". GitHub re-runs a workflow in place, so no run is ever permanently
-   * terminal and this field has to be re-read, not remembered.
-   */
-  completed: boolean;
-  id: string;
-  url: string;
-  /**
-   * Everything a re-run changes about the run, as one comparable string.
-   *
-   * A re-run increments `run_attempt`, sends `status` back to `in_progress`,
-   * rewrites `conclusion`, and bumps `updated_at` — all under the same run id.
-   * Any one of them can in principle be missed (a whole re-run could land
-   * between two polls, leaving `status`/`conclusion` where they were), so the
-   * fingerprint carries all four and changes if any of them does.
-   */
-  fingerprint: string;
 };
 
 function required(name: string): string {
@@ -99,12 +65,6 @@ function numberEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function boolEnv(name: string, fallback: boolean): boolean {
-  const raw = optional(name).toLowerCase();
-  if (raw.length === 0) return fallback;
-  return raw === "true" || raw === "1" || raw === "yes";
-}
-
 const apiBase = optional("GITHUB_API_URL", "https://api.github.com").replace(/\/+$/, "");
 const serverUrl = optional("GITHUB_SERVER_URL", "https://github.com").replace(/\/+$/, "");
 const repo = required("GITHUB_REPOSITORY");
@@ -118,22 +78,9 @@ const channelLabel = optional("CHANNEL_LABEL", "Prerelease");
 const channelSlug = optional("RELEASE_CHANNEL", "prerelease");
 const originRunId = required("ORIGIN_RUN_ID");
 const publicOrigin = optional("RELEASE_PUBLIC_ORIGIN").replace(/\/+$/, "");
-const expectTests = boolEnv("EXPECT_TESTS", true);
-const expectSmoke = boolEnv("EXPECT_SMOKE", true);
 
 const pollIntervalMs = numberEnv("CARD_POLL_INTERVAL_MS", 30_000);
 const timeoutMs = numberEnv("CARD_TIMEOUT_MS", 140 * 60 * 1000);
-// How long a dispatched lane may take to become a visible run before the card
-// reports it as never having started. Long enough to absorb a GitHub queue,
-// short enough that a failed dispatch does not pin the card open for hours.
-const discoveryGraceMs = numberEnv("CARD_DISCOVERY_GRACE_MS", 20 * 60 * 1000);
-
-const testsWorkflowFile = optional("TESTS_WORKFLOW_FILE", "release-prerelease-tests.yml");
-const smokeWorkflowFile = optional("SMOKE_WORKFLOW_FILE", "release-prerelease-smoke.yml");
-// Both dispatched workflows put `origin-run <id>` in their run-name, which is
-// the only reliable correlation the Actions API offers: `gh workflow run`
-// returns no run id at all.
-const runMarker = `origin-run ${originRunId}`;
 
 const ORIGIN_BUILD_JOB: Record<PlatformKey, string> = {
   mac_arm64: "Build prerelease mac arm64",
@@ -142,18 +89,6 @@ const ORIGIN_BUILD_JOB: Record<PlatformKey, string> = {
   linux_x64: "Build prerelease linux x64",
 };
 const ORIGIN_PUBLISH_JOB = "Publish prerelease release";
-const SMOKE_JOB: Record<PlatformKey, string> = {
-  mac_arm64: "Smoke prerelease mac arm64",
-  mac_x64: "Smoke prerelease mac intel x64",
-  win_x64: "Smoke prerelease win x64",
-  linux_x64: "Smoke prerelease linux x64",
-};
-const TEST_JOBS: Array<{ key: string; label: string; prefix: string }> = [
-  { key: "functional_e2e", label: "P0 Functional E2E", prefix: "P0 Functional E2E" },
-  { key: "e2e_vitest", label: "E2E Vitest", prefix: "E2E Vitest" },
-  { key: "daemon_unit_tests", label: "Daemon 单测（4 分片）", prefix: "Daemon tests" },
-  { key: "verify", label: "Verify build（typecheck + guard）", prefix: "Verify build" },
-];
 
 /**
  * A reusable workflow prefixes its jobs with the calling job's name
@@ -169,12 +104,6 @@ function jobMatches(jobName: string, needle: string): boolean {
     jobName.startsWith(`${needle} / `) ||
     jobName.includes(` / ${needle} / `)
   );
-}
-
-function jobFamilyMatches(jobName: string, prefix: string): boolean {
-  const tail = jobName.includes(" / ") ? (jobName.split(" / ").pop() ?? jobName) : jobName;
-  const head = jobName.split(" / ")[0] ?? jobName;
-  return tail.startsWith(prefix) || head.startsWith(prefix) || jobName.startsWith(prefix);
 }
 
 function statusOf(job: GithubJob): LaneStatus {
@@ -266,54 +195,6 @@ async function readRunCreatedAt(): Promise<number | null> {
   }
 }
 
-async function findDispatchedRun(workflowFile: string): Promise<DispatchedRun | null> {
-  const body = await githubJson<{ workflow_runs?: GithubRun[] }>(
-    `/repos/${repo}/actions/workflows/${encodeURIComponent(workflowFile)}/runs?event=workflow_dispatch&per_page=40`,
-  );
-  for (const run of body.workflow_runs ?? []) {
-    const name = typeof run.name === "string" ? run.name : "";
-    if (!name.includes(runMarker)) continue;
-    return {
-      completed: run.status === "completed",
-      fingerprint: [run.status, run.conclusion, run.run_attempt, run.updated_at]
-        .map((field) => (field == null ? "" : String(field)))
-        .join("|"),
-      id: String(run.id),
-      url: typeof run.html_url === "string" ? run.html_url : "",
-    };
-  }
-  return null;
-}
-
-/**
- * One dispatched lane, re-read every cycle, with its job list refreshed only
- * when the run itself says something moved.
- *
- * GitHub re-runs IN PLACE: `run_attempt` increments and `status` returns to
- * `in_progress` under the SAME run id. "Completed" is therefore a reading, not
- * a fact — a watcher that stops looking at a finished run reports the first
- * attempt's verdict for the rest of its life, which is how a card kept saying
- * ❌ E2E Vitest · 未通过 after a re-run had already turned that run green.
- *
- * The cost of watching for that is nothing new: `findDispatchedRun` is one
- * list-runs call the lane already made on every cycle before it completed, and
- * that response already carries every field a re-run touches. Only the
- * paginated `listJobs` is gated, and only for a run that is both completed and
- * unchanged since the jobs in hand were read — an in-flight run still re-lists
- * every cycle, because its jobs move without the run's own fields settling.
- */
-async function refreshDispatchedLane(
-  workflowFile: string,
-  previousRun: DispatchedRun | null,
-  previousJobs: GithubJob[],
-): Promise<{ run: DispatchedRun | null; jobs: GithubJob[] }> {
-  const run = (await findDispatchedRun(workflowFile)) ?? previousRun;
-  if (run == null) return { jobs: previousJobs, run: null };
-  const unmoved = previousRun != null && previousRun.id === run.id && previousRun.fingerprint === run.fingerprint;
-  if (unmoved && run.completed) return { jobs: previousJobs, run };
-  return { jobs: await listJobs(run.id), run };
-}
-
 const ARTIFACT_BASENAME: Record<PlatformKey, string> = {
   mac_arm64: "mac-arm64.dmg",
   mac_x64: "mac-x64.dmg",
@@ -390,11 +271,6 @@ type Watch = {
   publish: LaneStatus;
   /** When publish stopped, once it has. Feeds the card's whole-round clock. */
   publishCompletedAt: number | null;
-  testsRun: DispatchedRun | null;
-  testsJobs: GithubJob[];
-  smokeRun: DispatchedRun | null;
-  smokeJobs: GithubJob[];
-  publishSucceededAt: number | null;
   runCreatedAt: number | null;
 };
 
@@ -407,58 +283,22 @@ async function collect(previous: Watch): Promise<Watch> {
   // finished with can still carry a stale or absent stamp.
   const publishCompletedAt = isTerminal(publish) ? timingOf(publishJob).completedAt : null;
 
-  // Re-read every cycle rather than cached, because the run's own
-  // completion is what tells a MISSING job apart from a job the API has not
-  // created yet. A run that has only just started reports a partial job list,
-  // and reading that as "skipped" would fabricate green. A run that already
-  // finished is re-read too — GitHub re-runs it in place, so its verdict can
-  // change under the same run id for as long as this watch is awake.
-  let testsRun = previous.testsRun;
-  let testsJobs = previous.testsJobs;
-  if (expectTests) {
-    ({ jobs: testsJobs, run: testsRun } = await refreshDispatchedLane(
-      testsWorkflowFile,
-      previous.testsRun,
-      previous.testsJobs,
-    ));
-  }
-
-  let smokeRun = previous.smokeRun;
-  let smokeJobs = previous.smokeJobs;
-  // The smoke run is only dispatched once publish succeeds, so do not even look
-  // for it before then — an early lookup would only burn API budget.
-  if (expectSmoke && publish === "success") {
-    ({ jobs: smokeJobs, run: smokeRun } = await refreshDispatchedLane(
-      smokeWorkflowFile,
-      previous.smokeRun,
-      previous.smokeJobs,
-    ));
-  }
-
+  // The origin jobs are re-read every cycle rather than cached, because the
+  // run's own completion is what tells a MISSING job apart from a job the API
+  // has not created yet. A run that has only just started reports a partial
+  // job list, and reading that as "skipped" would fabricate green. A run that
+  // already finished is re-read too — GitHub re-runs it in place, so its
+  // verdict can change under the same run id for as long as this watch is
+  // awake.
   return {
     originJobs,
     publish,
     publishCompletedAt,
-    testsRun,
-    testsJobs,
-    smokeRun,
-    smokeJobs,
-    publishSucceededAt: previous.publishSucceededAt ?? (publish === "success" ? Date.now() : null),
     runCreatedAt,
   };
 }
 
-async function buildState(watch: Watch, startedAt: number, timedOut: boolean): Promise<PrereleaseCardState> {
-  // Computed once, up front, and used BOTH to decide what a lane says and to
-  // decide when the watcher may stop waiting for it. Deriving these twice is
-  // what let the card report a never-dispatched smoke lane as "排队中" while
-  // simultaneously concluding it had waited long enough to finish.
-  const testsDiscoveryExpired = watch.testsRun == null && Date.now() - startedAt > discoveryGraceMs;
-  const smokeDiscoveryExpired =
-    watch.smokeRun == null &&
-    watch.publishSucceededAt != null &&
-    Date.now() - watch.publishSucceededAt > discoveryGraceMs;
-
+async function buildState(watch: Watch, timedOut: boolean): Promise<PrereleaseCardState> {
   const platforms: PlatformLane[] = [];
   for (const key of PLATFORM_ORDER) {
     const job = watch.originJobs.find((candidate) => jobMatches(String(candidate.name ?? ""), ORIGIN_BUILD_JOB[key]));
@@ -467,61 +307,11 @@ async function buildState(watch: Watch, startedAt: number, timedOut: boolean): P
     if (build === "success" && (await verifyDownloadUrl(downloadUrlFor(key)))) {
       downloadUrl = downloadUrlFor(key);
     }
-    let smoke: LaneStatus = "skipped";
-    if (expectSmoke && build === "success") {
-      const smokeJob = watch.smokeJobs.find((candidate) => jobMatches(String(candidate.name ?? ""), SMOKE_JOB[key]));
-      // Linux never had a lane in the packaged smoke workflow; a platform with
-      // no job there stays "skipped" rather than pretending to be pending.
-      if (key === "linux_x64") smoke = "skipped";
-      else if (smokeJob != null) smoke = statusOf(smokeJob);
-      // No job for this platform. Only a COMPLETED run proves it genuinely did
-      // not run; while the run is still going, a missing job just means the API
-      // has not created it yet — and a run that never appeared at all before
-      // the discovery window closed was never dispatched.
-      else if (watch.smokeRun != null || watch.publish === "success") {
-        smoke = undiscoveredLaneStatus({
-          runFound: watch.smokeRun != null,
-          runCompleted: watch.smokeRun?.completed === true,
-          discoveryExpired: smokeDiscoveryExpired,
-        });
-      } else smoke = "skipped";
-    }
-    platforms.push({ key, label: PLATFORM_LABELS[key], build, downloadUrl, smoke, timing: timingOf(job) });
+    platforms.push({ key, label: PLATFORM_LABELS[key], build, downloadUrl, timing: timingOf(job) });
   }
 
-  const tests: TestLane[] = TEST_JOBS.map((entry) => {
-    if (!expectTests) return { key: entry.key, label: entry.label, status: "skipped" as LaneStatus };
-    const family = watch.testsJobs.filter((job) => jobFamilyMatches(String(job.name ?? ""), entry.prefix));
-    if (family.length === 0) {
-      // Same rule as the smoke lanes: only a COMPLETED run proves a job is
-      // absent rather than not yet created, and a run that never appeared
-      // before the discovery window closed was never dispatched at all.
-      return {
-        key: entry.key,
-        label: entry.label,
-        status: undiscoveredLaneStatus({
-          runFound: watch.testsRun != null,
-          runCompleted: watch.testsRun?.completed === true,
-          discoveryExpired: testsDiscoveryExpired,
-        }),
-      };
-    }
-    return { key: entry.key, label: entry.label, status: rollup(family.map(statusOf)) };
-  });
-
-  const originDone = platforms.every((platform) => isTerminal(platform.build)) && isTerminal(watch.publish);
-  const testsDone = !expectTests
-    ? true
-    : watch.testsRun == null
-      ? testsDiscoveryExpired
-      : tests.every((test) => isTerminal(test.status));
-  const smokeDone = !expectSmoke
-    ? true
-    : watch.publish !== "success"
-      ? isTerminal(watch.publish)
-      : watch.smokeRun == null
-        ? smokeDiscoveryExpired
-        : platforms.every((platform) => isTerminal(platform.smoke));
+  const finished =
+    platforms.every((platform) => isTerminal(platform.build)) && isTerminal(watch.publish);
 
   return {
     channelLabel,
@@ -531,14 +321,9 @@ async function buildState(watch: Watch, startedAt: number, timedOut: boolean): P
     previousCommit,
     repo,
     originRunUrl: `${serverUrl}/${repo}/actions/runs/${originRunId}`,
-    testsRunUrl: watch.testsRun?.url ?? "",
-    smokeRunUrl: watch.smokeRun?.url ?? "",
     changelog: readChangelog(),
     platforms,
-    tests,
-    expectTests,
-    expectSmoke,
-    finished: originDone && testsDone && smokeDone,
+    finished,
     timedOut,
     now: Date.now(),
     runCreatedAt: watch.runCreatedAt,
@@ -558,11 +343,6 @@ async function main(): Promise<void> {
     originJobs: [],
     publish: "pending",
     publishCompletedAt: null,
-    testsRun: null,
-    testsJobs: [],
-    smokeRun: null,
-    smokeJobs: [],
-    publishSucceededAt: null,
     runCreatedAt: null,
   };
   let messageId: string | null = null;
@@ -579,7 +359,7 @@ async function main(): Promise<void> {
       // mid-release with no way back.
       console.warn(`[card] poll failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const state = await buildState(watch, startedAt, timedOut);
+    const state = await buildState(watch, timedOut);
     const done = state.finished || timedOut;
 
     // No gate: the first render goes to the chat whatever it says, and every

@@ -16,35 +16,17 @@
     "default": {
       "control": "nexu.small",
       "general_medium": "nexu.medium",
-      "workspace_unit": "nexu.medium",
-      "windows_tools": "github.windows",
-      "js_hot": "nexu.medium",
-      "ui_hot": "nexu.large",
-      "ui_p0": "nexu.medium",
-      "ui_p0_heavy": "nexu.xlarge",
-      "visual_hot": "nexu.large"
+      "workspace_unit": "nexu.medium"
     },
     "economic": {
       "control": "github.ubuntu",
       "general_medium": "github.ubuntu",
-      "workspace_unit": "github.ubuntu",
-      "windows_tools": "github.windows",
-      "js_hot": "github.ubuntu",
-      "ui_hot": "github.ubuntu",
-      "ui_p0": "github.ubuntu",
-      "ui_p0_heavy": "github.ubuntu",
-      "visual_hot": "github.ubuntu"
+      "workspace_unit": "github.ubuntu"
     },
     "blacksmith": {
       "control": "blacksmith.small",
       "general_medium": "blacksmith.small",
-      "workspace_unit": "blacksmith.small",
-      "windows_tools": "github.windows",
-      "js_hot": "blacksmith.small",
-      "ui_hot": "blacksmith.large",
-      "ui_p0": "blacksmith.large",
-      "ui_p0_heavy": "blacksmith.large",
-      "visual_hot": "blacksmith.large"
+      "workspace_unit": "blacksmith.small"
     }
   }
 }

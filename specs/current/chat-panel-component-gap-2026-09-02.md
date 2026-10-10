@@ -216,27 +216,16 @@ body { font-weight: 500; }   /* 设计稿新增 */
 
 这是**下一波派工最该先知道的一件事**。
 
-OPEND-2188「镜像陈列页」**已经存在**,但不是 web 的 dev 路由,而是一个测试文件:
-
-- 生成器:`/Users/elian/Documents/od-wt-chat-panel/apps/web/tests/components/chat/mirror-gallery.test.tsx`(2918 行)
-- 产物:`/Users/elian/Documents/od-wt-chat-panel/docs/design/chat-mirror/mirror-exec.html`
-- 重建命令(落点由命令给,不写死在测试里):
-  ```
-  OD_WRITE_MIRROR="$PWD/docs/design/chat-mirror/mirror-exec.html" \
-    pnpm --filter @open-design/web exec vitest run \
-    -c vitest.config.ts tests/components/chat/mirror-gallery.test.tsx
-  ```
+OPEND-2188「镜像陈列页」**已经存在**,但不是 web 的 dev 路由,而曾是一个测试文件(生成器原为 `apps/web/tests/components/chat/mirror-gallery.test.tsx`,2918 行,以 `OD_WRITE_MIRROR` 落点写出 `docs/design/chat-mirror/mirror-exec.html`)。**该生成器已随仓库的测试层移除**;仓库里现在留的是 `mirror-exec.html` 的最后快照与整套量测脚本(`diff-cells.mjs` / `shoot.mjs` / `check-fonts.mjs` 等),要重建页面需从原仓库取回驱动或对着 `runtime/chat/build-turn-blocks.ts` 真实事件流重写一个单挂驱动(见 `docs/design/chat-mirror/README.md` 的「怎么重建」)。
 
 它的自律很硬(每格走 `buildTurnBlocks` / `deriveFileOps` / `buildStagedAttachmentCards` 真实链路,**不手捏 props**;挂现成组件的格子照抄产品调用点),所以它照出来的是真实产线形态,不是摆拍。
 
-**但它对着的是旧稿的 84 格。**`CELLS` 里 84 格齐全(`gid` 1..84,`sub` 形如 `22-3` = 组件 22 第 3 态),PR #7170 新增的 5 行**一格都没有**:意图澄清的格子是 `askCell(16..25, '5-1'..'5-10')`,停在 10 格。
+**但它对着的是旧稿的 84 格。**`CELLS` 里 84 格齐全(`gid` 1..84,`sub` 形如 `22-3` = 组件 22 第 3 态),PR #7170 新增的 5 行**一格都没有**:意图澄清的格子是 `askCell(16..25, '5-1'..'5-10')`,停在 10 格。(注:测试层移除后陈列页已改由 `docs/design/chat-mirror/` 的脚本与最后快照承载;README 口径已更新为 90 格。)
 
-**行动建议(高优先、低成本、解锁面最大)**:把这 5 格补进 `mirror-gallery.test.tsx`,让陈列页从 84 → 89。这件事:
-- 只动一个测试文件,不碰任何产品源码 → **可以和其它所有组并行,零冲突**
+**行动建议(高优先、低成本、解锁面最大)**:重建驱动时把这 5 格一并补上,让陈列页覆盖到 89 格。这件事:
+- 只动陈列页驱动,不碰任何产品源码 → **可以和其它所有组并行,零冲突**
 - 完成后设计师才有办法逐格验收本轮新增的三个控件
 - G1 组刚落地的颜色/数值控件正好缺一个可视验收出口
-
-顺带:陈列页 README(`docs/design/chat-mirror/README.md`)写「84 格里的 79 格」,测试文件的注释写「80 格」,两处不一致,且都是 84 口径。补格时一并更新。
 
 ---
 
@@ -355,7 +344,7 @@ OPEND-2188「镜像陈列页」**已经存在**,但不是 web 的 dev 路由,而
 ⚠️ 两条**不能直接照抄**:稿子的 `.tool .ms` 与 `.fold > summary .ms` 是两条不同作用域,产品合成了一条裸 `.meta`;`.tool .ti` 与 `.fold > summary .ti` 同理合成了裸 `.icon`。要改**必须先拆作用域**,否则会把折叠头的耗时一起染灰。
 
 **缺口 B · 工具图标 14px → 16px** —— 产品永远有图标(`toolIcon` 不返回 null),所以不需要 `:has()`,直接把 `.icon` 与 `.icon > svg` 改成 16×16。
-⚠️ **会连带一条测试**:`icon-stroke-weight.test.tsx:63-65` 把 `DESIGN_EFFECTIVE.toolRow` 钉死在 `1.021`(1.75×14÷24),改后应为 `1.167`(1.75×16÷24)。新基线在同文件头注释里已有记载 —— **这不是回归,是必须同步更新的基线**。
+⚠️ **原有一条连带断言**:`icon-stroke-weight.test.tsx:63-65` 曾把 `DESIGN_EFFECTIVE.toolRow` 钉死在 `1.021`(1.75×14÷24),改后应为 `1.167`(1.75×16÷24)。该测试已随仓库的测试层移除;改完在真路径上目验图标清晰度即可。
 
 **缺口 C · 终端块三条新规则** —— 其中「正常命令行退灰」**照抄不了,要翻译**:产品 `summary` 下多一层 `.summaryContent`(`Foldable.tsx:79-81`),稿子的 `summary:has(> .ti)` 要写成 `summary:has(> .summaryContent > .icon)`;且要先给 `Foldable` 加失败标记类。
 
@@ -448,7 +437,7 @@ OPEND-2188「镜像陈列页」**已经存在**,但不是 web 的 dev 路由,而
 |---|---|---|---|---|---|
 | 1 | plan-card | 执行中 · 逐条打勾 | 无对位实现;最接近 `ExecutionShell.tsx:403-421` `PlanRow` | 有偏差(结构级) | 稿子是一张独立 `.card`(卡头 orb + 计数 N/M + 白底 `<ol class="steps">` + 148px 限高滚动);产品是执行记录里的一只 `Foldable`,三样都没有。⚠️ `PlanPill.tsx:17` 记「展开态那张独立卡拍板不做(D33 / S9)」—— **需确认这条裁决是否覆盖本格** |
 | 2 | plan-card | 收起 · 第 N/M 步 | `PlanPill.tsx:87-133`;`PlanPill.module.css:17-136` | 有偏差 | ① `.pill` 与 `.steps li.now` 用 `--chat-text-strong` `#202020`,稿 `--plan-current-text` `#353535`;② 稿新增 `.steps li { font-weight: 400 }` 产品没写;③ 非当前那几档的灰**已由并行 agent 本轮改对**(`--chat-text-soft` = `#848484` = 稿 `--plan-other-text`),待复验 |
-| 3 | queue | 排队中 | `ChatPane.tsx:5071-5296`;`chat.css` **两段**:2265-2530 与 3492-3660 | 有偏差 + 需量测 | ① 行结构已对;② steer 标签本轮刚补,但**图标仍是 `arrow-up`**,稿子是「箭头进竖线」的回车/插入形 —— 这是 #7170 之前的旧缺口;~~③ 产品多一档「首行高亮」`.chat-queued-send-row-active`,稿子没有;~~ **③ 2026-09-02 已按稿清掉**(规则先删、类名跟着删)。判据是稿子 `361b78253e:docs/design/chat-panel/src/components.css:2898` 的 `.queue .q:first-child { border-top: none }` —— 这是首行在整份稿子里**唯一**的一条处理,没有首行底色,所以「待设计定」这句话已经有答案。护栏:`tests/components/chat/queue-draft-alignment.test.tsx`(逐值对稿)+ `queue-dead-rules.test.tsx`(类名全树已清 + 就算挂回来也不会多出高亮);④ 队列外框已裁决保留;⑤ 两段选择器块的层叠归属 → Q-1~Q-7 |
+| 3 | queue | 排队中 | `ChatPane.tsx:5071-5296`;`chat.css` **两段**:2265-2530 与 3492-3660 | 有偏差 + 需量测 | ① 行结构已对;② steer 标签本轮刚补,但**图标仍是 `arrow-up`**,稿子是「箭头进竖线」的回车/插入形 —— 这是 #7170 之前的旧缺口;~~③ 产品多一档「首行高亮」`.chat-queued-send-row-active`,稿子没有;~~ **③ 2026-09-02 已按稿清掉**(规则先删、类名跟着删)。判据是稿子 `361b78253e:docs/design/chat-panel/src/components.css:2898` 的 `.queue .q:first-child { border-top: none }` —— 这是首行在整份稿子里**唯一**的一条处理,没有首行底色,所以「待设计定」这句话已经有答案。原先钉这条的护栏(`queue-draft-alignment.test.tsx` 逐值对稿 + `queue-dead-rules.test.tsx` 类名全树已清)已随仓库的测试层移除,复验改走真路径:在运行中的 web 里排两条消息并触发 steer,目验首行无高亮;④ 队列外框已裁决保留;⑤ 两段选择器块的层叠归属 → Q-1~Q-7 |
 | 4 | queue | 条数多 · 限高滚动 | `chat.css:3550-3557` | 需量测 | `.chat-queued-send-list` 在 `:2285`(`min(31vh,168px)` + flex)和 `:3550`(`122px` + block)**各写一遍、同特异度**,只靠源码顺序决胜。另 `.is-scrollable` 那条渐隐**是死码**(队列上从来没加过这个类) |
 | 5 | queue | 出队 · 变普通消息 | `ProjectView.tsx:9635-9679`、`:7209` | **已实现** | 无 |
 | 6 | upgrade | 额度不足 · < 5 美金 | `UpgradeCard.tsx:64-95`;`UpgradeCard.module.css:30-191` | **已实现**(待复验) | 逐条对上,含星芒 SVG data URI 与稿**逐字节相同**、`.amount b` 用新值 `#f49624`(不是旧的 `#f8672f`)。唯一形态差:稿挂 `.up.mod-glow::after`,产品挂 `.up::after` 无条件出 —— 等价 |
@@ -546,9 +535,9 @@ OPEND-2188「镜像陈列页」**已经存在**,但不是 web 的 dev 路由,而
 
 | 包 | 覆盖组件 | 独占文件 | 现状 | 备注 |
 |---|---|---|---|---|
-| **P0 · 陈列页补 5 格** | 5(新增的 3 个控件 + 2 个已答态) | `apps/web/tests/components/chat/mirror-gallery.test.tsx` | **无人占用** | **不碰任何产品源码,和所有包零冲突,建议排在最前** —— 先有尺子再改东西 |
+| **P0 · 陈列页补 5 格** | 5(新增的 3 个控件 + 2 个已答态) | `docs/design/chat-mirror/`(驱动已随测试层移除,需先重建,见 §4) | **无人占用** | **不碰任何产品源码,和所有包零冲突,建议排在最前** —— 先有尺子再改东西 |
 | **P1 · 音频** | 24 | `chat/AudioArtifact.tsx`、`AudioArtifact.module.css`、`runtime/chat/audio-wave.ts` | **无人占用** | 本轮**唯一可以立刻并行派出去**的产品代码包。活:`wave-pulse` + `--i` + reduced-motion、播放键回到白行内、`bars` 28、`.file-ops-audio` 补间距 |
-| **P2 · 执行记录 + 理解段(合包)** | 3 / 4 / 7 / 9 / 10 / 11 / 12 | `ExecutionShell.tsx`、`primitives/record.module.css`、`Foldable.tsx`、`ToolRow.tsx`、`ImageRow.tsx`、`primitives/contract.ts`、`tests/.../icon-stroke-weight.test.tsx` | **G2 独占中** | 必须等 G2 收口或并进 G2。⚠️ 改工具图标 16px 会让 `icon-stroke-weight.test.tsx` 的基线从 `1.021` 变 `1.167` —— **这不是回归,是必须同步更新的基线** |
+| **P2 · 执行记录 + 理解段(合包)** | 3 / 4 / 7 / 9 / 10 / 11 / 12 | `ExecutionShell.tsx`、`primitives/record.module.css`、`Foldable.tsx`、`ToolRow.tsx`、`ImageRow.tsx`、`primitives/contract.ts` | **G2 独占中** | 必须等 G2 收口或并进 G2。⚠️ 改工具图标 16px 后,原 `icon-stroke-weight` 断言所钉的线宽比从 `1.021` 变 `1.167`(1.75×16÷24);该断言已随测试层移除,改完在真路径上目验图标清晰度即可 |
 | **P3 · QuestionForm(排版 + 已确认块合包)** | 5 | `QuestionForm.tsx`、`styles/viewer/composio.css` | **G1 独占中** | 排版 8 条 + 已确认块 4 条**共用同两个文件,必须合成一包**。⚠️ `.answered` 还有第三个消费者 `AssistantMessage.tsx:3535`(G6 分区),改 CSS 会同时影响它 |
 | **P4 · 记忆卡 hover** | 8 | `components/OdCard.module.css` | G3 分区 | **单文件单条规则**,可独立派 |
 | **P5 · 反馈行静音色 + Tooltip** | 15 | `styles/viewer/theater.css`(仅 `:298-416` 与 `:1700-1741`) | **G6 独占中** | 静音色改动只有 4 行 `color:`,建议**由 G6 顺手带走** |

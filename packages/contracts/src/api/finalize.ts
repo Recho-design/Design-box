@@ -15,16 +15,17 @@ export const FINALIZE_SCHEMA_VERSION = 1;
 
 /**
  * Provider ids supported by the finalized-design synthesis path.
- * Matches the daemon/web finalize allowlists. This is intentionally narrower
- * than connection-test/provider-model protocols because some transports can be
- * tested or listed before finalized-design synthesis supports them.
+ * Matches the daemon/web finalize allowlists. Same six protocols as the chat
+ * BYOK form: `anthropic` / `google` on their native wires, `openai` /
+ * `deepseek` / `xai` / `custom` on the shared OpenAI-compatible path.
  */
 export type FinalizeProviderProtocol =
   | 'anthropic'
   | 'openai'
-  | 'azure'
   | 'google'
-  | 'ollama';
+  | 'deepseek'
+  | 'xai'
+  | 'custom';
 
 /**
  * Request body for `POST /api/projects/:id/finalize/<provider>`.
@@ -45,8 +46,6 @@ export interface FinalizeProviderRequest extends ReasoningExecutionRequestFields
   baseUrl?: string;
   model: string;
   maxTokens?: number;
-  /** Azure OpenAI only. Defaults at the daemon when omitted. */
-  apiVersion?: string;
 }
 
 export type FinalizeAnthropicRequest = FinalizeProviderRequest;

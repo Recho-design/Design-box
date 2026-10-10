@@ -21,7 +21,7 @@ export interface MediaGenerationResultInput {
   projectId: string;
   providerRequestSummary: ImageGenerationRequestSummary & { providerId: string };
   runId?: string;
-  surface: 'image' | 'video' | 'audio';
+  surface: 'image' | 'video';
   taskId: string;
 }
 

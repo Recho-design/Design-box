@@ -45,7 +45,15 @@ type MemoryType =
   | 'reference'
   | 'profile'
   | 'rule';
-type MemoryExtractionProvider = 'anthropic' | 'openai' | 'azure' | 'google' | 'ollama';
+const MEMORY_EXTRACTION_PROVIDERS = [
+  'anthropic',
+  'openai',
+  'google',
+  'deepseek',
+  'xai',
+  'custom',
+] as const;
+type MemoryExtractionProvider = (typeof MEMORY_EXTRACTION_PROVIDERS)[number];
 
 interface MemoryExtractionPatch {
   provider: MemoryExtractionProvider;
@@ -97,11 +105,8 @@ function isMemoryType(value: unknown): value is MemoryType {
 
 function isExtractionProvider(value: unknown): value is MemoryExtractionProvider {
   return (
-    value === 'anthropic'
-    || value === 'openai'
-    || value === 'azure'
-    || value === 'google'
-    || value === 'ollama'
+    typeof value === 'string'
+    && (MEMORY_EXTRACTION_PROVIDERS as readonly string[]).includes(value)
   );
 }
 
@@ -249,10 +254,11 @@ export function registerMemoryRoutes(app: Express, ctx: RegisterMemoryRoutesDeps
           };
           if (typeof incoming.model === 'string') nextExtraction.model = incoming.model;
           if (typeof incoming.baseUrl === 'string') nextExtraction.baseUrl = incoming.baseUrl;
-          // Azure-only; ignored by the validator for the other providers.
-          // We forward whatever the UI sent (or the previously-stored
-          // value when the UI omits the field) so re-saving an azure
-          // override without re-typing the api-version doesn't blank it.
+          // Retained (and round-tripped) for shape compatibility with
+          // already-saved extraction configs. No protocol consumes it any
+          // more, but blanking it on re-save would rewrite stored configs
+          // for no reason, so we forward whatever the UI sent — or the
+          // previously-stored value when the UI omits the field.
           const apiVersion =
             typeof incoming.apiVersion === 'string'
               ? incoming.apiVersion
@@ -561,29 +567,21 @@ export function registerMemoryRoutes(app: Express, ctx: RegisterMemoryRoutesDeps
         ? []
         : await extractFromMessage(RUNTIME_DATA_DIR, userMessage);
       // BYOK chat config — only forwarded by the web app for API-mode
-      // chats. We strip the surface to the five fields pickProvider()
-      // actually consumes and validate the provider against the four
-      // shapes the extractor speaks; an unknown / missing provider
-      // means "let the legacy chain decide" so a malformed payload
-      // can't override the env / media-config fallbacks.
+      // chats. We strip the surface to the fields pickProvider() actually
+      // consumes and validate the provider against the six protocols the
+      // extractor speaks; an unknown / missing provider means "let the
+      // legacy chain decide" so a malformed payload can't override the env /
+      // media-config fallbacks.
       const rawChat = body.chatProvider;
       let chatProvider = null;
       if (rawChat && typeof rawChat === 'object') {
         const chatConfig = rawChat as UnknownRecord;
         const provider = chatConfig.provider;
-        if (
-          provider === 'anthropic'
-          || provider === 'openai'
-          || provider === 'azure'
-          || provider === 'google'
-          || provider === 'ollama'
-        ) {
+        if (isExtractionProvider(provider)) {
           chatProvider = {
             provider,
             apiKey: typeof chatConfig.apiKey === 'string' ? chatConfig.apiKey : '',
             baseUrl: typeof chatConfig.baseUrl === 'string' ? chatConfig.baseUrl : '',
-            apiVersion:
-              typeof chatConfig.apiVersion === 'string' ? chatConfig.apiVersion : '',
             model: typeof chatConfig.model === 'string' ? chatConfig.model : '',
           };
         }

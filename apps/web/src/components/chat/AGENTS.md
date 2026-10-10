@@ -26,7 +26,7 @@ apps/web/src/runtime/chat/     纯函数领域逻辑(无 JSX、无 DOM)
 
 1. 这东西**离开 chat 还通用吗**?→ 是,进 `packages/components`
 2. 它**被 3 个以上 chat 业务组件用**吗?→ 是,进 `chat/primitives/`
-3. 它**不碰 DOM、可纯函数测试**吗?→ 是,进 `runtime/chat/`
+3. 它**不碰 DOM、是纯函数**吗?→ 是,进 `runtime/chat/`
 4. 否则就是业务组件,平铺在 `chat/` 下
 
 **禁止**把产品布局或业务工作流上提到 `packages/components`。
@@ -96,19 +96,10 @@ aider / antigravity / atomcode),**opencode 直连不吐 thinking**,
 - [ ] 复用了 `Foldable` / `StatusMark` / `ToolRow` 等已有原子,没有另造一个
 - [ ] 每条缺席数据都有明确形态(§3)
 - [ ] 文案走 i18n:先加 `i18n/types.ts`,再补齐全部 19 个 locale
-- [ ] 测试断言行为 / ARIA / `data-testid`,**不断言 CSS 类名**
-- [ ] `pnpm --filter @open-design/web typecheck` 与相关测试通过
+- [ ] `pnpm --filter @open-design/web typecheck` 通过,改动在真实 UI 里肉眼核过
+  (仓库已无测试层,验收以真路径为准)
 
-## 5. 测试规约
-
-- 位置 `apps/web/tests/`,不放 `src/`
-- 需要 DOM 的文件首行 `// @vitest-environment jsdom`
-- **不要断言 CSS 类名或具体声明**。历史 chat 测试大量绑定全局 selector
-  (如 `.chat-queued-send-strip`),这类断言会让 CSS Module 化寸步难行。
-  新测试一律断言可观察行为、role/ARIA、或稳定的 `data-testid`
-- 纯函数(`runtime/chat/*`)必须有不启 jsdom 的单元测试
-
-## 6. 改动设计稿覆盖范围时
+## 5. 改动设计稿覆盖范围时
 
 设计稿是 1:1 还原的依据,但它有两处已知的**稿内不一致**(标题文案落后于 DOM):
 

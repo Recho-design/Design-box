@@ -187,50 +187,14 @@ export function agentIdToTracking(agentId: string | null | undefined): TrackingC
       return 'claude_code';
     case 'codex':
       return 'codex_cli';
-    case 'devin':
-      return 'devin_for_terminal';
     case 'gemini':
       return 'gemini_cli';
     case 'opencode':
       return 'opencode';
-    case 'hermes':
-      return 'hermes';
-    case 'kimi':
-      return 'kimi_cli';
-    case 'cursor-agent':
-      return 'cursor_agent';
-    case 'qwen':
-      return 'qwen_code';
-    case 'qoder':
-      return 'qoder_cli';
-    case 'copilot':
-      return 'github_copilot_cli';
-    case 'pi':
-      return 'pi';
-    case 'kilo':
-      return 'kilo';
-    case 'kiro':
-      return 'kiro';
-    case 'vibe':
-      return 'vibe';
-    case 'amp':
-      return 'amp';
-    case 'aider':
-      return 'aider';
-    case 'trae-cli':
-      return 'trae_cli';
     case 'grok-build':
       return 'grok_build';
     case 'antigravity':
       return 'antigravity';
-    case 'codebuddy':
-      return 'codebuddy';
-    case 'reasonix':
-      return 'reasonix';
-    case 'mimo':
-      return 'mimo';
-    case 'atomcode':
-      return 'atomcode';
     case 'byok-opencode':
       return 'byok_opencode';
     case 'deepseek':
@@ -250,21 +214,25 @@ export function feedbackAgentProviderIdToTracking(
       return byokProtocolToTracking('anthropic') ?? 'other';
     case 'openai-api':
       return byokProtocolToTracking('openai') ?? 'other';
-    case 'azure-openai-api':
-      return byokProtocolToTracking('azure') ?? 'other';
     case 'google-gemini-api':
       return byokProtocolToTracking('google') ?? 'other';
-    case 'ollama-cloud-api':
-      return byokProtocolToTracking('ollama') ?? 'other';
-    case 'senseaudio-api':
-      return byokProtocolToTracking('senseaudio') ?? 'other';
+    case 'deepseek-api':
+      return byokProtocolToTracking('deepseek') ?? 'other';
+    case 'xai-api':
+      return byokProtocolToTracking('xai') ?? 'other';
+    case 'custom-api':
+      return byokProtocolToTracking('custom') ?? 'other';
     default:
       return agentIdToTracking(agentId);
   }
 }
 
-// Code `apiProtocol` → v2 BYOK provider_id. The v1 wire values
-// (azure / ollama / google) get the v2 spelling here.
+// Code `apiProtocol` → v2 BYOK provider_id. One case per protocol the web
+// surface can actually produce (`apps/web/src/types.ts` `ApiProtocol`); the
+// retired azure / ollama cases are gone with the protocols themselves, and
+// `bedrock` never had a protocol surface here. An unmapped protocol returns
+// null, which every caller reads as "outside the catalogue" — never silently
+// as the first member.
 export function byokProtocolToTracking(
   protocol: string | null | undefined,
 ): TrackingByokProviderId | null {
@@ -273,19 +241,15 @@ export function byokProtocolToTracking(
       return 'anthropic';
     case 'openai':
       return 'openai';
-    case 'azure':
-    case 'azure_openai':
-      return 'azure_openai';
     case 'google':
     case 'google_gemini':
       return 'google_gemini';
-    case 'ollama':
-    case 'ollama_cloud':
-      return 'ollama_cloud';
-    case 'senseaudio':
-      return 'senseaudio';
-    case 'aihubmix':
-      return 'aihubmix';
+    case 'deepseek':
+      return 'deepseek';
+    case 'xai':
+      return 'xai';
+    case 'custom':
+      return 'custom';
     case 'bedrock':
       return null;
     default:

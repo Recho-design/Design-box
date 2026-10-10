@@ -29,9 +29,8 @@ import { useAnalytics } from '../analytics/provider';
 import {
   trackExecutionSettingsPopoverClick,
 } from '../analytics/events';
-import { KNOWN_PROVIDERS } from '../state/config';
+import { API_PROTOCOL_TABS } from '../state/apiProtocols';
 import { fetchProviderModels } from '../providers/provider-models';
-import { SUGGESTED_MODELS_BY_PROTOCOL } from '../state/apiProtocols';
 import {
 } from '../providers/daemon';
 import type { AgentInfo, ApiProtocol, AppConfig, ExecMode } from '../types';
@@ -47,6 +46,7 @@ import {
   defaultAgentModelId,
   effectiveAgentModelChoice,
   normalizeAgentModelChoice,
+  offeredAgentModelOptions,
 } from './agentModelSelection';
 import {
   modelVersionLabel,
@@ -75,7 +75,7 @@ interface Props {
   onApiModelChange: (model: string) => void;
   /** Lets the home picker warm the shared cache itself. Without it the picker
    *  only READS the cache (warmed by Settings/onboarding), so on a fresh load
-   *  the BYOK list falls back to the small static seed list. */
+   *  the BYOK list starts empty and asks the user to fetch. */
   onProviderModelsCacheChange?: Dispatch<SetStateAction<ProviderModelsCache>>;
   onOpenSettings: (
     section?:
@@ -89,15 +89,6 @@ interface Props {
       | 'about',
   ) => void;
 }
-
-const API_PROTOCOL_TABS: Array<{ id: ApiProtocol; title: string }> = [
-  { id: 'anthropic', title: 'Anthropic' },
-  { id: 'openai', title: 'OpenAI' },
-  { id: 'azure', title: 'Azure' },
-  { id: 'google', title: 'Google' },
-  { id: 'aihubmix', title: 'AIHubMix' },
-];
-
 
 function displayAgentName(agent: Pick<AgentInfo, 'id' | 'name'>): string {
   return agent.name;
@@ -301,15 +292,19 @@ export function InlineModelSwitcher({
   const normalizedCurrentModelId = normalizedCurrentChoice?.model ?? null;
   const normalizedCurrentReasoning = normalizedCurrentChoice?.reasoning;
   const normalizedCurrentServiceTier = normalizedCurrentChoice?.serviceTier;
-  const currentAgentModels = currentAgent?.models ?? [];
+  const currentAgentModels = offeredAgentModelOptions(currentAgent);
   const currentAgentModelIds = currentAgentModels.map((m) => m.id);
   const configuredModelId =
     typeof effectiveCurrentChoice.model === 'string' && effectiveCurrentChoice.model
       ? effectiveCurrentChoice.model
       : null;
   const currentModelId = configuredModelId ?? defaultAgentModelId(currentAgent);
+  // Offered options are filtered (see `offeredAgentModelOptions`), but the
+  // label/readout lookups below read the FULL list: a fallback catalogue still
+  // names the model the config pins, and the chip must not start calling a
+  // deliberate pick "Default" just because we stopped offering the table.
   const currentModelOption =
-    currentAgentModels.find((m) => m.id === currentModelId) ?? null;
+    (currentAgent?.models ?? []).find((m) => m.id === currentModelId) ?? null;
   // `agentId` and `agentModels` intentionally retain the last local-agent
   // choice while BYOK is active so switching back restores that choice. Do
   // not let campaign UI read that dormant state: in BYOK mode the visible
@@ -398,41 +393,27 @@ export function InlineModelSwitcher({
 
 
   const apiProtocol = config.apiProtocol ?? 'anthropic';
-  const providerForProtocol = useMemo(
-    () =>
-      KNOWN_PROVIDERS.find(
-        (p) =>
-          p.protocol === apiProtocol &&
-          (config.apiProviderBaseUrl
-            ? p.baseUrl === config.apiProviderBaseUrl
-            : false),
-      ) ?? KNOWN_PROVIDERS.find((p) => p.protocol === apiProtocol),
-    [apiProtocol, config.apiProviderBaseUrl],
-  );
   const providerModelsKey = useMemo(
     () =>
       providerModelsCacheKey(
         apiProtocol,
         config.baseUrl,
         config.apiKey,
-        config.apiVersion ?? '',
       ),
-    [apiProtocol, config.apiKey, config.apiVersion, config.baseUrl],
+    [apiProtocol, config.apiKey, config.baseUrl],
   );
   const fetchedApiModelOptions = providerModelsCache?.[providerModelsKey] ?? [];
 
   // Warm the shared provider-models cache from the home picker itself. The
   // picker otherwise depends on Settings/onboarding having fetched first, so on
-  // a fresh load the BYOK list shows only the small static seed list instead of
-  // the live catalogue. We fetch when the panel is open in BYOK mode and the
-  // preconditions for the active protocol are met (AIHubMix's catalogue is
-  // public, so it needs no key; every other protocol needs one). Results are
-  // keyed identically to Settings (`providerModelsKey`), so a single fetch
-  // serves both surfaces and replaces any stale slot.
+  // a fresh load the BYOK list starts empty and the popover asks the user to
+  // fetch. We fetch when the panel is open in BYOK mode with a key and a
+  // well-formed origin — all six protocols need a key now that the public
+  // aggregator catalogue is gone. Results are keyed identically to Settings
+  // (`providerModelsKey`), so a single fetch serves both surfaces.
   useEffect(() => {
     if (!open || config.mode !== 'api' || !onProviderModelsCacheChange) return;
-    if (apiProtocol === 'azure' || apiProtocol === 'ollama') return;
-    if (apiProtocol !== 'aihubmix' && !config.apiKey.trim()) return;
+    if (!config.apiKey.trim()) return;
     const baseUrl = config.baseUrl.trim();
     if (!/^https?:\/\//i.test(baseUrl)) return;
     const key = providerModelsKey;
@@ -454,7 +435,7 @@ export function InlineModelSwitcher({
         }
       })
       .catch(() => {
-        // Non-fatal: the picker falls back to the static seed list.
+        // Non-fatal: the popover keeps showing its "fetch the list" empty state.
       })
       .finally(() => {
         providerModelsFetchingRef.current.delete(key);
@@ -473,20 +454,12 @@ export function InlineModelSwitcher({
     onProviderModelsCacheChange,
   ]);
 
-  const suggestedApiModelIds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          providerForProtocol?.preferredModels.length
-            ? providerForProtocol.preferredModels
-            : SUGGESTED_MODELS_BY_PROTOCOL[apiProtocol],
-        ),
-      ),
-    [apiProtocol, providerForProtocol],
-  );
+  // The BYOK dropdown offers exactly what `/api/provider/models` returned. No
+  // curated seed list is merged in any more — a hand-written id the user's key
+  // cannot reach is worse than an empty list that says so.
   const apiModelOptions = useMemo(
-    () => mergeProviderModelOptions(fetchedApiModelOptions, suggestedApiModelIds),
-    [fetchedApiModelOptions, suggestedApiModelIds],
+    () => mergeProviderModelOptions(fetchedApiModelOptions),
+    [fetchedApiModelOptions],
   );
   const apiModelIds = useMemo(
     () => apiModelOptions.map((model) => model.id),
@@ -750,7 +723,7 @@ export function InlineModelSwitcher({
                         onClick={() => {
                           // Unlike Settings (which skips unmapped protocols),
                           // report the click even when the protocol has no v2
-                          // provider_id (e.g. aihubmix) — just omit the field.
+                          // provider_id — just omit the field.
                           trackExecutionSettingsPopoverClick(analytics.track, {
                             page_name: 'home',
                             area: 'execution_settings_popover',
@@ -965,9 +938,7 @@ export function InlineModelSwitcher({
                 )}
               </div>
 
-              {currentAgent &&
-              currentAgent.models &&
-              currentAgent.models.length > 0 ? (
+              {currentAgentModels.length > 0 ? (
                 <div className="inline-switcher__row">
                   <span className="inline-switcher__label">
                     {t('inlineSwitcher.modelLabel')}
@@ -1009,7 +980,7 @@ export function InlineModelSwitcher({
                     }}
                     additionalOptions={
                       currentModelId &&
-                      !currentAgent.models.some((m) => m.id === currentModelId)
+                      !currentAgentModels.some((m) => m.id === currentModelId)
                         ? [
                             {
                               value: currentModelId,

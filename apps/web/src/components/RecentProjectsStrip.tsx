@@ -213,7 +213,6 @@ const KIND_FILTER_OPTIONS: KindFilterOption[] = [
   { id: 'hyperframes', labelKey: 'homeHero.chip.hyperframes' },
   { id: 'web-clone', labelKey: 'homeHero.chip.webClone' },
   { id: 'video', labelKey: 'homeHero.chip.video' },
-  { id: 'audio', labelKey: 'homeHero.chip.audio' },
   { id: 'live-artifact', labelKey: 'homeHero.chip.liveArtifact' },
   { id: 'webgl', labelKey: 'homeHero.chip.webgl' },
   { id: 'design-system', labelKey: 'dsManager.tabDesignSystem' },
@@ -2389,7 +2388,6 @@ export type ProjectKindFilterCategory =
   | 'hyperframes'
   | 'web-clone'
   | 'video'
-  | 'audio'
   | 'live-artifact'
   | 'webgl'
   | 'design-system';
@@ -2429,8 +2427,6 @@ export function projectKindFilterCategory(project: Project): ProjectKindFilterCa
       return 'image';
     case 'video':
       return 'video';
-    case 'audio':
-      return 'audio';
     default:
       return 'prototype';
   }
@@ -2449,7 +2445,7 @@ export function projectCategory(project: Project): ProjectCategory {
   if (meta?.intent === 'web-clone') return 'web-clone';
   if (meta?.kind === 'deck') return 'slide';
   if (meta?.kind === 'brand') return 'brand';
-  if (meta?.kind === 'image' || meta?.kind === 'video' || meta?.kind === 'audio') {
+  if (meta?.kind === 'image' || meta?.kind === 'video') {
     return 'media';
   }
   return 'prototype';

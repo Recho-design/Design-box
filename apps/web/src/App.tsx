@@ -525,28 +525,24 @@ export function resolveSettingsCloseConfig(
 }
 
 
+// Display order for the local CLIs the daemon can still detect and spawn,
+// mirroring `apps/web/src/components/HandoffButton.tsx` `CLI_ORDER` — the
+// eighteen retired CLIs are gone from both. Keep the two lists in step: an id
+// that survives here but not in the daemon sorts into a slot nothing occupies,
+// and one that is missing entirely falls to the end of the picker.
+//
+// `byok-opencode` is deliberately absent. It is a runtime, not an offerable
+// agent: `utils/visibleAgents.ts` hides it from every picker, and it exists so
+// an API-mode turn lands on a real agent id. Ranking it would only reorder a
+// row no surface renders.
 const CANONICAL_AGENT_ORDER = [
   'claude',
   'codex',
-  'devin',
-  'gemini',
   'opencode',
-  'hermes',
-  'trae-cli',
-  'grok-build',
-  'kimi',
-  'cursor-agent',
-  'qwen',
-  'qoder',
-  'copilot',
-  'pi',
-  'kiro',
-  'kilo',
-  'vibe',
   'deepseek',
-  'aider',
+  'deepseek-harness',
+  'grok-build',
   'antigravity',
-  'reasonix',
 ] as const;
 
 const CANONICAL_AGENT_ORDER_INDEX = new Map<string, number>(

@@ -45,4 +45,3 @@ export OD_COLLAB_CLOUD_TOKEN=dev-internal-token
 - **This is disposable.** Once vela `services/collab` is stood up, delete
   `src/collab-cloud-fixture.ts` (and its wiring in `src/index.ts`) and repoint
   `OD_COLLAB_CLOUD_URL` at the real service. The daemon needs zero code changes.
-  `tests/collab-cloud-fixture.test.ts` locks the fixture's half of the contract.

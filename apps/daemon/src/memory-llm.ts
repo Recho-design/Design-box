@@ -13,26 +13,24 @@
 //
 // Provider selection (in order):
 //   0. memory `.config.json` extraction override → user-supplied
-//      provider/model/baseUrl/apiKey/apiVersion from the Memory model
-//      picker. The override may pick any of four providers — anthropic,
-//      openai, azure (openai-compatible at a per-resource URL), or
-//      google gemini. This is the only path that lets a Local-CLI user
-//      (no env-var key in the daemon's environment) point memory
-//      extraction at, say, their personal Anthropic key with a
-//      specific Haiku build instead of falling all the way through to
-//      gpt-4o-mini. When the override carries the provider but no
-//      apiKey we fall back to the corresponding env var (or the media-
-//      config OpenAI key for openai/azure overrides) so a "I want to
-//      switch to OpenAI but reuse my existing key" change costs zero
-//      typing.
+//      provider/model/baseUrl/apiKey from the Memory model picker. The
+//      override may pick any of the six chat protocols — anthropic,
+//      openai, google, deepseek, xai, or custom. This is the only path
+//      that lets a Local-CLI user (no env-var key in the daemon's
+//      environment) point memory extraction at, say, their personal
+//      Anthropic key with a specific Haiku build instead of falling all
+//      the way through to gpt-4o-mini. When the override carries the
+//      provider but no apiKey we fall back to the corresponding env var
+//      (or the media-config OpenAI key for an `openai` override) so a "I
+//      want to switch to OpenAI but reuse my existing key" change costs
+//      zero typing.
 //   1. current Local CLI, when the caller passed `chatAgentId` and the
 //      agent supports headless one-shot output (Claude Code today).
 //   2. matching provider env var for the current chat protocol.
 //   3. BYOK chat-config snapshot for API-mode chats.
 //   4. ANTHROPIC_API_KEY env → Claude Haiku 4.5 (legacy fallback)
 //   5. OPENAI_API_KEY env    → gpt-4o-mini
-//   6. media-config text-capable BYOK → OpenAI / MiniMax /
-//      AIHubMix / SenseAudio fast defaults
+//   6. media-config text-capable BYOK → OpenAI fast defaults
 //      (the key the user already typed into Settings → Media providers;
 //       reuses an existing credential so Local-CLI users don't have to
 //       paste it twice just to get LLM-side memory extraction)
@@ -63,7 +61,6 @@ import {
   markFailed,
 } from './memory-extractions.js';
 import { resolveProviderConfig } from './media/config.js';
-import { AIHUBMIX_APP_CODE } from './integrations/aihubmix.js';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
@@ -147,10 +144,10 @@ Type rules:
 // anthropic" without typing a model, we still want the same
 // claude-haiku-4-5 fallback the env path uses.
 //
-// Azure has no useful baseUrl default — every Azure resource has its
-// own `https://<resource>.openai.azure.com` host, so the user must
-// supply theirs. We still emit an empty default here so a missing
-// override doesn't crash with `undefined` when accessed.
+// `custom` is an arbitrary OpenAI-compatible endpoint. It has no useful
+// default base URL or model (the user must supply both), so its entry is
+// deliberately empty — a missing baseUrl short-circuits in pickProvider()
+// rather than producing a confusing 404 from a URL built off `undefined`.
 const PROVIDER_DEFAULTS = {
   anthropic: {
     model: 'claude-haiku-4-5',
@@ -160,88 +157,46 @@ const PROVIDER_DEFAULTS = {
     model: 'gpt-4o-mini',
     baseUrl: 'https://api.openai.com',
   },
-  azure: {
-    model: 'gpt-4o-mini',
-    baseUrl: '',
-    apiVersion: '2024-10-21',
-  },
   google: {
     model: 'gemini-3.5-flash',
     baseUrl: 'https://generativelanguage.googleapis.com',
   },
-  // Ollama Cloud speaks OpenAI-compatible chat-completions, so the
-  // extractor just routes through callOpenAI with the ollama base URL
-  // and the user's Ollama Cloud API key. The default model is a small
-  // open-weight model so the auto-pick produces a deterministic answer
-  // for users who haven't customised the picker; users who care can
-  // pick anything off the picker's `Custom...` list.
-  ollama: {
-    model: 'gemma3:4b',
-    baseUrl: 'https://ollama.com',
+  // DeepSeek and xAI both speak OpenAI-compatible chat-completions, so the
+  // extractor routes them through callOpenAI with their own base URL. The
+  // default model is a small/fast one so auto-pick stays cheap; users who
+  // care can pick anything off the picker's `Custom...` list.
+  deepseek: {
+    model: 'deepseek-chat',
+    baseUrl: 'https://api.deepseek.com',
   },
-  // SenseAudio's chat API is OpenAI-compatible (POST /v1/chat/completions,
-  // Bearer auth), so the extractor falls through to callOpenAI with this
-  // base URL and the user's SenseAudio API key. The default model is the
-  // small/fast variant so auto-pick stays cheap; users can swap in
-  // senseaudio-s2 or any gateway model via the picker.
-  senseaudio: {
-    model: 'senseaudio-s2-flash',
-    baseUrl: 'https://api.senseaudio.cn',
+  xai: {
+    model: 'grok-4',
+    baseUrl: 'https://api.x.ai/v1',
   },
-  // AIHubMix is OpenAI-wire-compatible, so the extractor falls through to
-  // callOpenAI with this base URL and the user's AIHubMix key (plus the fixed
-  // APP-Code header callOpenAI injects). Default to a small/fast model.
-  aihubmix: {
-    model: 'gpt-4o-mini',
-    baseUrl: 'https://aihubmix.com/v1',
+  custom: {
+    model: '',
+    baseUrl: '',
   },
 };
 
 // Some Settings -> Media providers credentials are usable for text
-// extraction even though their media base URL targets image/TTS endpoints.
-// Keep those fallbacks explicit so a saved image/audio-only key does not get
-// reported as "no API key", and so we never accidentally call a non-chat media
-// endpoint as the memory extractor.
-const MEDIA_MEMORY_PROVIDER_FALLBACKS = [
-  {
-    mediaProviderId: 'minimax',
-    memoryProvider: 'openai',
-    model: 'MiniMax-M2.7-highspeed',
-    baseUrl: 'https://api.minimax.io/v1',
-  },
-  {
-    mediaProviderId: 'aihubmix',
-    memoryProvider: 'aihubmix',
-    model: PROVIDER_DEFAULTS.aihubmix.model,
-    baseUrl: PROVIDER_DEFAULTS.aihubmix.baseUrl,
-  },
-  {
-    mediaProviderId: 'senseaudio',
-    memoryProvider: 'senseaudio',
-    model: PROVIDER_DEFAULTS.senseaudio.model,
-    baseUrl: PROVIDER_DEFAULTS.senseaudio.baseUrl,
-  },
-];
-
-const MEDIA_MEMORY_PROVIDER_IDS = new Set(
-  MEDIA_MEMORY_PROVIDER_FALLBACKS.map((fallback) => fallback.mediaProviderId),
-);
+// extraction even though their media base URL targets image endpoints.
+// Today that is only the `openai` slot, which `providerFromOpenAiMediaConfig`
+// below already covers directly — the dedicated vendored fallbacks
+// (MiniMax / AIHubMix / SenseAudio) were removed with those media providers.
+// The remaining media providers (grok / nanobanana / custom-image)
+// speak no OpenAI chat-completions wire we can reuse, so they get no
+// fallback and must not be mistaken for a text-capable credential.
 
 // Map an explicit override provider to the env var the daemon should
 // consult when the override doesn't carry its own apiKey. The fallback
-// chain stays the same as before for anthropic/openai; azure uses the
-// AZURE_OPENAI_API_KEY convention; google uses GOOGLE_API_KEY (matching
-// the gemini SDK's expectation, with GEMINI_API_KEY as a secondary).
+// chain stays the same as before for anthropic/openai; google uses
+// GOOGLE_API_KEY (matching the gemini SDK's expectation, with GEMINI_API_KEY
+// as a secondary); deepseek and xai use their vendors' canonical env names.
+// `custom` has no env var — it is a user-typed endpoint with a user-typed key.
 function envKeyFor(provider) {
   if (provider === 'anthropic') return process.env.ANTHROPIC_API_KEY?.trim() || '';
   if (provider === 'openai') return process.env.OPENAI_API_KEY?.trim() || '';
-  if (provider === 'azure') {
-    return (
-      process.env.AZURE_OPENAI_API_KEY?.trim()
-      || process.env.AZURE_API_KEY?.trim()
-      || ''
-    );
-  }
   if (provider === 'google') {
     return (
       process.env.GOOGLE_API_KEY?.trim()
@@ -249,23 +204,8 @@ function envKeyFor(provider) {
       || ''
     );
   }
-  if (provider === 'ollama') {
-    return process.env.OLLAMA_API_KEY?.trim() || '';
-  }
-  if (provider === 'senseaudio') {
-    return (
-      process.env.OD_SENSEAUDIO_API_KEY?.trim()
-      || process.env.SENSEAUDIO_API_KEY?.trim()
-      || ''
-    );
-  }
-  if (provider === 'aihubmix') {
-    return (
-      process.env.OD_AIHUBMIX_API_KEY?.trim()
-      || process.env.AIHUBMIX_API_KEY?.trim()
-      || ''
-    );
-  }
+  if (provider === 'deepseek') return process.env.DEEPSEEK_API_KEY?.trim() || '';
+  if (provider === 'xai') return process.env.XAI_API_KEY?.trim() || '';
   return '';
 }
 
@@ -283,24 +223,12 @@ function chatProtocolFromAgentId(agentId) {
   const id = agentId.trim().toLowerCase();
   if (id === 'claude') return 'anthropic';
   if (id === 'gemini') return 'google';
-  // Codex, OpenCode, Qwen, DeepSeek, Kimi, Copilot, Pi, Kiro, Kilo,
-  // Vibe, Devin, Hermes, Cursor-Agent, Qoder all use the OpenAI chat-
-  // completions wire format.
+  // Codex, OpenCode and DeepSeek all use the OpenAI chat-completions
+  // wire format.
   if (
     id === 'codex'
     || id === 'opencode'
-    || id === 'qwen'
     || id === 'deepseek'
-    || id === 'kimi'
-    || id === 'copilot'
-    || id === 'pi'
-    || id === 'kiro'
-    || id === 'kilo'
-    || id === 'vibe'
-    || id === 'devin'
-    || id === 'hermes'
-    || id === 'cursor-agent'
-    || id === 'qoder'
   ) {
     return 'openai';
   }
@@ -343,31 +271,6 @@ function providerFromOpenAiMediaConfig(cred, envOverrideModel) {
   };
 }
 
-async function providerFromMediaMemoryFallbacks(projectRoot, envOverrideModel) {
-  for (const fallback of MEDIA_MEMORY_PROVIDER_FALLBACKS) {
-    try {
-      const cred = await resolveProviderConfig(projectRoot, fallback.mediaProviderId);
-      if (cred && typeof cred.apiKey === 'string' && cred.apiKey.trim()) {
-        return {
-          kind: fallback.memoryProvider,
-          apiKey: cred.apiKey.trim(),
-          model: envOverrideModel || fallback.model,
-          // Deliberately use the text-chat default, not the media base URL.
-          baseUrl: fallback.baseUrl,
-          apiVersion: '',
-          credentialSource: 'media-config',
-        };
-      }
-    } catch (err) {
-      console.warn(
-        `[memory-llm] media-config lookup failed (${fallback.mediaProviderId})`,
-        err?.message ?? err,
-      );
-    }
-  }
-  return null;
-}
-
 async function hasUnsupportedMediaProviderConfig(projectRoot) {
   try {
     const { readMaskedConfig } = await import('./media/config.js');
@@ -376,9 +279,10 @@ async function hasUnsupportedMediaProviderConfig(projectRoot) {
       .filter(([, provider]) => provider?.configured)
       .map(([id]) => id);
     if (configured.length === 0) return false;
-    const hasTextCapable = configured.some(
-      (id) => id === 'openai' || MEDIA_MEMORY_PROVIDER_IDS.has(id),
-    );
+    // `openai` is the only Settings → Media slot whose credential can be
+    // reused on the chat-completions wire; every other retained media
+    // provider is an image/video endpoint.
+    const hasTextCapable = configured.some((id) => id === 'openai');
     return !hasTextCapable;
   } catch (err) {
     console.warn(
@@ -418,7 +322,7 @@ async function hasUnsupportedMediaProviderConfig(projectRoot) {
 //      ANTHROPIC_API_KEY env → Claude Haiku 4.5
 //   5. (legacy fallback) OPENAI_API_KEY env → gpt-4o-mini
 //   6. (legacy fallback) media-config text-capable BYOK → OpenAI /
-//      MiniMax / AIHubMix / SenseAudio fast defaults
+//      fast OpenAI defaults
 //
 // The `OD_MEMORY_MODEL` env continues to override the model name across
 // (1)–(6) so power users don't lose that lever. It does NOT override the
@@ -458,13 +362,13 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
     let credentialSource = explicitKey
       ? 'memory-config'
       : (envKey ? 'env' : null);
-    // Last-chance: an openai-shaped override (openai or azure) with no
-    // explicit/env key can still borrow the media-config OpenAI key the
-    // user already typed. Anthropic / google have no media counterpart
+    // Last-chance: an `openai`-shaped override with no explicit/env key can
+    // still borrow the media-config OpenAI key the user already typed.
+    // Anthropic / google / deepseek / xai / custom have no media counterpart
     // today.
     if (
       !resolvedKey
-      && (override.provider === 'openai' || override.provider === 'azure')
+      && override.provider === 'openai'
       && projectRoot
     ) {
       try {
@@ -489,9 +393,10 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
     const baseUrl =
       (typeof override.baseUrl === 'string' && override.baseUrl.trim())
       || defaults.baseUrl;
-    if (override.provider === 'azure' && !baseUrl) {
-      // Azure with no resource URL is unrecoverable — bail rather than
-      // logging a confusing 404 from `https:///openai/deployments/...`.
+    if (!baseUrl) {
+      // `custom` with no user-supplied base URL is unrecoverable — bail
+      // rather than logging a confusing 404 from a URL built off an empty
+      // string.
       return null;
     }
     return {
@@ -501,11 +406,7 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
         (typeof override.model === 'string' && override.model.trim())
         || defaults.model,
       baseUrl,
-      apiVersion:
-        override.provider === 'azure'
-          ? (typeof override.apiVersion === 'string' && override.apiVersion.trim())
-            || PROVIDER_DEFAULTS.azure.apiVersion
-          : '',
+      apiVersion: '',
       credentialSource,
     };
   }
@@ -537,7 +438,7 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
           (chatProtocol === 'anthropic' && process.env.ANTHROPIC_BASE_URL)
           || (chatProtocol === 'openai' && process.env.OPENAI_BASE_URL)
           || defaults.baseUrl,
-        apiVersion: chatProtocol === 'azure' ? defaults.apiVersion : '',
+        apiVersion: '',
         credentialSource: 'env',
       };
     }
@@ -559,11 +460,6 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
           err?.message ?? err,
         );
       }
-      const mediaProvider = await providerFromMediaMemoryFallbacks(
-        projectRoot,
-        envOverrideModel,
-      );
-      if (mediaProvider) return mediaProvider;
     }
     // The chat protocol is known but no key for it is available. Bail
     // out instead of wandering — recording 'skipped: no-provider' is
@@ -601,9 +497,9 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
       const baseUrl =
         (typeof chatProvider.baseUrl === 'string' && chatProvider.baseUrl.trim())
         || defaults.baseUrl;
-      // Azure with no resource URL is unrecoverable — same guard as
-      // the override path above. (Azure is never keyless.)
-      if (chatProvider.provider !== 'azure' || baseUrl) {
+      // `custom` with no user-supplied base URL is unrecoverable — same guard
+      // as the override path above.
+      if (baseUrl) {
         const explicitModel =
           typeof chatProvider.model === 'string' && chatProvider.model.trim()
             ? chatProvider.model.trim()
@@ -613,12 +509,7 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
           apiKey,
           model: envOverrideModel || explicitModel || defaults.model,
           baseUrl,
-          apiVersion:
-            chatProvider.provider === 'azure'
-              ? (typeof chatProvider.apiVersion === 'string'
-                  && chatProvider.apiVersion.trim())
-                || PROVIDER_DEFAULTS.azure.apiVersion
-              : '',
+          apiVersion: '',
           credentialSource: 'chat-byok',
           // Preserve the keyless signal for the HTTP call layer so it
           // omits the Authorization header instead of sending `Bearer `
@@ -665,11 +556,6 @@ async function pickProvider(projectRoot, dataDir, chatAgentId, chatProvider, cha
         err?.message ?? err,
       );
     }
-    const mediaProvider = await providerFromMediaMemoryFallbacks(
-      projectRoot,
-      envOverrideModel,
-    );
-    if (mediaProvider) return mediaProvider;
   }
   return null;
 }
@@ -708,9 +594,9 @@ const FETCH_TIMEOUT_MS = 30_000;
 // `/v1` (local servers, proxies that re-host OpenAI under a fixed
 // prefix) does not become `/v1/v1/chat/completions` and silently fail
 // every memory extraction even though chat through the same provider
-// works. Anthropic's `/v1/messages` and OpenAI's `/v1/chat/completions`
-// both flow through this; Azure and Gemini build their URLs
-// differently and don't need it.
+// works. Anthropic's `/v1/messages` and the OpenAI-compatible
+// `/v1/chat/completions` (openai / deepseek / xai / custom) all flow
+// through this; Gemini builds its URL differently and doesn't need it.
 function appendVersionedApiPath(baseUrl, suffix) {
   const url = new URL(baseUrl);
   const pathname = url.pathname.replace(/\/+$/, '');
@@ -824,11 +710,6 @@ async function callOpenAI(provider, system, user) {
           ...(provider.apiKey
             ? { authorization: `Bearer ${provider.apiKey}` }
             : {}),
-          // AIHubMix routes through this same OpenAI-compatible path but wants
-          // the fixed APP-Code attribution header on every request.
-          ...(provider.kind === 'aihubmix' && AIHUBMIX_APP_CODE
-            ? { 'APP-Code': AIHUBMIX_APP_CODE }
-            : {}),
         },
         body: JSON.stringify({
           model: provider.model,
@@ -846,45 +727,6 @@ async function callOpenAI(provider, system, user) {
   }
   if (!resp.ok) {
     throw new Error(`openai ${resp.status}: ${await resp.text().catch(() => '')}`);
-  }
-  const json = await resp.json();
-  return json?.choices?.[0]?.message?.content ?? '';
-}
-
-// Azure OpenAI speaks the same chat-completions JSON as OpenAI, but on
-// a per-deployment URL and with `api-key:` instead of `Authorization:`.
-// `provider.model` here is the Azure deployment name (the user typed it
-// into the model field — that's what the chat picker calls "Deployment
-// (Model)" too), not the underlying model family.
-async function callAzure(provider, system, user) {
-  const base = String(provider.baseUrl || '').replace(/\/+$/, '');
-  const deployment = encodeURIComponent(provider.model);
-  const apiVersion = encodeURIComponent(
-    provider.apiVersion || PROVIDER_DEFAULTS.azure.apiVersion,
-  );
-  const url = `${base}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
-  let resp;
-  try {
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'api-key': provider.apiKey,
-      },
-      body: JSON.stringify({
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-      }),
-      signal: withTimeout(FETCH_TIMEOUT_MS),
-    });
-  } catch (err) {
-    throw new Error(describeFetchError(err));
-  }
-  if (!resp.ok) {
-    throw new Error(`azure ${resp.status}: ${await resp.text().catch(() => '')}`);
   }
   const json = await resp.json();
   return json?.choices?.[0]?.message?.content ?? '';
@@ -1324,14 +1166,12 @@ async function collectProposedEntries(dataDir, input, options) {
       });
     } else if (provider.kind === 'anthropic') {
       raw = await callAnthropic(provider, systemPrompt, userPayload);
-    } else if (provider.kind === 'azure') {
-      raw = await callAzure(provider, systemPrompt, userPayload);
     } else if (provider.kind === 'google') {
       raw = await callGoogle(provider, systemPrompt, userPayload);
     } else {
-      // openai or ollama — both speak the OpenAI chat-completions
-      // wire shape, so callOpenAI handles them with just a different
-      // base URL.
+      // openai, deepseek, xai and custom all speak the OpenAI
+      // chat-completions wire shape, so callOpenAI handles them with just a
+      // different base URL.
       raw = await callOpenAI(provider, systemPrompt, userPayload);
     }
   } catch (err) {

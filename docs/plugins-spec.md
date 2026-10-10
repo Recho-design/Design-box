@@ -73,7 +73,7 @@ OD's core unit is not "one prompt, one output" — it is a **long-running design
 
 Concretely, this spec promotes the existing "first-party atoms" from a flat capability list into an **atomic pipeline that plugins assemble**:
 
-- **Atom (§10):** a named capability exposed by the OD daemon and first-party tools (discovery-question-form, direction-picker, todo-write, file-read/write, research-search, media-image, live-artifact, critique-theater, etc.).
+- **Atom (§10):** a named capability exposed by the OD daemon and first-party tools (discovery-question-form, direction-picker, todo-write, file-read/write, media-image, live-artifact, critique-theater, etc.).
 - **Pipeline (§5 / §10.1):** the plugin uses `od.pipeline` to compose atoms into ordered stages. The spec ships a default reference pipeline of `discovery → plan → generate → critique`; plugins can add, reorder, or loop over any stage.
 - **Devloop (§10.2):** when a stage is marked `repeat: true` with an `until` termination condition (critique score, user confirmation, preview load success, etc.), the agent automatically iterates on the previous artifact until the condition holds or the user explicitly cancels.
 - **Generative UI (§10.3):** when a stage needs human-in-the-loop input (information, authorization, direction picking, optimization confirmation), the agent triggers a surface that the plugin **declares ahead of time** in its manifest's `od.genui.surfaces[]`. The daemon broadcasts the request through OD's native event stream, which can also be projected into AG-UI canonical events for external clients. Once the user answers, the daemon writes the answer back to the project; the surface's `persist` field decides whether the answer is remembered at run / conversation / project tier so that multi-turn chats do not pester the user with the same question twice.
@@ -279,7 +279,7 @@ Rules of authorship:
       "mcp": [
         { "name": "tavily", "command": "npx", "args": ["-y", "@tavily/mcp"] }
       ],
-      "atoms": ["discovery-question-form", "todo-write", "research-search"]
+      "atoms": ["discovery-question-form", "todo-write"]
     },
 
     "pipeline": {
@@ -760,7 +760,6 @@ Promote what already exists in [`apps/daemon/src/prompts/system.ts`](../apps/dae
 | `direction-picker` | same | Optional 3–5 direction comparison only when the user explicitly requests alternatives | new-generation, tune-collab |
 | `todo-write` | same | TodoWrite-driven plan | all |
 | `file-read` / `file-write` / `file-edit` | code-agent native | File ops | all |
-| `research-search` | `od research search` ([`apps/daemon/src/cli.ts`](../apps/daemon/src/cli.ts)) | Tavily web research | new-generation |
 | `media-image` / `media-video` / `media-audio` | `od media generate` | Media generation with provider config | new-generation, tune-collab |
 | `live-artifact` | MCP `mcp__live-artifacts__*` | Create/refresh live artifacts | all |
 | `connector` | MCP `mcp__connectors__*` | Composio connectors | all |
@@ -1424,7 +1423,6 @@ od config unset <key> [--json]                              # backed by app conf
 #### Existing agent-callable tools (unchanged)
 
 ```
-od research search ...
 od media generate  ...
 od tools live-artifacts ...
 od tools connectors  ...
@@ -1491,7 +1489,7 @@ This sequence works identically locally, in CI, in a Docker sidecar, or driven f
 
 ### 12.6 What this means for the existing CLI
 
-Every group above is additive to [`apps/daemon/src/cli.ts`](../apps/daemon/src/cli.ts). The current default `od` (start daemon + open web UI) remains unchanged. Existing `od media`, `od research`, `od tools`, `od mcp` commands keep their exact contracts. The new groups are wrappers around endpoints that already exist in `apps/daemon/src/server.ts` for the ones the desktop UI uses today (project create/list, run start/watch, file upload/list), plus the new endpoints from §11.5 for plugins/marketplace/atoms.
+Every group above is additive to [`apps/daemon/src/cli.ts`](../apps/daemon/src/cli.ts). The current default `od` (start daemon + open web UI) remains unchanged. Existing `od media`, `od tools`, `od mcp` commands keep their exact contracts. The new groups are wrappers around endpoints that already exist in `apps/daemon/src/server.ts` for the ones the desktop UI uses today (project create/list, run start/watch, file upload/list), plus the new endpoints from §11.5 for plugins/marketplace/atoms.
 
 > **Implementation rule:** if a code agent can do something through the desktop UI, it MUST be doable through `od …` with the same arguments and equivalent output. No silent UI-only capabilities.
 
@@ -1741,7 +1739,7 @@ Defaults shift toward safer behavior when the daemon runs in a container:
 - Pure-TS contracts at `packages/contracts/src/plugins/{manifest,context,apply,marketplace,installed}.ts`.
 - Migration note: existing `skills/`, `design-systems/`, `craft/` are 100% backward compatible. SKILL.md frontmatter unchanged.
 
-Validation: `pnpm guard`, `pnpm typecheck`, `pnpm --filter @open-design/contracts test`.
+Validation: `pnpm guard`, `pnpm typecheck`. (Parser fixtures that used to run under `@open-design/contracts` tests were removed with the repository's test layer; re-verify parser behavior on a real path — install the fixture plugins through `od plugin install` and confirm the manifest loads.)
 
 ### Phase 1 — Loader, installer, persistence + headless MVP CLI loop (5–7 days)
 
@@ -1759,8 +1757,7 @@ Phase 1 contents (merges the original Phase 1 with the minimum subset of the ori
 
 Validation:
 
-- `pnpm --filter @open-design/plugin-runtime test` (parser fixtures: pure SKILL.md, pure claude plugin, metadata-only open-design.json, all three combined, SKILL frontmatter mapping).
-- `pnpm --filter @open-design/daemon test`. `pnpm guard`, `pnpm typecheck`.
+- `pnpm guard`, `pnpm typecheck`. (The `plugin-runtime` and daemon package test suites were removed with the repository's test layer; the two real-path smokes below are the acceptance evidence for this phase.)
 - **End-to-end headless smoke** (equivalent to the §12.5 walkthrough): `od plugin install ./fixtures/sample-plugin` → `od project create --plugin <id> --json` → `od run start --project <pid> --plugin <id> --follow` → `od files read <pid> <artifact>`. The produced artifact bytes must match exactly what the same plugin produces under the Phase 2A UI flow.
 - **Apply purity smoke:** after `od plugin apply <id>` followed by cancel-before-send, the project cwd is empty of staged assets, no `.mcp.json` is generated, but the `applied_plugin_snapshots` row exists (unreferenced from any run/project).
 

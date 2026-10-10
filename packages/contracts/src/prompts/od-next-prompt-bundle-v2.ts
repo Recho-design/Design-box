@@ -73,7 +73,6 @@ export interface OdNextPromptBundleV2 extends OdNextPromptBundleHeadV2 {
     stableRequestContext?: string | undefined;
     frozenSkillPackage?: string | undefined;
     requestInputFacts?: string | undefined;
-    researchCommandContract?: string | undefined;
     runContext?: string | undefined;
     connectedExternalMcp?: string | undefined;
     browserUnavailableGuard?: string | undefined;
@@ -133,7 +132,6 @@ const CONTEXT_SLOTS = [
   'stable_request_context',
   'frozen_skill_package',
   'request_input_facts',
-  'research_command_contract',
   'run_context',
   'connected_external_mcp',
   'browser_unavailable_guard',
@@ -326,7 +324,6 @@ function buildTree(input: OdNextPromptBundleV2): CanonicalXmlNode {
           optionalTextNode('stable_request_context', input.context.stableRequestContext),
           optionalTextNode('frozen_skill_package', input.context.frozenSkillPackage),
           optionalTextNode('request_input_facts', input.context.requestInputFacts),
-          optionalTextNode('research_command_contract', input.context.researchCommandContract),
           optionalTextNode('run_context', input.context.runContext),
           optionalTextNode('connected_external_mcp', input.context.connectedExternalMcp),
           optionalTextNode('browser_unavailable_guard', input.context.browserUnavailableGuard),
@@ -511,10 +508,6 @@ export function parseOdNextPromptBundleV2(source: string): OdNextPromptBundleV2 
       ...optionalField(
         'requestInputFacts',
         readOptionalText(context, 'request_input_facts', 'request_input_facts'),
-      ),
-      ...optionalField(
-        'researchCommandContract',
-        readOptionalText(context, 'research_command_contract', 'research_command_contract'),
       ),
       ...optionalField('runContext', readOptionalText(context, 'run_context', 'run_context')),
       ...optionalField(

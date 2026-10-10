@@ -343,16 +343,14 @@ function providerDisplayName(
   switch (provider?.kind) {
     case 'anthropic':
       return 'Anthropic';
-    case 'azure':
-      return 'Azure OpenAI';
     case 'google':
       return 'Google Gemini';
-    case 'ollama':
-      return 'Ollama';
-    case 'senseaudio':
-      return 'SenseAudio';
-    case 'aihubmix':
-      return 'AIHubMix';
+    case 'deepseek':
+      return 'DeepSeek';
+    case 'xai':
+      return 'xAI';
+    case 'custom':
+      return t('memory.providerFallbackName');
     case 'openai':
       return 'OpenAI';
     default:

@@ -14,7 +14,6 @@ import { BRAND_USAGE, isBrandHelpArg } from './cli-help/index.js';
 import { parseDesignSystemRenameArgs } from './design-systems/rename-args.js';
 import { runLiveArtifactsToolCli } from './tools-live-artifacts-cli.js';
 import { runDeliverableSyntaxToolCli } from './tools-deliverable-syntax-cli.js';
-import { splitResearchSubcommand } from './research/cli-args.js';
 import { resolveDaemonUrl } from './daemon-url.js';
 import { SidecarFactory } from '@open-design/sidecar';
 import { APP_KEYS, SIDECAR_MESSAGES } from '@open-design/sidecar-proto';
@@ -46,7 +45,7 @@ const RESUME_CONTINUE_PROMPT =
 //   - default mode: starts the daemon + opens the web UI.
 //   - `od media …`: a thin client that POSTs to the running daemon. This
 //     is what the code agent invokes from inside a chat to actually
-//     produce image / video / audio bytes (the unifying contract).
+//     produce image / video bytes (the unifying contract).
 //
 // We dispatch on the first positional argument so flags like --port keep
 // working unchanged. Subcommand routing is keyword-based; flags are
@@ -77,19 +76,13 @@ const MEDIA_GENERATE_STRING_FLAGS = new Set([
   'resolution',
   'count',
   'length',
-  'duration',
-  'prompt-influence',
-  'voice',
-  'audio-kind',
   'composition-dir',
   'image',
   'daemon-url',
-  'language',
 ]);
 const MEDIA_GENERATE_BOOLEAN_FLAGS = new Set([
   'help',
   'h',
-  'loop',
   // Accepted for consistency with `media scaffold`: generate output is always
   // one JSON line per result, so the flag is a no-op that must still parse.
   'json',
@@ -169,16 +162,6 @@ const MCP_INSTALL_BOOLEAN_FLAGS = new Set([
   'dry-run',
   'uninstall',
   'remove',
-]);
-
-const RESEARCH_SEARCH_STRING_FLAGS = new Set([
-  'query',
-  'max-sources',
-  'daemon-url',
-]);
-const RESEARCH_SEARCH_BOOLEAN_FLAGS = new Set([
-  'help',
-  'h',
 ]);
 
 const PLUGIN_STRING_FLAGS = new Set([
@@ -301,7 +284,7 @@ const WORKSPACE_STRING_FLAGS = new Set([
 const WORKSPACE_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
 // `od templates …` mirrors NewProjectPanel / ExamplesTab. Same surface,
 // same /api/templates store. The CLI form is the embeddability contract:
-// external agents (hermes-agent, openclaw, ...) can snapshot, list, or
+// external agents (openclaw, scripted jobs, ...) can snapshot, list, or
 // remove user-saved project templates without going through the web UI.
 const TEMPLATES_STRING_FLAGS = new Set([
   'daemon-url', 'name', 'description',
@@ -318,7 +301,7 @@ const DEPLOY_STRING_FLAGS = new Set([
 const DEPLOY_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
 // `od automation …` mirrors the Automations tab. Same surface, same
 // /api/routines store. The CLI form is the embeddability contract:
-// external agents (hermes-agent, openclaw, etc.) can drive OpenDesign
+// external agents (openclaw, scripted jobs, etc.) can drive OpenDesign
 // automations headlessly without going through the web UI.
 const AUTOMATION_STRING_FLAGS = new Set([
   'daemon-url', 'name', 'prompt', 'prompt-file', 'schedule', 'target',
@@ -370,7 +353,7 @@ const FIGMA_BOOLEAN_FLAGS = new Set([
 ]);
 // `od brand …` mirrors the Brands library + New Brand modal. Same surface,
 // same /api/brands store. The CLI form is the embeddability contract: an
-// external agent (hermes-agent, openclaw, scripted job) can extract, list,
+// external agent (openclaw, scripted job) can extract, list,
 // inspect, and remove brands headlessly without rendering the web UI.
 // Hoisted next to the other dispatch-touched flag sets because runBrand is
 // reachable through the top-of-file SUBCOMMAND_MAP dispatch, which runs during
@@ -425,7 +408,6 @@ const SUBCOMMAND_MAP = {
   media: runMedia,
   mcp: runMcp,
   collab: runCollab,
-  research: runResearch,
   plugin: runPlugin,
   ui: runUi,
   marketplace: runMarketplace,
@@ -1014,9 +996,6 @@ function printRootHelp() {
   od mcp live-artifacts
       Start the MCP server exposing live-artifact and connector tools.
 
-  od research search --query <text> [--max-sources 5] [--daemon-url <url>]
-      Run agent-callable Tavily research through the local daemon.
-
   od plugin <list|info|install|uninstall|apply|doctor|replay|trust> [args]
       Discover, install, and apply plugins through the local daemon.
   od plugin publish-repo <folder>
@@ -1026,7 +1005,7 @@ function printRootHelp() {
 
   od automation <list|get|create|update|run|runs|pause|resume|delete> [args]
       Drive the Automations surface headlessly. Same store as the UI's
-      Automations tab, so an external agent (hermes, openclaw, ...) can
+      Automations tab, so an external agent (openclaw, ...) can
       schedule, trigger, or harvest results from a routine without
       opening the web UI.
 
@@ -1063,7 +1042,7 @@ function printRootHelp() {
   "$OD_NODE_BIN" "$OD_BIN" tools ...
       Recommended agent-runtime form; avoids relying on user PATH for od or node.
 
-  od media generate --surface <image|video|audio> --model <id> [opts]
+  od media generate --surface <image|video> --model <id> [opts]
       Generate a media artifact and write it into the active project.
       Designed to be invoked by a code agent - picks up OD_DAEMON_URL
       and OD_PROJECT_ID from the env that the daemon injected on spawn.
@@ -1087,7 +1066,7 @@ Options:
   --no-open        Do not open the browser after start.
 
 What the daemon does:
-  * scans PATH for installed code-agent CLIs (claude, codex, devin, opencode, cursor-agent, ...)
+  * scans PATH for installed code-agent CLIs (claude, codex, opencode, deepseek, ...)
   * serves the chat UI at http://<host>:<port>
   * proxies messages (text + images) to the selected agent via child-process spawn
   * exposes project-scoped media scaffold/generate APIs — the unified path
@@ -1393,84 +1372,10 @@ function readCollabPresenceSessionFlags(flags) {
   }
   return { clientId, sequence };
 }
-// ---------------------------------------------------------------------------
-// Subcommand: od research …
-// ---------------------------------------------------------------------------
-
-async function runResearch(args) {
-  const { sub, subArgs } = splitResearchSubcommand(args);
-  if (!sub || sub === 'help' || args.includes('--help') || args.includes('-h')) {
-    printResearchHelp();
-    process.exit(sub === 'help' || args.includes('--help') || args.includes('-h') ? 0 : 2);
-  }
-  if (sub !== 'search') {
-    console.error(`unknown subcommand: od research ${sub}`);
-    printResearchHelp();
-    process.exit(2);
-  }
-  return runResearchSearch(subArgs);
-}
-
-async function runResearchSearch(rawArgs) {
-  let flags;
-  try {
-    flags = parseFlags(rawArgs, {
-      string: RESEARCH_SEARCH_STRING_FLAGS,
-      boolean: RESEARCH_SEARCH_BOOLEAN_FLAGS,
-    });
-  } catch (err) {
-    console.error(err.message);
-    printResearchHelp();
-    process.exit(2);
-  }
-  const query = typeof flags.query === 'string' ? flags.query.trim() : '';
-  if (!query) {
-    console.error('--query required');
-    process.exit(2);
-  }
-  const daemonUrl = await cliDaemonUrl(flags);
-  const maxSources =
-    flags['max-sources'] == null ? undefined : Number(flags['max-sources']);
-  const url = `${daemonUrl.replace(/\/$/, '')}/api/research/search`;
-  let resp;
-  try {
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        ...(Number.isFinite(maxSources) ? { maxSources } : {}),
-      }),
-    });
-  } catch (err) {
-    surfaceFetchError(err, daemonUrl);
-    process.exit(3);
-  }
-  if (!resp.ok) {
-    const text = await resp.text();
-    console.error(`daemon ${resp.status}: ${text}`);
-    process.exit(4);
-  }
-  process.stdout.write(`${await resp.text()}\n`);
-}
 
 async function runArtifacts(args) {
   const { exitCode } = await runArtifactsCli(args);
   process.exit(exitCode);
-}
-
-function printResearchHelp() {
-  console.log(`Usage:
-  od research search --query <text> [--max-sources 5] [--daemon-url <url>]
-
-Runs Tavily-backed shallow research through the local OpenDesign daemon.
-Output is JSON only on stdout:
-  { "query": "...", "summary": "...", "sources": [...], "provider": "tavily", "depth": "shallow", "fetchedAt": 0 }
-
-Flags:
-  --query        Required search query.
-  --max-sources  Optional source cap. Defaults to 5, clamped to Tavily's max.
-  --daemon-url   Local daemon URL. Defaults to OD_DAEMON_URL, inherited sidecar discovery, or http://127.0.0.1:7456.`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1584,8 +1489,8 @@ async function runMediaGenerate(rawArgs) {
   }
 
   const surface = flags.surface;
-  if (!surface || !['image', 'video', 'audio'].includes(surface)) {
-    console.error('--surface must be one of: image | video | audio');
+  if (!surface || !['image', 'video'].includes(surface)) {
+    console.error('--surface must be one of: image | video');
     process.exit(2);
   }
   if (!flags.model) {
@@ -1609,21 +1514,15 @@ async function runMediaGenerate(rawArgs) {
     aspect: flags.aspect,
     quality: flags.quality,
     resolution: flags.resolution,
-    voice: flags.voice,
-    audioKind: flags['audio-kind'],
     compositionDir: flags['composition-dir'],
     image: images[0],
     images,
-    language: flags.language,
   };
   // Custom Image API only: the wire model the endpoint serves, named per
   // request. The daemon lets it win over the provider's configured model, so
   // the same Settings → Media entry the workbench uses also works from the CLI.
   if (flags['model-override'] != null) body.modelOverride = flags['model-override'];
   if (flags.length != null) body.length = Number(flags.length);
-  if (flags.duration != null) body.duration = Number(flags.duration);
-  if (flags['prompt-influence'] != null) body.promptInfluence = Number(flags['prompt-influence']);
-  if (flags.loop === true) body.loop = true;
   // The daemon owns the loop semantics (N parallel single-image calls, one
   // derived output name each) so UI and CLI cannot drift; the CLI only asks.
   if (flags.count != null) body.count = Number(flags.count);
@@ -2291,9 +2190,9 @@ async function cliDaemonBaseUrl(flags) {
 
 function printMediaHelp() {
   console.log(`Usage: od media scaffold --composition-dir .hyperframes-cache/<id> [opts]
-       od media generate --surface <image|video|audio> --model <id> [opts]
+       od media generate --surface <image|video> --model <id> [opts]
        od media playground <generate|upload|list|download|transfer|delete> [opts]
-       "$OD_NODE_BIN" "$OD_BIN" media generate --surface <image|video|audio> --model <id> [opts]
+       "$OD_NODE_BIN" "$OD_BIN" media generate --surface <image|video> --model <id> [opts]
 
 Playground:
   Playground 是全局生图工作台（临时 scratch 或某个项目）的命令行一面，
@@ -2307,20 +2206,20 @@ Scaffold:
   --json is accepted for consistency; scaffold output is always one JSON line.
 
 Generate required:
-  --surface  image | video | audio
-  --model    Model id from /api/media/models (e.g. gpt-image-2, seedance-2, suno-v5).
+  --surface  image | video
+  --model    Model id from /api/media/models (e.g. gpt-image-2, grok-imagine-video).
   --project  Project id. Auto-resolved from OD_PROJECT_ID when invoked by the daemon.
   --workspace <id>         Explicit Workspace id for a bound project.
   --workspace-member <id>  Explicit Workspace member id for a bound project.
 
 Common options:
-  --prompt "<text>"         Generation prompt. ElevenLabs SFX prompts must stay under 450 characters.
+  --prompt "<text>"         Generation prompt.
   --prompt-file <path|->     Read the prompt from a file, or - for stdin (for long-form prompts).
   --output <filename>       File to write under the project. Auto-named if omitted.
   --aspect 1:1|16:9|9:16|4:3|3:4
-  --quality <tier>          OpenDesign Cloud images only: published quality tier
-                            (gpt-image-2 accepts low|medium|high). Omit to let the
-                            model's own default tier decide — tiers are priced
+  --quality <tier>          Published quality tier (gpt-image-2 accepts
+                            low|medium|high). Omit to let the model's own
+                            default tier decide — tiers are priced
                             differently, so this is a billing choice.
   --count <1-10>            Render this many files in one request (default 1).
                             Values are clamped to 1-10. Above 1 the daemon runs
@@ -2335,16 +2234,10 @@ Common options:
                             this request. Wins over the default model set in
                             Settings → Media, so an endpoint whose model is not
                             filled in there still renders.
-  --resolution <res>        OpenDesign Cloud images only: published output resolution
-                            (e.g. 1K, 2K). Must name a resolution the model publishes
-                            for --aspect. Omit to use the model's default profile.
+  --resolution <res>        Published output resolution (e.g. 1K, 2K). Must name
+                            a resolution the model publishes for --aspect. Omit
+                            to use the model's default profile.
   --length <seconds>        Video length.
-  --duration <seconds>      Audio duration.
-  --prompt-influence <0-1>  ElevenLabs SFX prompt adherence. Higher values follow the prompt more closely.
-  --loop                    ElevenLabs SFX only: request a seamless loop.
-  --voice <voice-id>        Speech / TTS voice.
-  --language <lang>         Language boost for TTS (e.g. Chinese,Yue for Cantonese).
-  --audio-kind music|speech|sfx
   --composition-dir <path>  hyperframes-html only — project-relative path
                             to the dir containing hyperframes.json /
                             meta.json / index.html. Use \`media scaffold\` to
@@ -2369,7 +2262,7 @@ Worked generate→wait loop (POSIX bash — do NOT translate to PowerShell;
 parse JSON with python3, not jq):
 
   out=\$("\$OD_NODE_BIN" "\$OD_BIN" media generate --project "\$OD_PROJECT_ID" \\
-    --surface image --model flux-pro-ultra --prompt "..." --aspect 16:9)
+    --surface image --model gpt-image-2 --prompt "..." --aspect 16:9)
   last=\$(printf '%s\\n' "\$out" | tail -1)
   task_id=\$(printf '%s\\n' "\$last" | python3 -c "import sys,json; print(json.load(sys.stdin).get('taskId',''))" 2>/dev/null)
   since=\$(printf '%s\\n' "\$last" | python3 -c "import sys,json; print(json.load(sys.stdin).get('nextSince',0))" 2>/dev/null)
@@ -6568,7 +6461,7 @@ async function runFigma(args) {
 //
 // Headless surface for the Brands library. This is the dual-track contract:
 // every capability the Brands UI exposes (extract from a URL, list, inspect,
-// delete) is reachable here so an external agent (hermes-agent, openclaw,
+// delete) is reachable here so an external agent (openclaw,
 // scripted job) can drive the brand lifecycle without rendering a page.
 // Storage is /api/brands on the local daemon; a "brand" registers a `user:<id>`
 // design system under the hood, so applying a brand reuses the existing
@@ -8802,7 +8695,7 @@ function renderDiffLineContent(value) {
 
 // `od templates …` is the headless face of NewProjectPanel /
 // ExamplesTab — same /api/templates store, same DTO shapes. External
-// agents (hermes-agent, openclaw, custom bots) use these to snapshot a
+// agents (openclaw, custom bots) use these to snapshot a
 // project as a reusable starting point, list everything the user has
 // saved, or drop one that is no longer needed. The web UI and the CLI
 // share the daemon HTTP layer so neither can drift out of step.
@@ -8860,7 +8753,7 @@ Common options:
       // surfaceFetchError when the daemon isn't running. Without
       // this Node throws a raw `TypeError: fetch failed`, which
       // matches the pattern the rest of the CLI uses
-      // (runAutomation, the project verbs, runResearch).
+      // (runAutomation, the project verbs).
       let resp;
       try {
         resp = await fetch(`${base}/api/templates`);
@@ -11293,7 +11186,7 @@ async function runMemoryConfig(base, rest, flags, writeJson) {
 //
 // Headless surface for the Automations tab. This is the dual-track contract:
 // every capability the Automations UI exposes is reachable here so an
-// external agent (hermes-agent, openclaw, custom Slackbot, etc.) can run
+// external agent (openclaw, custom Slackbot, etc.) can run
 // the full lifecycle — list, create, fire, harvest, retire — without
 // rendering a page. Storage is /api/routines on the local daemon; the
 // "routine" name is the implementation detail, "automation" is the user-
@@ -11509,7 +11402,7 @@ Schedule formats:
 Output:
   Plain text: tab-separated rows for list, human-readable lines for get / runs.
   --json     Raw JSON for any subcommand.
-  Designed so external agents (hermes-agent, openclaw, scripted jobs)
+  Designed so external agents (openclaw, scripted jobs)
   can drive the full automation lifecycle headlessly.
 
 Common options:

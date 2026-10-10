@@ -170,9 +170,10 @@ function configPath(dataDir) {
 const VALID_EXTRACTION_PROVIDERS = new Set([
   'anthropic',
   'openai',
-  'azure',
   'google',
-  'ollama',
+  'deepseek',
+  'xai',
+  'custom',
 ]);
 
 function normalizeExtractionPatch(input) {

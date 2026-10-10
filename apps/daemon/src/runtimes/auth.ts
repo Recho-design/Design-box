@@ -12,7 +12,7 @@ export type AgentAuthProbeResult = {
   status: 'ok' | 'missing' | 'unknown';
   message?: string;
   // Output captured from the probe child process (e.g.
-  // `cursor-agent status`). Exposed so callers like the connection
+  // `claude auth status`). Exposed so callers like the connection
   // test layer can fold the probe's own stderr/exit context into their
   // structured diagnostics — the probe runs before the smoke spawn,
   // so without this the diagnostics block would otherwise drop the
@@ -22,9 +22,6 @@ export type AgentAuthProbeResult = {
   exitCode?: number | null;
   signal?: string | null;
 };
-
-const CURSOR_AUTH_GUIDANCE =
-  'Cursor Agent is not authenticated. Run `cursor-agent login`, then `cursor-agent status`, and retry. For automation, ensure CURSOR_API_KEY is set in the OpenDesign process environment.';
 
 const DEEPSEEK_AUTH_GUIDANCE =
   'DeepSeek TUI is installed but is not authenticated. Add or verify your API key in `~/.deepseek/config.toml` as `api_key = "..."`, or expose DEEPSEEK_API_KEY to the OpenDesign daemon process, then retry. If OpenDesign is launched outside an interactive shell, shell rc files such as ~/.zshrc may not be loaded.';
@@ -59,15 +56,8 @@ const ANTIGRAVITY_AUTH_GUIDANCE =
 const ANTIGRAVITY_QUOTA_GUIDANCE =
   'Antigravity returned "RESOURCE_EXHAUSTED: Individual quota reached" for the current model. Each Antigravity model (Gemini 3 Pro / Flash, Claude 4.6, GPT-OSS) has its own quota.\n\nFix: open `agy` in a terminal and use its Switch Model picker (the menu at the bottom of the TUI) to pick a model with available quota, then retry here. OpenDesign uses whatever model you pick in agy\'s TUI when the Settings model picker is left on "Default". Quotas reset automatically on Antigravity\'s schedule.';
 
-const REASONIX_AUTH_GUIDANCE =
-  'DeepSeek Reasonix is installed but is not authenticated. Add your API key in `~/.reasonix/config.json` under `apiKey`, or expose DEEPSEEK_API_KEY to the OpenDesign daemon process, then retry. If OpenDesign is launched outside an interactive shell, shell rc files such as ~/.zshrc may not be loaded.';
-
 const CLAUDE_AUTH_GUIDANCE =
   'Claude Code is installed but is not authenticated. Run `claude auth login` or open `claude` and complete login in a terminal, then rescan. If OpenDesign was launched outside an interactive shell, your shell rc files (e.g. ~/.zshrc) may not be loaded into its environment.';
-
-export function cursorAuthGuidance(): string {
-  return CURSOR_AUTH_GUIDANCE;
-}
 
 export function deepseekAuthGuidance(): string {
   return DEEPSEEK_AUTH_GUIDANCE;
@@ -85,25 +75,8 @@ export function antigravityQuotaGuidance(): string {
   return ANTIGRAVITY_QUOTA_GUIDANCE;
 }
 
-export function reasonixAuthGuidance(): string {
-  return REASONIX_AUTH_GUIDANCE;
-}
-
 export function claudeAuthGuidance(): string {
   return CLAUDE_AUTH_GUIDANCE;
-}
-
-export function isCursorAuthFailureText(text: string): boolean {
-  const value = String(text || '');
-  if (!value.trim()) return false;
-  return (
-    /authentication required/i.test(value) ||
-    /not authenticated/i.test(value) ||
-    /not logged in/i.test(value) ||
-    /unauthenticated/i.test(value) ||
-    /agent login/i.test(value) ||
-    /cursor_api_key/i.test(value)
-  );
 }
 
 // agy's plain-mode output when no keyring credentials are available:
@@ -190,18 +163,6 @@ export function normalizeDeepSeekHarnessFailure(payload: unknown): DeepSeekHarne
   };
 }
 
-export function isReasonixAuthFailureText(text: string): boolean {
-  const value = String(text || '');
-  if (!value.trim()) return false;
-  return (
-    /~\/\.reasonix\/config\.json/i.test(value) &&
-    /api[_ -]?key|missing|not set|required|unauthorized|invalid/i.test(value)
-  ) || (
-    /DEEPSEEK_API_KEY/i.test(value) &&
-    /auth|missing|not set|required|unauthorized|invalid/i.test(value)
-  );
-}
-
 export function isClaudeAuthFailureText(text: string): boolean {
   const value = String(text || '');
   if (!value.trim()) return false;
@@ -236,13 +197,6 @@ export function classifyAgentAuthFailure(
       message: claudeAuthGuidance(),
     };
   }
-  if (agentId === 'cursor-agent') {
-    if (!isCursorAuthFailureText(text)) return null;
-    return {
-      status: 'missing',
-      message: cursorAuthGuidance(),
-    };
-  }
   if (agentId === 'deepseek') {
     if (!isDeepSeekAuthFailureText(text)) return null;
     return {
@@ -264,21 +218,15 @@ export function classifyAgentAuthFailure(
       message: antigravityAuthGuidance(),
     };
   }
-  if (agentId === 'reasonix') {
-    if (!isReasonixAuthFailureText(text)) return null;
-    return {
-      status: 'missing',
-      message: reasonixAuthGuidance(),
-    };
-  }
   return null;
 }
 
 // Model-service failure classes that map a CLI agent's raw error text to a
-// structured API error code. `classifyAgentAuthFailure` only covers the two
-// agents (cursor-agent, deepseek) that ship a tailored sign-in hint; every
-// other CLI agent (Claude Code, codex, …) used to collapse auth / quota /
-// upstream failures into the generic `AGENT_EXECUTION_FAILED`. This agent-
+// structured API error code. `classifyAgentAuthFailure` only covers the
+// agents (claude, deepseek, deepseek-harness, antigravity) that ship a
+// tailored sign-in hint; every other CLI agent (codex, opencode, …) used to
+// collapse auth / quota / upstream failures into the generic
+// `AGENT_EXECUTION_FAILED`. This agent-
 // agnostic, text-based classifier recovers the specific class so the chat
 // shows an accurate reason — and so the hosted-AMR nudge can key off it.
 export type AgentServiceFailureCode =
@@ -391,12 +339,8 @@ const SEVERITY_LABELS = new Set([
  * Exported for that guard only.
  */
 export const OWN_AGENT_COMMAND_NAMES: ReadonlySet<string> = new Set([
-  'agy', 'aider', 'amp', 'antigravity', 'atomcode', 'byok-opencode',
-  'claude', 'codebuddy', 'codex', 'copilot', 'cursor-agent', 'deepseek',
-  'deepseek-harness', 'devin', 'dsh', 'grok', 'grok-build', 'hermes', 'kilo',
-  'kimi', 'kiro', 'kiro-cli', 'mimo', 'opencode', 'opencode-cli', 'pi',
-  'qoder', 'qodercli', 'qwen', 'reasonix', 'trae-cli', 'traecli',
-  'vibe', 'vibe-acp',
+  'agy', 'antigravity', 'byok-opencode', 'claude', 'codex', 'deepseek',
+  'deepseek-harness', 'dsh', 'grok', 'grok-build', 'opencode', 'opencode-cli',
 ]);
 
 /**
@@ -513,27 +457,25 @@ function withProbeTails(
 }
 
 // Default generic sign-in hint for adapters that declare an `authProbe`
-// but ship no tailored guidance (cursor / deepseek / antigravity / reasonix
-// each have their own via `classifyAgentAuthFailure`). Kept agent-agnostic
-// so a newly-onboarded CLI gets an actionable banner the moment it opts into
-// auth probing, without bespoke copy.
-function genericAuthGuidance(agentName: string): string {
+// but ship no tailored guidance (claude / deepseek / deepseek-harness /
+// antigravity each have their own via `classifyAgentAuthFailure`). Kept
+// agent-agnostic so a newly-onboarded CLI gets an actionable banner the moment
+// it opts into auth probing, without bespoke copy.
+export function genericAuthGuidance(agentName: string): string {
   return `${agentName} appears to be installed but is not authenticated. Sign in with the CLI in a terminal, then rescan. If OpenDesign was launched outside an interactive shell, your shell rc files (e.g. ~/.zshrc) may not be loaded into its environment.`;
 }
 
 // Agents that ship a bespoke auth-failure classifier + tailored sign-in hint
 // via `classifyAgentAuthFailure`. For these, a null result is authoritative
 // ("authenticated"); we must NOT second-guess it with the broad generic
-// regex (e.g. cursor-agent's healthy `status` output mentions "login" in
+// regex (e.g. Claude Code's healthy `status` output mentions "login" in
 // ways the generic matcher would misread). The generic classifier is only a
 // fallback for adapters with no tailored classifier of their own.
 const TAILORED_AUTH_AGENTS = new Set([
   'claude',
-  'cursor-agent',
   'deepseek',
   'deepseek-harness',
   'antigravity',
-  'reasonix',
 ]);
 
 function hasNonEmptyEnv(env: RuntimeEnv, keys: string[]): boolean {

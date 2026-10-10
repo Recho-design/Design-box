@@ -37,7 +37,7 @@ Fixes #
 - [ ] **i18n keys** — added new translation keys (see `TRANSLATIONS.md` for the locale workflow)
 - [ ] **New top-level dependency** — adding any new entry to the **root** `package.json` (`dependencies` or `devDependencies`); workspace-package `package.json` files are out of scope. Include a paragraph on what we get vs. what bytes we ship (see `CONTRIBUTING.md` → Code style)
 - [ ] **Default behavior change** — changes what existing users experience without opting in (default model, default setting, file/SQLite schema, auto-network on startup, auto-install)
-- [ ] **None** — internal refactor, docs, tests, or translation update only
+- [ ] **None** — internal refactor, docs, or translation update only
 
 
 ## Screenshots
@@ -51,12 +51,12 @@ Fixes #
 
 <!-- Skip if this PR isn't a bug fix.
 
-     Per AGENTS.md → "Bug follow-up workflow", bugs should be encoded as a
-     falsifiable test that goes red before the source change. Confirm:
-       - Test path that reproduces the bug:
-       - Did the test go red on `main` and green on this branch? (yes / no)
-       - If a red spec wasn't cheap to write, explain why and what verification
-         you did instead. -->
+     Per AGENTS.md → "Bug follow-up workflow", describe how the bug reproduces
+     on `main` and how the fix changes that behavior along a real path (daemon
+     HTTP API, `od` CLI, running web UI, or desktop app — the repository
+     carries no test layer):
+       - Reproduction steps on `main`:
+       - How the fixed behavior was verified (command / UI flow + observed result): -->
 
 -
 
@@ -64,7 +64,7 @@ Fixes #
 ## Validation
 
 <!-- What you actually ran. Default minimum: `pnpm guard` + `pnpm typecheck`,
-     plus the package-scoped tests/build for the files you changed
-     (e.g. `pnpm --filter @open-design/web test`). -->
+     plus the package-scoped build for the files you changed
+     (e.g. `pnpm --filter @open-design/web build`). -->
 
 -

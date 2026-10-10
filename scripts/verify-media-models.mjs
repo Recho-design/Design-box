@@ -5,6 +5,11 @@
 // daemon avoids a TS toolchain at runtime; this script lets CI fail the
 // build the moment they diverge.
 //
+// The audio surface (music / speech / sfx) was removed from both registries
+// when the audio media surface left the contract, so AUDIO_MODELS_BY_KIND and
+// AUDIO_DURATIONS_SEC are read as OPTIONAL: absent on BOTH sides is the
+// expected shape, present on exactly one side is drift.
+//
 // Usage:
 //   node scripts/verify-media-models.mjs
 //
@@ -111,16 +116,27 @@ const jsAudio = extractAudioIds(js);
 const jsLengths = extractNumberArray(js, 'VIDEO_LENGTHS_SEC');
 const jsDurations = extractNumberArray(js, 'AUDIO_DURATIONS_SEC');
 
-if (!tsImage || !tsVideo || !tsAudio) parseError('failed to parse TS registry');
-if (!jsImage || !jsVideo || !jsAudio) parseError('failed to parse JS registry');
+if (!tsImage || !tsVideo) parseError('failed to parse TS registry');
+if (!jsImage || !jsVideo) parseError('failed to parse JS registry');
+// The audio registry is gone from the contract, so it must be gone from BOTH
+// sides: still present on one side only means that side never finished the
+// removal.
+if (Boolean(tsAudio) !== Boolean(jsAudio)) {
+  parseError(
+    'AUDIO_MODELS_BY_KIND is present on one side only — '
+    + `ts=${tsAudio ? 'present' : 'absent'} js=${jsAudio ? 'present' : 'absent'}`,
+  );
+}
 
 dedupCheck('IMAGE_MODELS (ts)', tsImage);
 dedupCheck('VIDEO_MODELS (ts)', tsVideo);
 dedupCheck('IMAGE_MODELS (js)', jsImage);
 dedupCheck('VIDEO_MODELS (js)', jsVideo);
-for (const kind of ['music', 'speech', 'sfx']) {
-  dedupCheck(`AUDIO_MODELS_BY_KIND.${kind} (ts)`, tsAudio[kind]);
-  dedupCheck(`AUDIO_MODELS_BY_KIND.${kind} (js)`, jsAudio[kind]);
+if (tsAudio && jsAudio) {
+  for (const kind of ['music', 'speech', 'sfx']) {
+    dedupCheck(`AUDIO_MODELS_BY_KIND.${kind} (ts)`, tsAudio[kind]);
+    dedupCheck(`AUDIO_MODELS_BY_KIND.${kind} (js)`, jsAudio[kind]);
+  }
 }
 
 function diffArrays(label, a, b) {
@@ -137,9 +153,11 @@ const dImage = diffArrays('IMAGE_MODELS', tsImage, jsImage);
 if (dImage) diffs.push(dImage);
 const dVideo = diffArrays('VIDEO_MODELS', tsVideo, jsVideo);
 if (dVideo) diffs.push(dVideo);
-for (const kind of ['music', 'speech', 'sfx']) {
-  const d = diffArrays(`AUDIO_MODELS_BY_KIND.${kind}`, tsAudio[kind], jsAudio[kind]);
-  if (d) diffs.push(d);
+if (tsAudio && jsAudio) {
+  for (const kind of ['music', 'speech', 'sfx']) {
+    const d = diffArrays(`AUDIO_MODELS_BY_KIND.${kind}`, tsAudio[kind], jsAudio[kind]);
+    if (d) diffs.push(d);
+  }
 }
 if (tsLengths && jsLengths && tsLengths.join(',') !== jsLengths.join(',')) {
   diffs.push(

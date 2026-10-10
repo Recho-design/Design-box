@@ -11,14 +11,14 @@
 //   - 'cli'    : the agent ships its own `<bin> mcp add/remove/get`. We
 //                shell out to it (like codex-cli.ts) so we inherit the
 //                agent's merge/validation rules instead of editing its
-//                config by hand. Used for claude / codex / kimi / reasonix.
+//                config by hand. Used for claude / codex.
 //   - 'json'   : the agent reads a JSON config file with a known schema.
 //                We deep-merge one server entry, never clobbering the
-//                rest of the file. Used for cursor / copilot / cline /
-//                opencode / openclaw / antigravity / kiro / raven / trae /
+//                rest of the file. Used for cursor / cline /
+//                opencode / openclaw / antigravity / raven /
 //                claude-desktop.
 //   - 'manual' : we could not verify the agent's config path/format
-//                authoritatively (pi / hermes / vibe). We refuse to write
+//                authoritatively. We refuse to write
 //                a guessed path and instead print a ready-to-paste
 //                snippet plus the best-known location. Writing a wrong
 //                path risks corrupting a user-owned config, so this stays
@@ -33,19 +33,11 @@ import path from 'node:path';
 export const AGENT_SLUGS = [
   'claude',
   'codex',
-  'reasonix',
   'raven',
   'cursor',
-  'copilot',
   'openclaw',
   'antigravity',
-  'pi',
-  'vibe',
-  'hermes',
   'cline',
-  'kimi',
-  'kiro',
-  'trae',
   'opencode',
   'claude-desktop',
 ] as const;
@@ -67,7 +59,7 @@ export interface McpLaunchSpec {
 export interface PlanContext {
   /** Absolute home directory (os.homedir()). Injected for testability. */
   home: string;
-  /** Node platform — selects per-OS config paths (cline / trae). */
+  /** Node platform — selects the per-OS config path (cline). */
   platform: NodeJS.Platform;
   /** MCP server name as it appears in the agent config. */
   serverName: string;
@@ -119,8 +111,8 @@ function envFlags(env: Record<string, string>, flag: string): string[] {
   return out;
 }
 
-/** JSON server entry shared by the `env`-style agents (cursor / copilot /
- *  cline / openclaw / antigravity / trae). `extra` carries per-agent
+/** JSON server entry shared by the `env`-style agents (cursor /
+ *  cline / openclaw / antigravity). `extra` carries per-agent
  *  fields; env is only attached when non-empty so configs stay clean. */
 function jsonEntry(
   spec: McpLaunchSpec,
@@ -178,32 +170,6 @@ export function planAgentInstall(
         removeArgv: ['mcp', 'remove', serverName],
         getArgv: ['mcp', 'get', serverName],
       };
-    case 'reasonix':
-      return {
-        kind: 'cli',
-        slug,
-        bin: 'reasonix',
-        addArgv: [
-          'mcp', 'add', serverName,
-          ...envFlags(spec.env, '--env'),
-          spec.command, ...spec.args,
-        ],
-        removeArgv: ['mcp', 'remove', serverName],
-        getArgv: ['mcp', 'get', serverName],
-      };
-    case 'kimi':
-      return {
-        kind: 'cli',
-        slug,
-        bin: 'kimi',
-        addArgv: [
-          'mcp', 'add', '--transport', 'stdio',
-          ...envFlags(spec.env, '--env'),
-          serverName, '--', spec.command, ...spec.args,
-        ],
-        removeArgv: ['mcp', 'remove', serverName],
-        getArgv: ['mcp', 'get', serverName],
-      };
 
     // ----- JSON config-file agents (safe deep-merge) -----
     case 'cursor':
@@ -223,18 +189,6 @@ export function planAgentInstall(
         keyPath: ['tools', 'mcpServers'],
         serverKey: serverName,
         entry: { ...jsonEntry(spec, { type: 'stdio' }), env: spec.env },
-      };
-    case 'copilot':
-      // GitHub Copilot CLI: ~/.copilot/mcp-config.json, type "local".
-      // (VS Code Copilot uses a different `servers` key in
-      // .vscode/mcp.json; the terminal installer targets the CLI.)
-      return {
-        kind: 'json',
-        slug,
-        configPath: path.join(home, '.copilot', 'mcp-config.json'),
-        keyPath: ['mcpServers'],
-        serverKey: serverName,
-        entry: jsonEntry(spec, { type: 'local', tools: ['*'] }),
       };
     case 'cline':
       return {
@@ -282,24 +236,6 @@ export function planAgentInstall(
         serverKey: serverName,
         entry: jsonEntry(spec),
       };
-    case 'kiro':
-      return {
-        kind: 'json',
-        slug,
-        configPath: path.join(home, '.kiro', 'settings', 'mcp.json'),
-        keyPath: ['mcpServers'],
-        serverKey: serverName,
-        entry: jsonEntry(spec),
-      };
-    case 'trae':
-      return {
-        kind: 'json',
-        slug,
-        configPath: traeConfigPath(home, platform),
-        keyPath: ['mcpServers'],
-        serverKey: serverName,
-        entry: jsonEntry(spec),
-      };
     case 'claude-desktop':
       if (platform !== 'darwin' && platform !== 'win32') {
         return {
@@ -322,42 +258,6 @@ export function planAgentInstall(
         entry: jsonEntry(spec, { type: 'stdio' }),
       };
 
-    // ----- Unverified formats: print-only, never write -----
-    case 'vibe':
-      return {
-        kind: 'manual',
-        slug,
-        format: 'toml',
-        configPath: path.join(home, '.vibe', 'config.toml'),
-        snippet: vibeTomlSnippet(spec, serverName),
-        reason:
-          'Mistral Vibe uses a TOML array-of-tables ([[mcp_servers]]); ' +
-          'its exact schema is unverified, so append this block by hand ' +
-          'to avoid corrupting an existing config.',
-      };
-    case 'pi':
-      return {
-        kind: 'manual',
-        slug,
-        format: 'json',
-        configPath: path.join(home, '.pi', 'agent', 'mcp.json'),
-        snippet: genericMcpServersSnippet(spec, serverName),
-        reason:
-          'The pi coding agent exposes MCP, but its config path/schema is ' +
-          'not authoritatively documented. Paste this into pi’s MCP ' +
-          'config (check `pi --help` for the exact location).',
-      };
-    case 'hermes':
-      return {
-        kind: 'manual',
-        slug,
-        format: 'yaml',
-        configPath: path.join(home, '.hermes', 'config.yaml'),
-        snippet: hermesYamlSnippet(spec, serverName),
-        reason:
-          'Hermes config format is unverified. Add this under your Hermes ' +
-          'MCP server configuration by hand.',
-      };
     default: {
       const exhaustive: never = slug;
       throw new Error(`unknown agent slug: ${String(exhaustive)}`);
@@ -380,17 +280,6 @@ function clineConfigPath(home: string, platform: NodeJS.Platform): string {
     return path.join(appData, 'Code', 'User', rel);
   }
   return path.join(home, '.config', 'Code', 'User', rel);
-}
-
-function traeConfigPath(home: string, platform: NodeJS.Platform): string {
-  if (platform === 'darwin') {
-    return path.join(home, 'Library', 'Application Support', 'Trae', 'User', 'mcp.json');
-  }
-  if (platform === 'win32') {
-    const appData = process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming');
-    return path.join(appData, 'Trae', 'User', 'mcp.json');
-  }
-  return path.join(home, '.config', 'Trae', 'User', 'mcp.json');
 }
 
 function claudeDesktopConfigPath(home: string, platform: NodeJS.Platform): string {
@@ -472,30 +361,3 @@ function genericMcpServersSnippet(spec: McpLaunchSpec, name: string): string {
   return JSON.stringify({ mcpServers: { [name]: server } }, null, 2);
 }
 
-function hermesYamlSnippet(spec: McpLaunchSpec, name: string): string {
-  const lines = [
-    'mcp_servers:',
-    `  ${name}:`,
-    `    command: ${JSON.stringify(spec.command)}`,
-    `    args: ${JSON.stringify(spec.args)}`,
-  ];
-  if (Object.keys(spec.env).length > 0) {
-    lines.push('    env:');
-    for (const [k, v] of Object.entries(spec.env)) {
-      lines.push(`      ${k}: ${JSON.stringify(v)}`);
-    }
-  }
-  return lines.join('\n');
-}
-
-function vibeTomlSnippet(spec: McpLaunchSpec, name: string): string {
-  const argsToml = `[${spec.args.map((a) => JSON.stringify(a)).join(', ')}]`;
-  const lines = [
-    '[[mcp_servers]]',
-    `name = ${JSON.stringify(name)}`,
-    'transport = "stdio"',
-    `command = ${JSON.stringify(spec.command)}`,
-    `args = ${argsToml}`,
-  ];
-  return lines.join('\n');
-}

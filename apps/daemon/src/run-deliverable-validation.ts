@@ -111,7 +111,7 @@ function isHyperFramesProject(
  * and `source` as supported deliverable kinds at plan time, so rejecting them
  * at completion time contradicts the plan the same daemon approved.
  *
- * Generative video projects (fal / Veo / Sora / Volcengine) keep the strict
+ * Generative video projects (grok-imagine-video) keep the strict
  * video-only contract: there the provider returns a video file, and an HTML
  * "preview page" in its place is a genuine delivery failure.
  */

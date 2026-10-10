@@ -319,7 +319,6 @@ function isSpawnFailureText(text: string): boolean {
 function isAgentProtocolErrorText(text: string): boolean {
   return /\bjson-rpc id \d+: Internal error\b/i.test(text) ||
     /\bACP session exited before completion\b/i.test(text) ||
-    /\bQoder run failed: (?:stop_sequence|end_turn)\b/i.test(text) ||
     /\bthread\/start failed\b/i.test(text) ||
     /\bfailed to parse request\b/i.test(text);
 }
@@ -622,9 +621,6 @@ function processExitDetail(
   if (isProcessCrashText(text)) return 'process_crashed';
   if (isAgentConfigInvalidText(text)) return 'agent_config_invalid';
   if (isFabricatedRoleMarkerText(text)) return 'fabricated_role_marker';
-  if (/\bQoder run failed: stop_sequence\b/i.test(text)) {
-    return 'qoder_stop_sequence';
-  }
   if (isAgentProtocolErrorText(text)) {
     return 'agent_protocol_error';
   }

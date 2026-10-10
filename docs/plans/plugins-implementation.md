@@ -10,6 +10,7 @@ Update protocol — read first
 - Do not edit `docs/plugins-spec.md` from this file's PRs except to fix factual drift; the spec is the contract, this file is the schedule.
 - The "Definition of done" gates in §8 are the **only** hard sign-off bar; an empty checkbox under a phase does not mean v1 is broken — only an empty checkbox under §8 does.
 - When `docs/plugins-spec.md` patches change phase numbering or atom names, mirror those changes here in the same PR (per §21.6 / §22.5 / §23.6 of the spec).
+- **Test-layer note (2026-10):** the repository's test layer was removed wholesale after this roadmap's landed phases were recorded. The many `*.test.ts` paths and "CI guard" mentions below are historical records of what once pinned each box — the files no longer exist. Do not recreate them; when flipping future boxes, record the real-path evidence instead (daemon HTTP API walkthrough, `od` CLI run, running web UI). §8 "Definition of done" gates are likewise exercised on real paths, not through the removed suites.
 
 ---
 

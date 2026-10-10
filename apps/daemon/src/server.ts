@@ -134,7 +134,6 @@ import {
   describeStablePromptCache,
   designSystemIdFromPluginSnapshot,
   resolveEffectiveDesignSystemSelection,
-  resolveResearchCommandContract,
   resolveSafeProjectAttachments,
   resolveSafePromptImagePaths,
   resolveOdNextRequestUserPrompt,
@@ -200,7 +199,6 @@ export {
   describeStablePromptCache,
   designSystemIdFromPluginSnapshot,
   resolveEffectiveDesignSystemSelection,
-  resolveResearchCommandContract,
   resolveSafeProjectAttachments,
   resolveSafePromptImagePaths,
   excludeAcpImagePathsAlreadyDeliveredAsResources,
@@ -429,7 +427,6 @@ import {
 } from './memory.js';
 import { runAutoExtractionCleanup } from './memory-cleanup.js';
 import { attachAcpSession } from './agent-protocol/index.js';
-import { attachPiRpcSession } from './agent-protocol/index.js';
 import { attachDshProfileSession } from './agent-protocol/index.js';
 
 import { ingestRoutineConnectorEvolution } from './automation-routine-evolution.js';
@@ -457,7 +454,6 @@ import {
   type SkillCritiquePolicy,
 } from './critique/rollout.js';
 import { narrowProjectCritiqueOverride } from './critique/spawn-inputs.js';
-import { createCopilotStreamHandler } from './copilot-stream.js';
 import { createJsonEventStreamHandler } from './runtimes/json-event-stream.js';
 import {
   CODEX_APP_SERVER_STREAM_FORMAT,
@@ -486,14 +482,13 @@ import {
   antigravityQuotaGuidance,
   classifyAgentAuthFailure,
   classifyAgentServiceFailure,
-  cursorAuthGuidance,
+  genericAuthGuidance,
   normalizeDeepSeekHarnessFailure,
 } from './runtimes/auth.js';
 import { readOpenCodeServiceFailure } from './runtimes/opencode-log.js';
 import { applyOpenCodeEventPlugin } from './runtimes/opencode-event-plugin.js';
 
 import { createAgyStreamHandler, encodeAgyUserMessage } from './runtimes/agy-stream.js';
-import { createQoderStreamHandler } from './runtimes/qoder-stream.js';
 import { subscribe as subscribeFileEvents } from './project-watchers.js';
 import { importFigmaFromBytes } from './figma/figma-import.js';
 import { renderDesignSystemPreview } from './design-systems/preview.js';
@@ -627,12 +622,8 @@ import { skillCwdAliasSegment, stageActiveSkill } from './cwd-aliases.js';
 import { buildDesktopArtifactExportInput, buildDesktopPdfExportInput } from './pdf-export.js';
 import { generateMedia } from './media/index.js';
 import { resolveHyperFramesCliPath } from './media/hyperframes-runtime.js';
-import { listElevenLabsVoiceOptions } from './integrations/elevenlabs-voices.js';
-import { searchResearch, ResearchError } from './research/index.js';
 import { openBrowser } from './browser/index.js';
 import {
-  AUDIO_DURATIONS_SEC,
-  AUDIO_MODELS_BY_KIND,
   IMAGE_MODELS,
   MEDIA_ASPECTS,
   MEDIA_PROVIDERS,
@@ -1756,7 +1747,7 @@ const ASK_USER_SCAN_CAP = 256 * 1024;
 
 // Fold per-run work-completeness signals off the agent event stream (#1247 /
 // #1060). Invoked for EVERY agent event via the single emitAgentEvent choke
-// point, so it covers every runtime (Claude stream, qoder, pi-rpc, ACP, …), not
+// point, so it covers every runtime (Claude stream, ACP, …), not
 // just Claude:
 //   - the most recent TodoWrite snapshot's `todos` become run.lastTodoSnapshot,
 //     so finish() can judge whether declared work was left unfinished;
@@ -1766,7 +1757,7 @@ const ASK_USER_SCAN_CAP = 256 * 1024;
 //
 // Visible TEXT is deliberately not folded here. It has a second emit path that
 // never reaches this function: `emitGuardedTextDelta` sends its guarded delta
-// straight to `send('agent', …)` (json-event-stream / copilot / ACP all go that
+// straight to `send('agent', …)` (json-event-stream / ACP all go that
 // way), so a text signal folded here would silently miss whole runtime families.
 // `run.askUserScanText` is therefore accumulated inside `send` itself — the one
 // sink both paths pass through.
@@ -2558,7 +2549,7 @@ function rewriteKnownAgentStreamError(agentId, message, failureText = '') {
   if (
     /bufio\.scanner:\s*token too long/i.test(combined) &&
     /opencode/i.test(combined) &&
-    (agentId === 'opencode' || agentId === 'mimo' || /json-rpc id \d+/i.test(combined))
+    (agentId === 'opencode' || /json-rpc id \d+/i.test(combined))
   ) {
     return 'The run failed due to an unknown upstream streaming error. Please retry.';
   }
@@ -4161,10 +4152,8 @@ export async function startServer({
     MEDIA_PROVIDERS,
     IMAGE_MODELS,
     VIDEO_MODELS,
-    AUDIO_MODELS_BY_KIND,
     MEDIA_ASPECTS,
     VIDEO_LENGTHS_SEC,
-    AUDIO_DURATIONS_SEC,
     readMaskedConfig,
     writeConfig,
     generateMedia: (args) => generateMedia({ ...args, desktopFrameRenderer }),
@@ -4176,7 +4165,6 @@ export async function startServer({
     getLiveMediaTask: mediaTaskStore.getLiveMediaTask,
     mediaTaskSnapshot: mediaTaskStore.mediaTaskSnapshot,
     listMediaTasksByProject,
-    listElevenLabsVoiceOptions,
   };
   const appConfigDeps = {
     readAppConfig,
@@ -4193,7 +4181,6 @@ export async function startServer({
   };
   const orbitDeps = { orbitService };
   const nativeDialogDeps = { openBrowser, openNativeFolderDialog };
-  const researchDeps = { searchResearch, ResearchError };
   const liveArtifactDeps = {
     createLiveArtifact,
     listLiveArtifacts,
@@ -4723,7 +4710,6 @@ export async function startServer({
     projectStore: projectStoreDeps,
     projectFiles: projectFileDeps,
     conversations: conversationDeps,
-    research: researchDeps,
     authorizeProjectRequest,
     authorizeProjectToolRequest,
   });
@@ -5662,21 +5648,6 @@ export async function startServer({
       metadata?.kind === 'template' && typeof metadata.templateId === 'string'
         ? (getTemplate(db, metadata.templateId) ?? undefined)
         : undefined;
-    let audioVoiceOptions = [];
-    let audioVoiceOptionsError;
-    if (
-      metadata?.kind === 'audio' &&
-      metadata?.audioKind === 'speech' &&
-      metadata?.audioModel === 'elevenlabs-v3' &&
-      !metadata?.voice
-    ) {
-      try {
-        audioVoiceOptions = await listElevenLabsVoiceOptions(PROJECT_ROOT, { limit: 100 });
-      } catch (err) {
-        audioVoiceOptionsError = err && err.message ? err.message : String(err);
-        console.warn('[elevenlabs] voice option lookup failed:', audioVoiceOptionsError);
-      }
-    }
 
     // Thread the critique config plus the active design-system / skill data
     // into the composer when critique is enabled. Without this the spawned
@@ -5727,8 +5698,8 @@ export async function startServer({
     // the spawn path routes runs through runOrchestrator(...) only when the
     // SAME flag is true, so prompt and orchestrator stay in lockstep.
     //
-    // Non-plain adapters (claude-stream-json, copilot-stream-json,
-    // json-event-stream, acp-json-rpc, pi-rpc) emit their own wrapper
+    // Non-plain adapters (claude-stream-json,
+    // json-event-stream, acp-json-rpc) emit their own wrapper
     // protocol; the v1 critique parser only understands plain stdout. The
     // spawn path falls through to legacy generation for those, so the
     // panel addendum has to be suppressed here too: otherwise the model
@@ -5869,8 +5840,6 @@ export async function startServer({
       memoryHooks,
       metadata,
       template,
-      audioVoiceOptions,
-      audioVoiceOptionsError,
       // critiqueCfg.enabled is loaded from OD_CRITIQUE_ENABLED only, so a
       // run that the resolver enabled via phase / project / skill (env
       // unset) would have critiqueShouldRun = true while critiqueCfg.enabled
@@ -6313,7 +6282,6 @@ export async function startServer({
       reasoning,
       serviceTier,
       locale,
-      research,
       context,
       titleGeneration,
       byokProvider,
@@ -7210,23 +7178,12 @@ export async function startServer({
         ? [odNextTaskInputSnapshot.projectionAccessRoot]
         : []),
     ];
-    const researchCommandContract = resolveResearchCommandContract(
-      research,
-      isOdNextInitialRun
-        ? resolveOdNextRequestUserPrompt({
-            message,
-            currentPrompt,
-            hasCurrentPrompt: hasExplicitCurrentPrompt,
-          })
-        : message,
-    );
     // Resume-capable adapters continue their own upstream session so they
     // keep working memory across turns. Decide once per run; reuse for the
     // prompt-composition skipTranscript choice, the buildArgs flags, and the
     // create-turn persistence below.
     const agentSupportsSessionResume =
       runtimeResumesSessionById(def) ||
-      def.streamFormat === 'pi-rpc' ||
       def.resumesSessionViaAcpLoad === true;
     // Capture-style adapters (codex) mint their OWN session id and report it on
     // the stream; the daemon captures it here and persists THAT as the resume
@@ -7628,7 +7585,6 @@ export async function startServer({
       formOverride: agentFormOverride,
       daemonSystemPrompt: includeStableForPayload ? daemonSystemPrompt : '',
       runtimeToolPrompt: includeStableForPayload ? runtimeToolPrompt : '',
-      researchCommandContract,
       runContextPrompt,
       connectedExternalMcpReference: mcpConnectedDirective,
       browserUnavailableGuard: browserUsePromptGuard,
@@ -7670,7 +7626,6 @@ export async function startServer({
         request_execution_configuration: {
           sessionMode: runSessionMode,
           locale,
-          research,
           titleGeneration,
           model,
           reasoning,
@@ -7695,7 +7650,6 @@ export async function startServer({
             // model when diagnosing Langfuse traces.
             { kind: 'daemonSystemPrompt', content: daemonSystemPrompt },
             { kind: 'runtimeToolPrompt', content: runtimeToolPrompt },
-            { kind: 'researchCommandContract', content: researchCommandContract },
             { kind: 'runContextPrompt', content: runContextPrompt },
             { kind: 'browserUsePromptGuard', content: browserUsePromptGuard },
             { kind: 'clientSystemPrompt', content: clientInstructionPrompt },
@@ -7779,8 +7733,8 @@ export async function startServer({
     let visibleAssistantText = '';
     // Reply text handed to the background memory extractor at child-close.
     // Captures the GUARDED, visible reply from BOTH channels a run can emit on:
-    // structured agents' `agent` `text_delta` (Claude/Codex/Gemini/Copilot/ACP/
-    // qoder/pi-rpc) and the plain/BYOK/antigravity family's `stdout` chunks. So
+    // structured agents' `agent` `text_delta` (Claude/Codex/Gemini/ACP) and the
+    // plain/BYOK/antigravity family's `stdout` chunks. So
     // every agent family contributes its actual reply, and none leak raw
     // transport frames (system:init, stream_event, hooks). Kept separate from
     // `visibleAssistantText` so the filesystem empty-output guard that reads
@@ -7892,7 +7846,7 @@ export async function startServer({
       });
       // `send` is the ONE sink every visible-text path reaches: `emitAgentEvent`
       // funnels here, and so does `emitGuardedTextDelta`, which bypasses
-      // `emitAgentEvent` entirely for json-event-stream / copilot / ACP. Folding
+      // `emitAgentEvent` entirely for json-event-stream / ACP. Folding
       // this signal at `emitAgentEvent` instead silently dropped those runtime
       // families — the whole opencode family included.
       if (
@@ -8503,11 +8457,10 @@ export async function startServer({
     //     `claude mcp add` + Claude Desktop's config). Fire-and-forget; we
     //     deliberately do NOT block spawn on a write failure since the agent
     //     can still run without external tools — log a warning and continue.
-    //   - ACP agents (Hermes/Kimi): merge stdio entries into the existing
+    //   - ACP agents: merge stdio entries into the existing
     //     `mcpServers` array; SSE/HTTP entries are skipped because ACP's
     //     stdio-only descriptor can't represent them yet.
-    // Other agents (Codex, Gemini, OpenCode, Cursor, Qwen, Qoder, Copilot,
-    // Pi, DeepSeek) inherit the user's per-CLI MCP config from their own
+    // Other agents (Codex, DeepSeek) inherit the user's per-CLI MCP config from their own
     // home dir for now — a future change can grow this list.
     //
     // The MCP config + OAuth tokens were resolved earlier (above
@@ -8591,8 +8544,7 @@ export async function startServer({
     // of surprise the previous silent-failure UX taught us to avoid.
     let opencodeConfigContent: string | null = null;
     const isOpenCodeContent = def.externalMcpInjection === 'opencode-env-content';
-    const isMiMoContent = def.externalMcpInjection === 'mimo-env-content';
-    if (isOpenCodeContent || isMiMoContent) {
+    if (isOpenCodeContent) {
       try {
         opencodeConfigContent = buildOpenCodeMcpConfigContent(
           enabledExternalMcp,
@@ -9488,7 +9440,7 @@ export async function startServer({
         // user's saved `~/.config/opencode/opencode.json` continues
         // to apply as-is.
         ...(opencodeConfigContent
-          ? { [isMiMoContent ? 'MIMOCODE_CONFIG_CONTENT' : 'OPENCODE_CONFIG_CONTENT']: opencodeConfigContent }
+          ? { OPENCODE_CONFIG_CONTENT: opencodeConfigContent }
           : {}),
         // Daemon-owned resolver for task-input: references. Keep this last so
         // configured/BYOK/runtime env cannot redirect the Agent from the
@@ -9617,7 +9569,6 @@ export async function startServer({
       if (
         (def.promptViaStdin || def.streamFormat === CODEX_APP_SERVER_STREAM_FORMAT) &&
         child.stdin &&
-        def.streamFormat !== 'pi-rpc' &&
         def.streamFormat !== 'dsh-profile-jsonl'
       ) {
         // EPIPE from a fast-exiting CLI (bad auth, missing model, exit on
@@ -9663,7 +9614,7 @@ export async function startServer({
 
     // Reset the inactivity watchdog on every raw stdout byte so that
     // structured adapters that buffer partial lines (Codex item.completed,
-    // pi-rpc session/prompt, ACP agent messages) and models that spend a
+    // ACP agent messages) and models that spend a
     // long time in non-streamed reasoning still keep the run alive.
     child.stdout.on('data', (chunk) => {
       childStdoutSeen = true;
@@ -9762,8 +9713,7 @@ export async function startServer({
     // Critique Theater branch (M0 dark launch, default disabled).
     // Only plain-stream adapters are routed through runOrchestrator in v1.
     // Adapters that emit structured wrappers (claude-stream-json,
-    // qoder-stream-json, copilot-stream-json, json-event-stream,
-    // acp-json-rpc, pi-rpc) fall
+    // json-event-stream, acp-json-rpc) fall
     // through to the legacy single-pass code path below with a one-time
     // stderr warning so the parser never sees wrapper bytes. Per-format
     // decoding into the orchestrator is a v2 concern.
@@ -10002,8 +9952,8 @@ export async function startServer({
     // Subsegment markers inside `processSpawnedAt -> firstTokenAt` (#3408 §4).
     // `cliReadyAt` is the first well-formed adapter output and is stamped for
     // every runtime family from its own decode choke point: first JSONL line
-    // (claude-stream-json), first decoded stream event (json-event-stream /
-    // qoder / pi-rpc), first non-empty stdout chunk (plain), or first ACP
+    // (claude-stream-json), first decoded stream event (json-event-stream),
+    // first non-empty stdout chunk (plain), or first ACP
     // JSON-RPC message (acp-json-rpc). `sessionInitDoneAt` is only observable
     // for ACP (the resume/`session/new` ack); for stream/plain families that
     // gap is folded into `spawn_to_first_token_remainder_ms` rather than
@@ -10155,7 +10105,7 @@ export async function startServer({
     }
 
     // Shared helper for emitting guarded text deltas across all agent
-    // stream handlers (sendAgentEvent, copilot, ACP).
+    // stream handlers (sendAgentEvent, ACP).
     function emitGuardedTextDelta(delta: string) {
       const safe = guardTextDelta(delta);
       if (safe.length > 0) {
@@ -10210,7 +10160,7 @@ export async function startServer({
           { retryable: true },
         ),
       );
-      // ACP sessions (Hermes, Kimi, Devin, Kiro, etc.) need explicit
+      // ACP sessions need explicit
       // abort because their I/O is multiplexed and they won't
       // necessarily exit on child SIGTERM alone.
       if (acpSession?.abort) {
@@ -10230,7 +10180,7 @@ export async function startServer({
     // that does not exist). Unlike the BYOK proxy path — bounded by
     // MAX_BYOK_TOOL_LOOPS — the autonomous chat agents had no such bound. This
     // guard observes the normalized tool_use/tool_result events EVERY agent
-    // path emits, so one instance covers Claude, Codex/OpenCode, Copilot, ACP,
+    // path emits, so one instance covers Claude, Codex/OpenCode, ACP,
     // … It emits a one-shot `tool_loop` warning, then (in halt mode) terminates
     // the run at a hard ceiling. Mode via OD_TOOL_LOOP_GUARD (halt|warn|off).
     const toolLoopGuard = createToolLoopGuard({ mode: resolveToolLoopMode() });
@@ -10292,12 +10242,12 @@ export async function startServer({
     }
 
     // Single choke point for emitting an agent event to the client. EVERY
-    // stream handler (sendAgentEvent, the Claude callback, Copilot, ACP, …)
+    // stream handler (sendAgentEvent, the Claude callback, ACP, …)
     // emits through here, never via a bare send('agent', …), so the tool-loop
     // guard sees every runtime's tool activity and no handler can drift out of
     // coverage. observe runs AFTER the send so a `tool_loop` warning/halt
     // follows the result that triggered it in the stream. (PR #3375 review:
-    // Copilot and ACP bypassed the guard by calling send('agent', …) directly.)
+    // ACP bypassed the guard by calling send('agent', …) directly.)
     function emitAgentEvent(ev: any) {
       /*
        * 思考流的剧场语法剥离 —— 位置是判据的一部分,不是随手挑的。
@@ -10380,7 +10330,7 @@ export async function startServer({
         if (authFailure?.status === 'missing') {
           send('error', createSseErrorPayload(
             'AGENT_AUTH_REQUIRED',
-            authFailure.message ?? cursorAuthGuidance(),
+            authFailure.message ?? genericAuthGuidance(agentId),
             { retryable: true },
           ));
           return;
@@ -10406,7 +10356,7 @@ export async function startServer({
         return;
       }
       // First well-formed decoded stream event = CLI ready for the
-      // json-event-stream / qoder / pi-rpc families (#3408 §4 marker).
+      // json-event-stream families (#3408 §4 marker).
       noteCliReadyAt();
       // Capture-style resume: codex reports its own thread id on the
       // `thread.started` status event. Persist the most recent non-empty id we
@@ -10429,7 +10379,7 @@ export async function startServer({
       }
       lastAgentEventPhase = summarizeAgentEventForInactivity(ev);
       noteAgentActivity();
-      // Role-marker guard for qoder / json-event-stream / pi-rpc (#3247).
+      // Role-marker guard for json-event-stream (#3247).
       if (ev?.type === 'text_delta' && typeof ev.delta === 'string') {
         // Decode time, captured BEFORE the emit. The gate has to run first to
         // learn whether these bytes are a token at all, but the emit inside it
@@ -10437,7 +10387,7 @@ export async function startServer({
         // `first_visible_output` on the way — reading the clock afterwards
         // charges our own write latency to TTFT and can leave the visible-output
         // mark a millisecond AHEAD of the token that produced it. See the
-        // matching sites in the Copilot and ACP handlers.
+        // matching site in the ACP handler.
         const decodedAt = Date.now();
         if (emitTitleFilteredGuardedTextDelta(ev.delta)) {
           noteFirstTokenAt(decodedAt);
@@ -10669,91 +10619,6 @@ export async function startServer({
         );
         publishRuntimeChildEvidenceCoverage(claude.childEvidenceCoverage());
       });
-    } else if (def.streamFormat === 'qoder-stream-json') {
-      trackingSubstantiveOutput = true;
-      const qoder = createQoderStreamHandler(sendAgentEvent);
-      child.stdout.on('data', (chunk) => qoder.feed(chunk));
-      child.on('close', () => qoder.flush());
-    } else if (def.streamFormat === 'copilot-stream-json') {
-      const copilot = createCopilotStreamHandler((ev) => {
-        lastAgentEventPhase = summarizeAgentEventForInactivity(ev);
-        noteAgentActivity();
-        if (ev?.type === 'text_delta' && typeof ev.delta === 'string') {
-          // Decode time, read before the emit — see `sendAgentEvent`.
-          const decodedAt = Date.now();
-          if (emitTitleFilteredGuardedTextDelta(ev.delta)) {
-            noteFirstTokenAt(decodedAt);
-          }
-          return;
-        }
-        noteFirstTokenFromAgentEvent(ev);
-        emitAgentEvent(ev);
-      }, {
-        onChildRuntimeFact: (fact) => sendAgentEvent({
-          type: 'diagnostic',
-          name: 'claude_child_runtime_fact',
-          ...fact,
-        }),
-      });
-      child.stdout.on('data', (chunk) => copilot.feed(chunk));
-      child.on('close', () => copilot.flush());
-    } else if (def.streamFormat === 'pi-rpc') {
-      // Route through sendAgentEvent so that pi-rpc's error events
-      // (extension_error, auto_retry_end with success=false, and the
-      // message_update error delta) set agentStreamError and flip the
-      // run to `failed` on close — same path as qoder-stream-json and
-      // json-event-stream after issue #691. Also enables the
-      // substantive-output guard (agentProducedOutput) so a pi run
-      // that exits 0 without producing visible content is caught.
-      //
-      // attachPiRpcSession invokes its send callback with the two-arg
-      // channel/payload shape: send('agent', payload) for normal events
-      // and send('error', {message}) from fail(). sendAgentEvent
-      // expects a single event object, so we adapt at the call site:
-      //   - 'agent' channel → relay payload through sendAgentEvent
-      //   - 'error' channel → route through the daemon's error path
-      //     (createSseErrorPayload + send SSE + set agentStreamError)
-      trackingSubstantiveOutput = true;
-      acpSession = attachPiRpcSession({
-        child,
-        prompt: composed,
-        cwd: effectiveCwd,
-        model: safeModel,
-        parentSession: agentResumePromptPolicy.resumeSessionId
-          ? agentResumePromptPolicy.resumeSessionId
-          : undefined,
-        send: (channel, payload) => {
-          if (channel === 'agent') {
-            sendAgentEvent(payload);
-          } else if (channel === 'error') {
-            if (run.cancelRequested) return;
-            if (agentStreamError) return;
-            flushVisibleAgentStderr();
-            agentStreamError = String(payload?.message || 'Pi session error');
-            agentStreamErrorObservedBeforeCancellation = true;
-            acpFatalErrorObservedBeforeCancellation = true;
-            run.runtimeFailureObservedBeforeCancellation = true;
-            const piErrorCode = typeof payload?.code === 'string' ? payload.code : null;
-            if (piErrorCode) {
-              run.errorCode = piErrorCode;
-            }
-            if (piErrorCode === 'PI_PARENT_SESSION_FAILED' && run.conversationId) {
-              clearAgentSession(db, run.conversationId, def.id);
-            }
-            clearInactivityWatchdog();
-            send('error', createSseErrorPayload(
-              'AGENT_EXECUTION_FAILED',
-              agentStreamError,
-              { retryable: false },
-            ));
-          } else {
-            noteAgentActivity();
-            send(channel, payload);
-          }
-        },
-        imagePaths: def.supportsImagePaths ? promptImagePaths : [],
-        uploadRoot: odNextTaskInputSnapshot?.projectionDir ?? UPLOAD_DIR,
-      });
     } else if (def.streamFormat === 'acp-json-rpc') {
       const acpStageTimeoutMs = resolveAcpStageTimeoutMs(def.inactivityTimeoutMs);
       const knownPromptBudgetModel = findKnownModel(
@@ -10789,7 +10654,7 @@ export async function startServer({
         mcpServers,
         envFormat: def.acpMcpEnvFormat ?? 'array',
         // Lets the session withhold stdio MCP servers from agent builds that
-        // reject them (Kimi 0.37.0+). Unset for every other runtime, which
+        // reject them. Unset for every other runtime, which
         // leaves their `session/new` payload exactly as it is today.
         stdioMcpRemovedInVersion: def.acpStdioMcpRemovedInVersion ?? null,
         executionProfile,
@@ -11110,7 +10975,7 @@ export async function startServer({
       });
     }
     // Wire the acpSession onto the run so cancel() can call abort()
-    // instead of raw SIGTERM (applies to pi-rpc and acp-json-rpc).
+    // instead of raw SIGTERM (applies to acp-json-rpc).
     run.acpSession = acpSession;
     child.stderr.on('data', (chunk) => {
       noteAgentActivity();
@@ -11378,7 +11243,7 @@ export async function startServer({
         if (authFailure?.status === 'missing') {
           send('error', createSseErrorPayload(
             'AGENT_AUTH_REQUIRED',
-            authFailure.message ?? cursorAuthGuidance(),
+            authFailure.message ?? genericAuthGuidance(agentId),
             { retryable: true },
           ));
           return finishWithRetryDecision('failed', code ?? 1, signal ?? null);
@@ -11506,8 +11371,8 @@ export async function startServer({
         ));
         return finishWithRetryDecision('failed', 0, signal);
       }
-      // ACP agents that don't shut down on stdin.end() (e.g. Devin for
-      // Terminal) are forced to exit via SIGTERM from attachAcpSession after
+      // ACP agents that don't shut down on stdin.end() are forced to exit
+      // via SIGTERM from attachAcpSession after
       // a clean prompt completion. Without an override, the chat run would
       // be marked `failed` because `code === 0` fails (code is null on a
       // signal exit). `completedSuccessfully()` reports whether the ACP
@@ -11736,33 +11601,6 @@ export async function startServer({
             ));
             return finishWithRetryDecision('failed', 1, null);
           }
-        }
-      }
-      // Capture the pi session file path for conversational continuity.
-      // The session path is discovered by attachPiRpcSession when it
-      // processes agent_end; persist it under (conversationId, agentId) so
-      // another conversation in the same cwd cannot inherit this history.
-      if (acpSession && typeof acpSession.getLastSessionPath === 'function') {
-        const sessionPath = acpSession.getLastSessionPath();
-        if (status === 'succeeded' && def.streamFormat === 'pi-rpc') {
-          persistCapturedAgentSession(db, {
-            conversationId: run.conversationId,
-            agentId: def.id,
-            sessionId: sessionPath,
-            stablePromptHash: currentStableHash,
-            stablePromptSections: currentStableSectionsJson,
-            model: safeModel ?? null,
-            cwd: effectiveCwd,
-            lastMessageId: run.assistantMessageId ?? null,
-            lastInputTokens: observedInputTokensForSession(),
-          });
-          run.nativeSessionRecovery = markNativeSessionCaptured({
-            previous: run.nativeSessionRecovery,
-            agentId: def.id,
-            sessionId: sessionPath,
-            resumed: agentResumeCtx.isResuming,
-          });
-          publishNativeSessionRecoveryMetadata();
         }
       }
       // ACP session/load adapters report a durable upstream handle
@@ -13010,7 +12848,6 @@ export async function startServer({
     appConfig: appConfigDeps,
     orbit: orbitDeps,
     nativeDialogs: nativeDialogDeps,
-    research: researchDeps,
     mcp: { pendingAuth: mcpPendingAuth, daemonUrlRef },
     plugins: {
       connectorService,
@@ -13048,7 +12885,8 @@ export async function startServer({
     routines: { routineService },
   });
 
-  // proxy routes (anthropic / openai / azure / google / ollama) live
+  // proxy routes (anthropic / openai / google + the BYOK media tool-loop
+  // providers) live
   // in chat-routes.ts now — garnet had a partial duplicate here that
   // referenced helpers (rejectPluginInProxyBody, extractGeminiText, …)
   // dropped during the reconcile merge. Deleted to fix the BYOK crash.

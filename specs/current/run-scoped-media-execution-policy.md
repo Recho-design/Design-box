@@ -577,18 +577,7 @@ bytes are safer because OD previews remain stable.
 
 ### E2E tests
 
-Use the existing fake-agent harness:
-
-- Extend `e2e/lib/fake-agents.ts` with a fake agent that calls
-  `"$OD_NODE_BIN" "$OD_BIN" media generate`.
-- Add run tests using `e2e/lib/vitest/runs.ts` to start request-only and
-  disabled runs.
-- Assert request-only emits a structured media request event and no media task
-  reaches provider execution.
-- Assert disabled fails with a policy error and does not create request/task
-  state.
-- Add a fake HTTP executor for the external follow-up. It should record submit
-  payloads, simulate async fulfillment, and verify OD writes the fulfilled file.
+The e2e harness (`e2e/lib/fake-agents.ts`, `e2e/lib/vitest/runs.ts`) was removed with the repository's test layer. The same scenarios — request-only emits a structured media request event and no media task reaches provider execution; disabled fails with a policy error and creates no request/task state; an external follow-up fulfillment results in the file being written — are now exercised on real paths: start request-only and disabled runs through the daemon HTTP API or `od media …`, and observe the SSE stream and request state directly.
 
 ## Implementation sequence
 
@@ -644,17 +633,7 @@ Web, if a minimal visible status surface lands:
 - `apps/web/src/providers/daemon.ts`
 - chat/run event rendering components that already render SSE agent events
 
-Tests:
-
-- `apps/daemon/tests/media/policy.test.ts`
-- `apps/daemon/tests/media-requests.test.ts`
-- `apps/daemon/tests/media/policy-routes.test.ts` for the landed policy route
-  slice, plus a future request-route suite
-- `apps/daemon/tests/cli-media.test.ts` if CLI tests are already split there,
-  otherwise the existing CLI test area
-- `e2e/lib/fake-agents.ts`
-- `e2e/lib/vitest/runs.ts`
-- new e2e spec for request-only and disabled media runs
+Tests: the test files and e2e harness paths originally listed here (`apps/daemon/tests/media/*`, `cli-media.test.ts`, `e2e/lib/fake-agents.ts`, `e2e/lib/vitest/runs.ts`, plus a new e2e spec) were removed with the repository's test layer. Verify the same behaviors on real paths instead: drive request-only and disabled runs through the daemon HTTP API or `od media …` CLI and inspect the emitted SSE events and request/task state directly.
 
 Docs:
 
@@ -727,12 +706,8 @@ daemon must still enforce at the tool/media endpoint.
 ```bash
 pnpm guard
 pnpm typecheck
-pnpm --filter @open-design/daemon test
-pnpm --filter @open-design/web test
 ```
 
-Add e2e validation for the first PR that changes run behavior:
-
-```bash
-pnpm --filter @open-design/e2e test -- <new-media-policy-spec>
-```
+(The `daemon`/`web` package test suites and the e2e lane referenced here were
+removed with the repository's test layer; run-behavior validation happens on
+real paths — daemon HTTP API or `od` CLI — as described above.)

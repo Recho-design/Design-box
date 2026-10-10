@@ -905,7 +905,7 @@ export function createClaudeStreamHandler(
       // resume failures) and the human-readable cause lives in errors[], not
       // in any assistant message. Washing it into a plain usage event lets the
       // close handler classify the run as succeeded with nothing surfaced.
-      // Mirrors the qoder-stream result contract.
+      // Mirrors the stream-parser result contract.
       const isError = obj.is_error === true;
       onEvent({
         type: 'usage',

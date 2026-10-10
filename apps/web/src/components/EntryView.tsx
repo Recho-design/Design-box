@@ -9,7 +9,6 @@ import {
 import type { ChatSessionMode, ConnectorDetail } from '@open-design/contracts';
 import type { OpenDesignHostProjectImportSuccess } from '@open-design/host';
 import {
-  DEFAULT_AUDIO_MODEL,
   DEFAULT_IMAGE_MODEL,
   DEFAULT_VIDEO_MODEL,
 } from '../media/models';
@@ -463,14 +462,6 @@ export function metadataForSkill(skill: SkillSummary): ProjectMetadata {
   if (kind === 'video') {
     return { kind, videoModel: DEFAULT_VIDEO_MODEL, videoAspect: '16:9', videoLength: 5 };
   }
-  if (kind === 'audio') {
-    return {
-      kind,
-      audioKind: 'speech',
-      audioModel: DEFAULT_AUDIO_MODEL.speech,
-      audioDuration: 10,
-    };
-  }
   return { kind: 'other' };
 }
 
@@ -480,6 +471,5 @@ export function kindForSkill(skill: SkillSummary): ProjectKind {
   if (skill.mode === 'template') return 'template';
   if (skill.mode === 'image' || skill.surface === 'image') return 'image';
   if (skill.mode === 'video' || skill.surface === 'video') return 'video';
-  if (skill.mode === 'audio' || skill.surface === 'audio') return 'audio';
   return 'other';
 }

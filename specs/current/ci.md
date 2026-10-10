@@ -27,31 +27,30 @@ CI optimization starts from a scheduling problem, not from a desire to make the
 rule table look complete. A useful iteration follows this sequence:
 
 1. **Find a confused declaration point.** Look for one scope effect that arms
-   unrelated tests, one test file that mixes independently schedulable
-   responsibilities, a job that interprets paths after planning, or a workload
-   whose cost and validation meaning do not align.
+   unrelated workloads, one job that interprets paths after planning, or a
+   workload whose cost and validation meaning do not align.
 2. **Choose a measured vertical slice.** Prefer a boundary with stable semantic
-   ownership, an independently executable test set, meaningful change
+   ownership, an independently executable validation set, meaningful change
    frequency or omitted cost, limited cross-boundary fanout, and a simple
    conservative fallback. Critical-path time, runner-minutes, queue/startup
    cost, and maintenance clarity are useful but distinct benefits.
-3. **Decompose only as far as execution needs.** Name the source unit and test
-   set needed for this slice. Split source or tests only when the resulting set
-   can be scheduled and validated independently. If the route needs a long list
-   of scattered files, first ask whether the source tree is hiding the real
+3. **Decompose only as far as execution needs.** Name the source unit and
+   validation set needed for this slice. Split source only when the resulting
+   set can be scheduled and validated independently. If the route needs a long
+   list of scattered files, first ask whether the source tree is hiding the real
    responsibility boundary. Avoid per-file taxonomies and repository-wide
    cleanup campaigns.
 4. **Add the narrowest useful route.** Map the source unit to a validation
-   effect, the effect to one test set, and the test set to an execution
-   workload. Preserve broad handling for manifests, lockfiles, mixed changes,
-   and uncertain dependency edges.
+   effect, the effect to one validation set, and the validation set to an
+   execution workload. Preserve broad handling for manifests, lockfiles, mixed
+   changes, and uncertain dependency edges.
 5. **Challenge the omission.** Exercise representative in-bound, out-of-bound,
    mixed, unknown, renamed, and forced-full inputs through the real planner.
    Replay recent changes to estimate tonnage and compare the retained coverage
    with the cost being omitted.
 6. **Promote and observe.** Activate omission only when its fallback and direct
    planner contracts are explicit. Keep the route small enough to demote or
-   revise when dependency shape, test ownership, or measured value changes.
+   revise when dependency shape, ownership, or measured value changes.
 
 This is a recommended discovery and decomposition method. Once a route actively
 omits pre-main validation, the safety requirements in the current contract are
@@ -59,25 +58,26 @@ not optional.
 
 ## Orchestration paradigms
 
-### Source units, test sets, and workloads
+### Source units, validation sets, and workloads
 
 The preferred directional model is:
 
 ```text
-changed paths -> source units -> validation effects -> test sets -> workloads
-                                                               -> convergence
+changed paths -> source units -> validation effects -> validation sets -> workloads
+                                                                            -> convergence
 ```
 
 A **source unit** is a named, composable ownership or dependency boundary. A
 **validation effect** states what responsibility became relevant; it should not
-merely repeat the name of a directory. A **test set** is one authoritative,
-independently executable collection of checks. A **workload** supplies the
-runner, environment, matrix, and command that execute that set.
+merely repeat the name of a directory. A **validation set** is one authoritative,
+independently executable collection of checks (today: guard, typecheck, i18n
+structure, package builds). A **workload** supplies the runner, environment,
+matrix, and command that execute that set.
 
 These layers may remain coarse where finer scheduling has no measured value.
 When a high-cost or platform-specific workload validates only part of a broad
-package, an independent effect and test set are preferred over treating every
-package change as platform relevant.
+package, an independent effect and validation set are preferred over treating
+every package change as platform relevant.
 
 ### Mapping shape is architecture feedback
 
@@ -89,13 +89,13 @@ when an optimization tries to name that boundary.
 A stable responsibility usually produces a short composition of directory
 prefixes and a few genuine entrypoints. A growing exact-file list, repeated
 negative exclusions, or a hand-maintained transitive closure is a signal that
-the source or test hierarchy does not express the responsibility being
+the source hierarchy does not express the responsibility being
 scheduled. The mapping is then diagnosing architecture debt; adding more
 planner precision does not resolve it.
 
 An iteration encountering that signal has three honest choices:
 
-1. Refactor the local source or test hierarchy until the responsibility has a
+1. Refactor the local source hierarchy until the responsibility has a
    stable boundary.
 2. Accept a broader route and its execution cost.
 3. Defer active omission while retaining full fallback.
@@ -144,7 +144,7 @@ acceptable and publish success-dependent state. Telemetry follows convergence
 and observes the result; it does not alter it.
 
 This separation keeps policy failure visible without shortening the validation
-coverage of a blocked change, and lets later source-to-test routes remain local
+coverage of a blocked change, and lets later source-to-workload routes remain local
 planner changes rather than workflow rewrites.
 
 ### Evidence is operational, not semantic proof
@@ -155,7 +155,7 @@ complete. Evidence should answer:
 
 - How often does the candidate route apply?
 - Which workload time and runner-minutes would it omit?
-- What retained test sets cover the affected responsibility?
+- What retained validation sets cover the affected responsibility?
 - Which inputs deliberately fall back to the full plan?
 - Can the decision be observed and reversed cheaply?
 
@@ -196,10 +196,13 @@ authority.
 `"*"` input declaration therefore keeps workspace setup, `pnpm guard`, and i18n
 structure checks in every applicable run.
 
-Broad app declaration builds, workspace typecheck, and
-`run_workspace_unit_tests` may skip only for a merge-queue plan whose
-certain-tier evaluation claims zero validation effects. PR, manual-hot,
-forced-full, and escalated queue plans retain broad workspace validation.
+Broad app declaration builds and workspace typecheck may skip only for a
+merge-queue plan whose certain-tier evaluation claims zero validation effects.
+PR, manual-hot, forced-full, and escalated queue plans retain broad workspace
+validation. The repository no longer carries a unit-test workload: package
+`tests/` directories and the `e2e/` package were removed wholesale, so the
+planner's remaining non-reusable workloads are `static_gate` and `preflight`,
+plus the reusable `platform_build` product workload.
 
 ### Confidence tiers
 
@@ -222,9 +225,9 @@ An active `certain` omission requires:
    back to broader coverage; a broad `certain` parent must not silently absorb
    future dependencies outside the enumeration.
 2. **Planner-owned validation.** `scopes.py validate` rejects schema drift,
-   unknown effects, invalid regexes, match cycles, malformed or duplicate
-   matrices, and invalid UI P0 shadow references before dispatch.
-3. **Direct planner behavior tests.** Goldens invoke `scopes.py plan` for
+   unknown effects, invalid regexes, match cycles, and malformed or duplicate
+   matrices before dispatch.
+3. **Direct planner behavior checks.** Goldens invoke `scopes.py plan` for
    representative positive, negative, mixed, and fallback inputs. They do not
    reimplement the evaluator in another language.
 4. **Measured operational evidence.** Replay and paired-run evidence quantify
@@ -307,123 +310,23 @@ zero-effect plans (11.6%). Root markdown such as `README.md` remains medium
 because bare filename literals are widespread as fixture data and cannot be
 distinguished locally from repository-root reads.
 
-### Packaged leaf and Windows payload
+### Post-test-removal planner state
 
-Rule `certain-packaged-leaf-sources` covers only:
+The repository's test layer was removed wholesale (package `tests/`
+directories, the `e2e/` package, and all vitest/Playwright workloads). The
+planner table collapsed accordingly: the only rules left are
+`certain-exempt-surface` (certain, no effects) and the `all-surface`
+medium-tier default, and the effect vocabulary is empty. The remaining
+convergence-declared workloads are `static_gate` and `preflight`
+(non-reusable) plus the reusable `platform_build` product workload for
+`packages/platform`.
 
-- `apps/desktop/{src,tests}/`
-- `apps/packaged/{src,tests}/`
-- `tools/pack/{src,tests,resources}/`
-
-It claims `tools_dev_tests_required`, `tools_pack_tests_required`, and
-`workspace_validation_required`. A pure matching merge group keeps
-preflight/typecheck, workspace unit tests, desktop/packaged/tools-pack tests,
-and the focused packaged launcher update-loop fallback. It skips web workspace
-tests, broad E2E Vitest, UI P0, critical Playwright, and visual Playwright.
-
-Windows launcher-payload validation is a separate test set. Rule
-`certain-windows-launcher-payload` maps the Windows pack source unit to
-`windows_tools_pack_payload_tests_required`, which alone arms its Windows
-workload outside forced-full plans. The source unit includes the Windows
-tools-pack implementation and resources, its explicit shared-module closure,
-the Windows-only test file, launcher-proto and sidecar-proto sources, and the
-narrow platform/release/sidecar exports consumed by that closure.
-
-That exact shared-module closure is also a diagnostic signal: the flat
-`tools/pack/src/` root does not yet expose stable core, launcher, and
-platform-specific source units. The enumeration records the current dependency
-shape, but it is not a durable pattern to copy or a substitute for decomposing
-that source hierarchy. Until the source boundary or its conservative fallback
-is strengthened, this route remains an active migration surface.
-
-Desktop, packaged-runtime, mac-only, and unrelated tools-pack changes retain
-Linux package coverage without starting a Windows runner. Package manifests,
-workspace/lock configuration, build configuration, bins, vendor content,
-unknown inputs, and below-threshold queue inputs retain conservative broad or
-full behavior.
-
-Current evidence:
-
-- The latest 400 first-parent merges contain 23 pure packaged-leaf groups.
-- Direct merge-queue replay retains the Windows workload for 5 groups and omits
-  it for 18 desktop, packaged-runtime, mac-only, or unrelated tools-pack groups.
-- Nineteen earlier pure-leaf groups have successful narrow PR validation paired
-  with successful full merge-queue validation.
-- Recent pure-leaf PR runs spend about 3.4–4.7 elapsed minutes in the Windows
-  payload job, which can determine the validation critical path.
-- A current full merge-group run measures about 11.8 elapsed minutes and 68
-  runner-minutes. A representative pure-leaf narrow PR run measures about 4.2
-  elapsed minutes and 8.1 runner-minutes.
-- Expected savings are about 7.5 elapsed minutes and 60 runner-minutes per
-  qualifying single-PR group, before queue batching discounts.
-
-### Certain daemon core
-
-Rule `certain-daemon-core` covers `apps/daemon/src/` and
-`apps/daemon/tests/`, excluding `apps/daemon/src/sidecar/` and the
-`daemon-runtime-definition` UI P0 shadow surface. Package manifests, build
-configuration, bins, the packaged sidecar compatibility bridge, and runtime
-definition source/companion tests stay medium-tier.
-
-A pure matching merge group keeps preflight and workspace typecheck, workspace
-unit coverage, broad E2E Vitest, and the complete UI P0 matrix. It skips web
-workspace tests, visual Playwright, Windows launcher-payload tests, and
-tools-dev/tools-pack unit coverage. Direct planner tests pin representative
-routing and out-of-bound escalation. The retained plan continues to exercise
-daemon buildability, user-level API/runtime behavior, and every merge-gated UI
-P0 capability without treating web rendering or packaging-format tests as
-daemon consumers.
-
-The authoritative cross-app critique coverage walker lives in
-`e2e/tests/critique-coverage.test.ts`, which remains armed by this plan. The
-latest 400 first-parent merges contain 78 pure daemon-core groups. Fifteen
-recent groups have successful narrow PR validation paired with successful full
-merge-group validation. A representative full queue run spends about 20
-runner-minutes in the web, visual, and Windows jobs omitted by the planner; UI
-P0 remains the critical path.
-
-### Daemon UI P0 capability shadow
-
-The `daemon-runtime-definition` capability is evidence-only. The applied
-`ui_p0` matrix remains all six current shards in PR and merge-queue plans:
-`entry-settings`, `project-workspace`, `project-workspace-editor`,
-`project-collab`, `project-runtime`, and `workspace-restoration`. No job reads
-the shadow candidate as an execution input.
-
-The capability matches changes confined to:
-
-- `apps/daemon/src/runtimes/defs/`;
-- `capabilities.ts`, `local-profiles.ts`, `metadata.ts`, and `registry.ts`
-  directly under `apps/daemon/src/runtimes/`;
-- the explicit companion-test list in `.github/config/scopes.json`.
-
-Its four-shard candidate keeps `entry-settings`, `project-workspace`,
-`project-collab`, and `project-runtime`; it would omit
-`project-workspace-editor` and `workspace-restoration`. Any empty, unresolved,
-mixed, unknown, or out-of-surface change records a full-fallback shadow. Direct
-planner tests pin both the applied six-shard matrix and the four-shard
-candidate. `project-workspace` remains because its P0 coverage contains the
-local-agent and model selector.
-
-The latest-400 replay contains three matching groups. Historical timing placed
-the omitted shadow worker at about 8.5–9.2 runner-minutes per matching group,
-but the shadow produces no execution savings until it independently satisfies
-the active-omission requirements.
-
-### Zero-effect merge-queue policy floor
-
-A merge-queue plan that trusts every changed file at `certain` and receives no
-scope effects keeps preflight setup, `pnpm guard`, and the i18n structure check,
-but skips preflight's app prebuild/typecheck steps and the workspace-unit job.
-PR/manual-hot, forced-full, and escalated queue plans retain broad validation.
-
-`pnpm guard` runs as ordinary policy-floor work; it does not authorize the
-zero-effect plan. The 398-merge replay ending at `b99a9fdc3` contains 46
-qualifying plans (11.6%). A sample of 12 successful merge-group runs measures
-broad prebuild/typecheck at about 1.95 runner-minutes and workspace unit at
-about 1.6 runner-minutes, avoiding roughly 3.6 runner-minutes and 2.1
-critical-path minutes per qualifying run, or about 166 runner-minutes across
-that replay window.
+The earlier certain-tier routes (`certain-packaged-leaf-sources`,
+`certain-windows-launcher-payload`, `certain-daemon-core`, the
+`daemon-runtime-definition` UI P0 shadow, and their evidence windows) were
+deleted with the workloads they armed. If a test layer is ever reintroduced,
+new routes must be re-derived from fresh evidence rather than restored from
+this document's history; Git history owns the deleted rationale.
 
 ## Evidence and evaluation
 
@@ -467,14 +370,10 @@ retention or repeated manual execution has become error-prone.
   closure becomes stale?
 - What independent evidence source could detect source-closure drift without
   being scheduled by the plan it assesses?
-- Should planner traces expose source unit, test set, and fallback reason as
+- Should planner traces expose source unit, validation set, and fallback reason as
   separate first-class fields?
 - Should replay output directly summarize workload deltas and measured cost,
   rather than requiring per-slice shell analysis?
 - Should medium-tier zero-effect PR plans use the policy floor? This needs a
   separate evidence and containment review.
 - How much does real merge-queue batching discount single-PR replay savings?
-- Adjacent medium-tier gaps remain separate candidate slices:
-  `e2e/tests/**` does not arm E2E Vitest on PRs; `mocks/**` reaches Playwright
-  through fallback rather than the daemon tests that consume it; manual-hot
-  dispatch does not re-derive workspace validation.

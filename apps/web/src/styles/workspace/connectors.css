@@ -240,6 +240,35 @@
   color: var(--text-muted);
   text-align: center;
 }
+/* Media model picker empty state: no provider behind this surface is usable
+   yet, so the listbox is replaced by guidance into Settings → Media providers
+   (see MediaModelCards). */
+.model-picker-empty .newproj-model-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+.newproj-model-empty-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.newproj-model-empty-sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.newproj-model-empty-action {
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .ds-picker-item {
   display: flex;
   align-items: center;

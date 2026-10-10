@@ -19,7 +19,6 @@ INSTALL_PROFILES = {
     "source-web",
     "release-executor",
     "release-tools",
-    "release-validation",
     "mac-runtime",
 }
 

@@ -58,9 +58,13 @@ export type {
 const DEFAULT_BASE_URL_BY_PROTOCOL: Record<FinalizeProviderProtocol, string> = {
   anthropic: 'https://api.anthropic.com',
   openai: 'https://api.openai.com',
-  azure: '',
   google: 'https://generativelanguage.googleapis.com',
-  ollama: 'https://ollama.com',
+  deepseek: 'https://api.deepseek.com',
+  xai: 'https://api.x.ai/v1',
+  // `custom` is an arbitrary OpenAI-compatible endpoint: no sensible default,
+  // so the caller must always supply a baseUrl (the route rejects a missing
+  // one with 400 BAD_REQUEST before we get here).
+  custom: '',
 };
 const DEFAULT_MAX_TOKENS = 16000;
 const INPUT_BODY_CAP_BYTES = 384 * 1024;
@@ -70,9 +74,19 @@ export const DEFAULT_TIMEOUT_MS = 120_000;
 const FINALIZE_PROVIDER_PROTOCOLS = new Set<FinalizeProviderProtocol>([
   'anthropic',
   'openai',
-  'azure',
   'google',
-  'ollama',
+  'deepseek',
+  'xai',
+  'custom',
+]);
+
+// The four OpenAI-compatible finalize protocols share one request builder and
+// one response extractor.
+const OPENAI_WIRE_FINALIZE_PROTOCOLS: ReadonlySet<FinalizeProviderProtocol> = new Set([
+  'openai',
+  'deepseek',
+  'xai',
+  'custom',
 ]);
 
 export function isFinalizeProviderProtocol(value: unknown): value is FinalizeProviderProtocol {
@@ -89,7 +103,6 @@ export interface FinalizeOptions {
   baseUrl?: string;
   model: string;
   maxTokens?: number;
-  apiVersion?: string;
   now?: () => Date;
   fetchImpl?: typeof globalThis.fetch;
   signal?: AbortSignal;
@@ -375,7 +388,6 @@ export async function finalizeDesignPackage(
         systemPrompt,
         userPrompt,
       };
-      if (options.apiVersion) callParams.apiVersion = options.apiVersion;
       callParams.signal = options.signal
         ? AbortSignal.any([options.signal, timeoutController.signal])
         : timeoutController.signal;
@@ -492,14 +504,13 @@ export interface FinalizeProviderCallParams {
   maxTokens: number;
   systemPrompt: string;
   userPrompt: string;
-  apiVersion?: string;
   signal?: AbortSignal;
   fetchImpl?: typeof globalThis.fetch;
   /** Test-only: skip the inter-attempt sleep so retries are instant. */
   _sleepMs?: (ms: number) => Promise<void>;
 }
 
-export type AnthropicCallParams = Omit<FinalizeProviderCallParams, 'protocol' | 'apiVersion'>;
+export type AnthropicCallParams = Omit<FinalizeProviderCallParams, 'protocol'>;
 
 const defaultSleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -507,31 +518,6 @@ interface FinalizeProviderHttpRequest {
   url: string;
   headers: Record<string, string>;
   body: unknown;
-}
-
-function buildAzureChatCompletionsUrl(baseUrl: string, model: string, apiVersion?: string): {
-  url: string;
-  usesVersionedOpenAIPath: boolean;
-} {
-  const url = new URL(baseUrl);
-  const basePath = url.pathname.replace(/\/+$/, '');
-  const usesVersionedOpenAIPath = /\/openai\/v\d+(?:$|\/)/.test(basePath);
-  const version =
-    apiVersion && apiVersion.trim()
-      ? apiVersion.trim()
-      : usesVersionedOpenAIPath
-        ? ''
-        : '2024-10-21';
-  url.pathname = usesVersionedOpenAIPath
-    ? `${basePath}/chat/completions`
-    : `${basePath}/openai/deployments/${encodeURIComponent(model)}/chat/completions`;
-  if (usesVersionedOpenAIPath && !version) {
-    url.searchParams.delete('api-version');
-  }
-  if (version) {
-    url.searchParams.set('api-version', version);
-  }
-  return { url: url.toString(), usesVersionedOpenAIPath };
 }
 
 function buildFinalizeProviderRequest(params: FinalizeProviderCallParams): FinalizeProviderHttpRequest {
@@ -558,7 +544,7 @@ function buildFinalizeProviderRequest(params: FinalizeProviderCallParams): Final
     };
   }
 
-  if (params.protocol === 'openai') {
+  if (OPENAI_WIRE_FINALIZE_PROTOCOLS.has(params.protocol)) {
     return {
       url: appendVersionedApiPath(params.baseUrl, '/chat/completions'),
       headers: {
@@ -567,27 +553,6 @@ function buildFinalizeProviderRequest(params: FinalizeProviderCallParams): Final
       },
       body: {
         model: params.model,
-        messages: payloadMessages,
-        max_tokens: params.maxTokens,
-        stream: false,
-      },
-    };
-  }
-
-  if (params.protocol === 'azure') {
-    const { url, usesVersionedOpenAIPath } = buildAzureChatCompletionsUrl(
-      params.baseUrl,
-      params.model,
-      params.apiVersion,
-    );
-    return {
-      url,
-      headers: {
-        'content-type': 'application/json',
-        'api-key': params.apiKey,
-      },
-      body: {
-        ...(usesVersionedOpenAIPath ? { model: params.model } : {}),
         messages: payloadMessages,
         max_tokens: params.maxTokens,
         stream: false,
@@ -619,27 +584,18 @@ function buildFinalizeProviderRequest(params: FinalizeProviderCallParams): Final
     };
   }
 
-  const clean = params.baseUrl.replace(/\/+$/, '').replace(/\/api\/?$/, '');
-  return {
-    url: `${clean}/api/chat`,
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${params.apiKey}`,
-    },
-    body: {
-      model: params.model,
-      messages: payloadMessages,
-      stream: false,
-      options: { num_predict: params.maxTokens },
-    },
-  };
+  // Unreachable: every FinalizeProviderProtocol is handled above. Guarded so a
+  // future protocol addition fails loudly instead of silently posting a body
+  // built for the wrong wire.
+  throw new Error(`Unsupported finalize protocol: ${String(params.protocol)}`);
 }
 
 function providerLabel(protocol: FinalizeProviderProtocol): string {
   if (protocol === 'google') return 'Google Gemini';
   if (protocol === 'openai') return 'OpenAI';
-  if (protocol === 'azure') return 'Azure OpenAI';
-  if (protocol === 'ollama') return 'Ollama';
+  if (protocol === 'deepseek') return 'DeepSeek';
+  if (protocol === 'xai') return 'xAI';
+  if (protocol === 'custom') return 'the custom provider';
   return 'Anthropic';
 }
 
@@ -703,11 +659,11 @@ export async function callAnthropicWithRetry(
 
 /**
  * Extract the Markdown body from a provider response. Anthropic returns
- * `content[].text`; OpenAI/Azure return `choices[].message.content`;
- * Gemini returns `candidates[].content.parts[].text`; Ollama returns
- * `message.content`. Unexpected shapes throw `FinalizeUpstreamError(502)`
- * so the route handler maps them to `502 UPSTREAM_FAILED` rather than
- * producing an empty DESIGN.md on disk.
+ * `content[].text`; the OpenAI-compatible protocols (openai / deepseek / xai /
+ * custom) return `choices[].message.content`; Gemini returns
+ * `candidates[].content.parts[].text`. Unexpected shapes throw
+ * `FinalizeUpstreamError(502)` so the route handler maps them to
+ * `502 UPSTREAM_FAILED` rather than producing an empty DESIGN.md on disk.
  */
 export function extractDesignMd(
   payload: unknown,
@@ -737,7 +693,7 @@ export function extractDesignMd(
       const b = block as { type?: unknown; text?: unknown };
       if (b.type === 'text' && typeof b.text === 'string') out += b.text;
     }
-  } else if (protocol === 'openai' || protocol === 'azure') {
+  } else if (OPENAI_WIRE_FINALIZE_PROTOCOLS.has(protocol)) {
     const choices = (payload as { choices?: unknown }).choices;
     if (!Array.isArray(choices)) {
       throw new FinalizeUpstreamError(
@@ -803,7 +759,7 @@ function extractTokenUsage(
     };
   }
 
-  if (protocol === 'openai' || protocol === 'azure') {
+  if (OPENAI_WIRE_FINALIZE_PROTOCOLS.has(protocol)) {
     const usage = (payload as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } }).usage;
     return {
       inputTokens: typeof usage?.prompt_tokens === 'number' ? usage.prompt_tokens : 0,
@@ -821,16 +777,7 @@ function extractTokenUsage(
     };
   }
 
-  return {
-    inputTokens:
-      typeof (payload as { prompt_eval_count?: unknown }).prompt_eval_count === 'number'
-        ? (payload as { prompt_eval_count: number }).prompt_eval_count
-        : 0,
-    outputTokens:
-      typeof (payload as { eval_count?: unknown }).eval_count === 'number'
-        ? (payload as { eval_count: number }).eval_count
-        : 0,
-  };
+  return { inputTokens: 0, outputTokens: 0 };
 }
 
 const SYSTEM_PROMPT = `You are a senior product designer synthesizing a finalized design package

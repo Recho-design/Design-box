@@ -371,7 +371,7 @@ function mergeAuthHeader(
 
 /**
  * Convert user-configured external MCP servers into the ACP `mcpServers`
- * shape that Hermes/Kimi accept (already in use by buildLiveArtifactsMcpServersForAgent).
+ * shape an ACP peer accepts (already in use by buildLiveArtifactsMcpServersForAgent).
  * SSE/HTTP servers are dropped — ACP currently models stdio only — but we
  * surface a warning so the UI can hint at it.
  */
@@ -627,36 +627,6 @@ export const MCP_TEMPLATES: McpTemplate[] = [
         required: true,
         placeholder: '<allyson-api-key>',
         secret: true,
-      },
-    ],
-  },
-  {
-    id: 'bedrock-image',
-    label: 'AWS Bedrock Image (Nova Canvas / SD 3.5)',
-    description:
-      'AWS Labs–blessed replacement for the deprecated Nova Canvas MCP. Wraps Amazon Nova Canvas + Stable Diffusion 3.5 with text-to-image, color-guided generation, image editing and upscaling — useful when you want brand-color enforcement (point it at a hex from your design-systems/<brand>/DESIGN.md). Requires the `uvx` Python launcher and AWS credentials with Bedrock + Nova access.',
-    transport: 'stdio',
-    category: 'image-generation',
-    homepage: 'https://github.com/kalleeh/bedrock-image-mcp-server',
-    example:
-      'Generate a hero image of a modern workspace with the brand color #FF5722 as the dominant accent, 16:9 ratio.',
-    command: 'uvx',
-    args: ['bedrock-image-mcp-server@latest'],
-    envFields: [
-      {
-        key: 'AWS_PROFILE',
-        label: 'AWS profile',
-        placeholder: 'default',
-      },
-      {
-        key: 'AWS_REGION',
-        label: 'AWS region (Bedrock-enabled)',
-        placeholder: 'us-east-1',
-      },
-      {
-        key: 'FASTMCP_LOG_LEVEL',
-        label: 'Log level (optional)',
-        placeholder: 'ERROR',
       },
     ],
   },

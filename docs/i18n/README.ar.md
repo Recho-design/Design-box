@@ -628,7 +628,6 @@ gh issue develop <number>   # create a branch and worktree
 
 # 3. Make the change, run the checks
 pnpm guard && pnpm typecheck
-pnpm --filter @open-design/<package> test
 
 # 4. Open the PR
 gh pr create --fill

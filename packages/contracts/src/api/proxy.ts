@@ -34,8 +34,16 @@ export interface ProxyStreamRequest extends ReasoningExecutionRequestFields {
   // Caps the upstream completion length. Defaults to 8192 when unset so
   // pre-existing clients keep their old behavior.
   maxTokens?: number;
-  // Azure OpenAI only. Defaults at the daemon when omitted.
+  // Retained for shape compatibility with existing callers; the daemon no
+  // longer branches on it for any proxy protocol.
   apiVersion?: string;
+  // Which BYOK protocol the caller is really speaking (`ApiProtocol` in
+  // apps/web). One OpenAI-compatible route carries several of them — openai,
+  // deepseek, xai, custom all POST to `/api/proxy/openai/stream` — and the
+  // reasoning-egress check needs the real one to label the run and to pick the
+  // right model-id normalization. Absent/unknown means the route's own
+  // protocol, so an older client keeps today's behavior.
+  protocol?: string;
 }
 
 export interface ProxyStreamStartPayload {

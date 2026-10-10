@@ -171,7 +171,6 @@ import { GenerateView } from './GenerateView';
 import {
   API_KEY_PLACEHOLDERS,
   API_PROTOCOL_TABS,
-  SUGGESTED_MODELS_BY_PROTOCOL,
 } from '../state/apiProtocols';
 import { defaultKnownProviderModel, KNOWN_PROVIDERS } from '../state/config';
 import type { KnownProvider } from '../state/config';
@@ -352,7 +351,7 @@ function defaultPluginInputsForCreate(
   }
 
   if (pluginId !== "od-media-generation") return null;
-  if (kind !== "image" && kind !== "video" && kind !== "audio") return null;
+  if (kind !== "image" && kind !== "video") return null;
 
   const promptTemplate = input.metadata.promptTemplate;
   const subject =
@@ -1805,6 +1804,7 @@ export function EntryShell({
               <GenerateView
                 initialProjectId={route.kind === 'home' ? route.generateProjectId : undefined}
                 projects={projects}
+                mediaProviders={config.mediaProviders}
               />
             ) : null}
           </div>
@@ -1831,6 +1831,13 @@ export function EntryShell({
         onOpenConnectorsTab={() => {
           setNewProjectOpen(false);
           openIntegrationTab('connectors');
+        }}
+        onOpenMediaSettings={() => {
+          // Close the modal first: the Settings dialog is its own overlay, and
+          // leaving the New Project modal mounted under it would trap Esc and
+          // restore focus to a control the user can no longer see.
+          setNewProjectOpen(false);
+          onOpenSettings('media');
         }}
         onClose={() => setNewProjectOpen(false)}
       />
@@ -1935,13 +1942,11 @@ function OnboardingView({
     config.baseUrl.trim(),
     config.model.trim(),
     config.apiKey.trim(),
-    config.apiVersion?.trim() ?? '',
   ].join('\n');
   const providerModelsInputKey = providerModelsCacheKey(
     apiProtocol,
     config.baseUrl,
     config.apiKey,
-    config.apiVersion ?? '',
   );
   providerModelAutoSelectRef.current = {
     model: config.model,
@@ -1953,9 +1958,10 @@ function OnboardingView({
     Boolean(config.apiKey.trim()) &&
     Boolean(config.baseUrl.trim()) &&
     Boolean(config.model.trim());
+  // Every one of the six protocols exposes a model catalogue the daemon can
+  // read (`provider-models.ts` covers all six), so the only gates left are the
+  // credentials and a well-formed origin.
   const canFetchProviderModels =
-    apiProtocol !== 'azure' &&
-    apiProtocol !== 'ollama' &&
     Boolean(config.apiKey.trim()) &&
     Boolean(config.baseUrl.trim()) &&
     isLikelyHttpUrl(config.baseUrl);
@@ -1972,10 +1978,7 @@ function OnboardingView({
   const selectedProvider = KNOWN_PROVIDERS.find(
     (provider) =>
       provider.protocol === apiProtocol &&
-      (
-        provider.baseUrl === (config.apiProviderBaseUrl ?? config.baseUrl) ||
-        (apiProtocol === 'azure' && provider.baseUrl === '' && Boolean(config.baseUrl?.trim()))
-      ),
+      provider.baseUrl === (config.apiProviderBaseUrl ?? config.baseUrl),
   ) ?? null;
   const candidateCliAgents = agents.filter(
     (agent) => (agent.available || deepSeekHarnessNeedsSetup(agent)),
@@ -2195,12 +2198,8 @@ function OnboardingView({
     });
   }
   const protocolProviders = KNOWN_PROVIDERS.filter((provider) => provider.protocol === apiProtocol);
-  const hasProtocolOwnedEmptyProvider =
-    apiProtocol === 'azure' && protocolProviders.some((provider) => provider.baseUrl === '');
   const byokProviderOptions = [
-    ...(hasProtocolOwnedEmptyProvider
-      ? []
-      : [{ value: '', label: t('settings.customProvider') }]),
+    { value: '', label: t('settings.customProvider') },
     ...protocolProviders.map((provider) => ({
       value: provider.baseUrl,
       label: provider.label,
@@ -2213,11 +2212,10 @@ function OnboardingView({
     })) ?? [];
   const fetchedProviderModels =
     activeProviderModelsCache[providerModelsInputKey] ?? [];
+  // Only what `/api/provider/models` actually returned, plus the model already
+  // in the config so switching back to this step never blanks the field.
   const byokModelOptions = mergeOnboardingProviderModelOptions(
     fetchedProviderModels,
-    selectedProvider?.preferredModels.length
-      ? selectedProvider.preferredModels
-      : SUGGESTED_MODELS_BY_PROTOCOL[apiProtocol],
     config.model,
   ).map((model) => ({
     value: model.id,
@@ -2244,7 +2242,7 @@ function OnboardingView({
       apiKey: nextProtocolConfig.apiKey,
       baseUrl: nextProtocolConfig.baseUrl,
       model: nextProtocolConfig.model,
-      apiVersion: protocol === 'azure' ? (nextProtocolConfig.apiVersion ?? '') : '',
+      apiVersion: '',
       apiProviderBaseUrl: nextProtocolConfig.apiProviderBaseUrl ?? null,
       apiProtocolConfigs: {
         ...(config.apiProtocolConfigs ?? {}),
@@ -2629,14 +2627,12 @@ function OnboardingView({
     const baseUrl = config.baseUrl;
     const apiKey = config.apiKey;
     const model = config.model;
-    const apiVersion =
-      protocol === 'azure' ? config.apiVersion?.trim() || undefined : undefined;
     return startOrJoinInlineTest(providerTestRunRef, inputKey, async (signal) => {
       providerAutoTestKeyRef.current = inputKey;
       setProviderTestState({ status: 'running', inputKey });
       try {
         const result = await testApiProvider(
-          { protocol, baseUrl, apiKey, model, apiVersion },
+          { protocol, baseUrl, apiKey, model },
           signal,
         );
         setProviderTestState({ status: 'done', inputKey, result });
@@ -3072,7 +3068,7 @@ function OnboardingView({
                   onBaseUrlChange={(baseUrl) =>
                     updateApiConfig({
                       baseUrl,
-                      apiProviderBaseUrl: apiProtocol === 'azure' ? '' : null,
+                      apiProviderBaseUrl: null,
                     })
                   }
                   modelOptions={byokModelOptions}
@@ -3304,7 +3300,6 @@ function OnboardingByokSetupPanel({
   const t = useT();
   const running = testState.status === 'running';
   const fetchingModels = modelsState.status === 'running';
-  const useDeploymentInput = apiProtocol === 'azure';
   return (
     <div className="onboarding-view__setup-panel">
       <div className="onboarding-view__setup-head">
@@ -3357,7 +3352,6 @@ function OnboardingByokSetupPanel({
         value={selectedProvider?.baseUrl ?? ''}
         options={providerOptions}
         onChange={onProviderChange}
-        allowEmptyValue={apiProtocol === 'azure'}
         searchable
         searchPlaceholder={t('settings.quickFillProvider')}
       />
@@ -3386,7 +3380,7 @@ function OnboardingByokSetupPanel({
             onChange={(event) => onBaseUrlChange(event.target.value)}
           />
         </label>
-        {modelOptions.length > 0 && !useDeploymentInput ? (
+        {modelOptions.length > 0 ? (
           <OnboardingDropdown
             label={t('settings.model')}
             placeholder={defaultKnownProviderModel(selectedProvider) || 'claude-sonnet-4-5'}
@@ -3399,18 +3393,12 @@ function OnboardingByokSetupPanel({
           />
         ) : (
           <label className="onboarding-view__inline-field">
-            <span>
-              {useDeploymentInput
-                ? t('settings.azureDeploymentModel')
-                : t('settings.model')}
-            </span>
+            <span>{t('settings.model')}</span>
             <input
               type="text"
               value={model}
               placeholder={
-                useDeploymentInput
-                  ? t('settings.azureDeploymentModel')
-                  : defaultKnownProviderModel(selectedProvider) || 'claude-sonnet-4-5'
+                defaultKnownProviderModel(selectedProvider) || 'claude-sonnet-4-5'
               }
               onChange={(event) => onModelChange(event.target.value.trim())}
             />
@@ -3476,7 +3464,6 @@ function isLikelyHttpUrl(value: string): boolean {
 
 function mergeOnboardingProviderModelOptions(
   fetchedModels: readonly ProviderModelOption[],
-  suggestedModelIds: readonly string[],
   currentModel: string,
 ): ProviderModelOption[] {
   const seen = new Set<string>();
@@ -3488,7 +3475,6 @@ function mergeOnboardingProviderModelOptions(
     out.push({ id, label: model.label.trim() || id });
   };
   for (const model of fetchedModels) add(model);
-  for (const id of suggestedModelIds) add({ id, label: id });
   if (currentModel.trim()) add({ id: currentModel.trim(), label: currentModel.trim() });
   return out;
 }

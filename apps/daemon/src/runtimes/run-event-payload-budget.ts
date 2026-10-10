@@ -8,10 +8,10 @@
  * inline marker (`[open-design: …]`) naming how many bytes were cut, and a
  * `truncated: { originalBytes }` field on the event itself.
  *
- * Why a budget exists at all (incident 2026-09-14): cursor-agent's
- * `tool_call` completion lines carry the whole edited file twice and its
- * `user` line echoes the whole composed prompt. Nothing parses those lines —
- * they fall through to `raw` — yet they were streamed and stored verbatim at
+ * Why a budget exists at all (incident 2026-09-14): an agent CLI's
+ * `tool_call` completion lines carried the whole edited file twice and a
+ * `user` line echoed the whole composed prompt. Nothing parsed those lines —
+ * they fell through to `raw` — yet they were streamed and stored verbatim at
  * ~1.4 MB per turn, until the renderer, the daemon and `GET …/messages` (V8's
  * maximum string length) all ran out of room on one long conversation.
  *
@@ -216,42 +216,6 @@ function* stringBudgets(): Generator<number> {
 // raw lines
 // ---------------------------------------------------------------------------
 
-/**
- * Fields of a cursor-agent `tool_call` result that hold a full copy of a file:
- * `editToolCall` returns the file before AND after the edit (the ~1.2 MB of
- * the incident), `readToolCall` returns what it read. The diff summary, path,
- * line counts and outcome sit beside them and are what a reader needs, so an
- * oversized line drops these first and only then shortens what is left.
- */
-const CURSOR_FULL_CONTENT_FIELDS_ANY_TOOL = ['beforeFullFileContent', 'afterFullFileContent'];
-const CURSOR_FULL_CONTENT_FIELDS_BY_TOOL: Record<string, readonly string[]> = {
-  readToolCall: ['content'],
-};
-
-function omitCursorFullContentFields(line: JsonRecord): JsonRecord {
-  if (line.type !== 'tool_call' || !isRecord(line.tool_call)) return line;
-  let toolCall: JsonRecord | null = null;
-  for (const [toolName, call] of Object.entries(line.tool_call)) {
-    if (!isRecord(call) || !isRecord(call.result) || !isRecord(call.result.success)) continue;
-    const success = call.result.success;
-    const fields = [
-      ...CURSOR_FULL_CONTENT_FIELDS_ANY_TOOL,
-      ...(CURSOR_FULL_CONTENT_FIELDS_BY_TOOL[toolName] ?? []),
-    ];
-    let nextSuccess: JsonRecord | null = null;
-    for (const field of fields) {
-      const value = success[field];
-      if (typeof value !== 'string' || utf8Bytes(value) < OMIT_FIELD_MIN_BYTES) continue;
-      nextSuccess ??= { ...success };
-      nextSuccess[field] = omittedFieldMarker(value);
-    }
-    if (!nextSuccess) continue;
-    toolCall ??= { ...line.tool_call };
-    toolCall[toolName] = { ...call, result: { ...call.result, success: nextSuccess } };
-  }
-  return toolCall ? { ...line, tool_call: toolCall } : line;
-}
-
 function parseJsonLine(line: string): unknown {
   const first = line.trimStart()[0];
   if (first !== '{' && first !== '[') return undefined;
@@ -283,7 +247,7 @@ export function boundRawAgentLine(
   const truncated = { originalBytes: utf8Bytes(line) };
   const structured = parsed !== undefined ? parsed : parseJsonLine(line);
   if (isRecord(structured) || Array.isArray(structured)) {
-    const slim = isRecord(structured) ? omitCursorFullContentFields(structured) : structured;
+    const slim = structured;
     for (const budget of stringBudgets()) {
       const candidate = JSON.stringify(capStringLeaves(slim, budget));
       if (rawEventFits(candidate, truncated)) return { line: candidate, truncated };

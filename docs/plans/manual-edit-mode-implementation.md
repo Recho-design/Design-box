@@ -48,3 +48,5 @@ pnpm typecheck
 pnpm test
 pnpm check:residual-js
 ```
+
+> **Test-layer note (2026-10):** this plan records the verification commands as they were run when the feature landed. The repository's test layer (all `tests/` dirs, `e2e/`, vitest/playwright configs, `pnpm test`, `pnpm check:residual-js`) has since been removed wholesale — the test lines above are historical. Re-verify edit-mode behavior on real paths: `pnpm --filter @open-design/web typecheck`, `pnpm guard`, and a manual pass through the running web UI's Edit mode.

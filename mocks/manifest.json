@@ -209,26 +209,6 @@
       "anonymization_version": null
     },
     {
-      "trace_id": "0cee30c9-04b4-484f-ad39-192c2198d37d",
-      "sha256": "9bd179a4462d33599466beab69e797cf8132333b3f9f08c3136f4402ad95b78b",
-      "bytes": 851,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 77580,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": "Let's shorten \"Every county sends vehicle counts and miles traveled into a LightGBM ensemble; predictions return as stacked emissions you can explore by year\" too \"Every county sends vehicle counts an",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T15:59:31.540Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
       "trace_id": "0cfd3766-40a1-48e9-b3a5-d420bf5551b8",
       "sha256": "215f05be726bb46bf53712d756544fffb44e9a29f0fea75a2d25e9341ea02aae",
       "bytes": 36929,
@@ -269,86 +249,6 @@
       "anonymization_version": null
     },
     {
-      "trace_id": "108c20c0-4fbb-47b8-b9f2-625aaf394f88",
-      "sha256": "ac1038309f122857213417515df301b94fb51938b4e88cfaa85ca439d8b9bd23",
-      "bytes": 4132,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 137817,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": null,
-      "multi_turn": true,
-      "captured_at": "2026-05-28T16:12:46.683Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "10f9c7ea-4d4c-4993-9914-df1680d9abbf",
-      "sha256": "df02e9458edbae5721ba7c30a303bdf63eff74d68f959a9f3b11fd2efecd52c1",
-      "bytes": 534,
-      "agent": "cursor-agent",
-      "model": "auto",
-      "outcome": "failed",
-      "tool_count": 0,
-      "duration_ms": 693,
-      "skills": [
-        "default"
-      ],
-      "session_id": "40e92b93-443d-4000-a03c-a0d490807da8",
-      "user_input_preview": "i need to work on the prototypes pf the following designs",
-      "multi_turn": false,
-      "captured_at": "2026-05-28T16:31:31.342Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "1151b2f9-634e-471b-9479-9df5fddbe9bc",
-      "sha256": "ba407318b2259c10a562ea01251468e611ad6ce94e4c4d9e6c848b6b1561479b",
-      "bytes": 4567,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 142587,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": "Great work. Note that on mobile, it's still really hard to read. Suggest that you make Vehicle Sourcetypes menu minimizable, and minimized by default when opening from mobile (but open by default on",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T15:29:22.841Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "11705d3e-a233-4829-9f2b-340c93c43da5",
-      "sha256": "e03e95542ca57b036c44513e846e978d9b1d90a6be0d804f9e123b9dba0e907f",
-      "bytes": 4133,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 127446,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": "Thank you. Literally can't see the halo at all, no matter how much I adjust . Is the halo somehow black? it looks like the coastline borders don't show up or show up black perhaps. Also, in the \"What",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T15:52:55.793Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
       "trace_id": "12d88deb-dfca-4ff8-b773-e39cce1e387d",
       "sha256": "afe8a423474c7d16b215c077f233d722a752e3179ca8958f503a61f2b29b62c4",
       "bytes": 1119,
@@ -384,26 +284,6 @@
       "user_input_preview": "继续",
       "multi_turn": false,
       "captured_at": "2026-05-28T16:31:36.649Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "13903bf5-abd3-4502-8843-df44a19e9386",
-      "sha256": "e4059649ef737ee9d954e5eb045f24f6dbe1c3581f8972e0656f385ab439e3a1",
-      "bytes": 2427,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 103267,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": null,
-      "multi_turn": true,
-      "captured_at": "2026-05-28T15:13:41.745Z",
       "cli_version": null,
       "protocol_version": null,
       "anonymization_version": null
@@ -604,26 +484,6 @@
       "user_input_preview": null,
       "multi_turn": true,
       "captured_at": "2026-05-26T04:33:02.705Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "1b622172-97ba-4e47-9eb2-7868eb2fc59b",
-      "sha256": "e0d9614962b5e7bc8ad8800f90be28ec99ba6a5bea813d99de7c79d8a91f616a",
-      "bytes": 928,
-      "agent": "qwen",
-      "model": "qwen3-coder-plus",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 168728,
-      "skills": [
-        "ad-creative"
-      ],
-      "session_id": "0a51c2ff-bc6c-4d0e-bdb7-ae8bfaf4fe00",
-      "user_input_preview": "[form answers — discovery] - ¿Para quién son estos iconos?: (skipped) - ¿Qué estilo visual prefieres?: Microsoft Fluent — contornos limpios, geometría precisa, stroke-based [value: microsoft] - ¿Tamañ",
-      "multi_turn": true,
-      "captured_at": "2026-05-27T23:34:51.002Z",
       "cli_version": null,
       "protocol_version": null,
       "anonymization_version": null
@@ -949,26 +809,6 @@
       "anonymization_version": null
     },
     {
-      "trace_id": "2e69fc24-4d76-475f-aa5d-f9eb07a1b195",
-      "sha256": "eeca071e71709e2e065caef775662499e437bece6581a503cabbf0615276e0f4",
-      "bytes": 4030,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 146115,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": "Thank you. Better. You still have not added a visible outer halo. We need a much much thicker, more visible halo around the border. Please add a tweaks menu that lets me adjust the level of halo. Als",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T15:47:30.663Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
       "trace_id": "2e821ee7-80c3-43ff-81d7-153515917ee6",
       "sha256": "88c0c549cd86cc59f6f136171dcd1cb9c06b594fcc8a272744756ed56097a0f3",
       "bytes": 11173,
@@ -1244,26 +1084,6 @@
       "user_input_preview": "y porque solo 5 reviews? a mi me gustaria que se vean todos",
       "multi_turn": false,
       "captured_at": "2026-05-28T16:31:40.778Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "4668cb89-9222-497b-addd-e1fa800ed33b",
-      "sha256": "57e2d39b16b2df8a872f5d7127af4df11a263f6c8badcf3869a62c04119d5b4b",
-      "bytes": 2221,
-      "agent": "copilot",
-      "model": "gpt-5.2-codex",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 22745,
-      "skills": [
-        "ad-creative"
-      ],
-      "session_id": "d3eb9812-b37f-4b49-93a5-f336a21b4b33",
-      "user_input_preview": "continue",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T08:30:08.153Z",
       "cli_version": null,
       "protocol_version": null,
       "anonymization_version": null
@@ -1729,26 +1549,6 @@
       "anonymization_version": null
     },
     {
-      "trace_id": "6c5ac01b-950c-484f-847c-e997049d42b7",
-      "sha256": "ec768c185ab786db5d89c8c16d9e34f2009734ec77a4e0ed7ac68350e6f406f3",
-      "bytes": 3988,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 191857,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": null,
-      "multi_turn": true,
-      "captured_at": "2026-05-28T15:16:44.847Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
       "trace_id": "6ef2fd62-cdb9-48f9-9cee-c4a12d5d7c99",
       "sha256": "bb1f4528fb968209eaa91e8c0d8b73ee5a68581fc78b26392ad0bcacaa503fc9",
       "bytes": 6129,
@@ -1804,26 +1604,6 @@
       "user_input_preview": "[form answers — discovery] - Que veux-tu que je produise ?: Une variante créative différente (nouvelle direction) - Quelle(s) vue(s) générer ?: Kit complet (maillot + short) - Corrections vs. les visu",
       "multi_turn": true,
       "captured_at": "2026-05-28T15:42:38.685Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "728e40bd-2ead-4171-8e78-f127ea065b7b",
-      "sha256": "48d0857e9a5b3d93c45609416793f07a1ed9bf00a1ff04c9d5abb8c2bd709dfd",
-      "bytes": 11150,
-      "agent": "copilot",
-      "model": "gpt-5.2-codex",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 627740,
-      "skills": [
-        "ad-creative"
-      ],
-      "session_id": "d3eb9812-b37f-4b49-93a5-f336a21b4b33",
-      "user_input_preview": "[form answers — discovery] - What kind of prototype is this?: Landing / marketing page - Target platform: Responsive web, Desktop web - Roughly how much?: you decide - Key content or sections to inclu",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T08:31:04.996Z",
       "cli_version": null,
       "protocol_version": null,
       "anonymization_version": null
@@ -2169,26 +1949,6 @@
       "anonymization_version": null
     },
     {
-      "trace_id": "9b6d85bb-5d36-4dfd-85ae-9169882fe0ea",
-      "sha256": "5c09596ee4edd6215f080d5a15b39f91067ba586e2a717d4bf8cb8f76e36a596",
-      "bytes": 2813,
-      "agent": "qwen",
-      "model": "qwen3-coder-plus",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 51439,
-      "skills": [
-        "ad-creative"
-      ],
-      "session_id": "0a51c2ff-bc6c-4d0e-bdb7-ae8bfaf4fe00",
-      "user_input_preview": "Crea iconos vectoriales , al Estilo Apple y Microsoft en Formato SVG descargables que sean minimalistas y editables en cualquier programa vectorial los iconos serian , Home , Configuracion, Libro, Web",
-      "multi_turn": true,
-      "captured_at": "2026-05-27T23:33:39.382Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
       "trace_id": "9c38efe9-e27e-479b-a9a9-a7e7d2e4fec5",
       "sha256": "8373b0f3fbccfb69e623297d1dc947bb65b8d5aa0e6de6c0928db65ace443855",
       "bytes": 1119,
@@ -2309,26 +2069,6 @@
       "anonymization_version": null
     },
     {
-      "trace_id": "a1218c0a-d660-427c-b77b-7cc175eb959e",
-      "sha256": "bdabd26b8868ca10a30cb4adf0cf146d19cfff4c1b3454793727f7965aab26e9",
-      "bytes": 3295,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 144059,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": "We need clear visible borders around the US - otherwise nobody will realize that this is actually a map of the US.",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T15:41:26.917Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
       "trace_id": "a132d324-32d0-4c85-baff-474c33c4bc2d",
       "sha256": "66810815983c60db0d4d38fd73e6d04de302c5c0adaa80d535556bb400183f64",
       "bytes": 43846,
@@ -2364,26 +2104,6 @@
       "user_input_preview": "后端需要加入超级管理员与用户独立的管理页面",
       "multi_turn": false,
       "captured_at": "2026-05-28T16:25:49.899Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
-      "trace_id": "a5475efd-5f5d-4706-a7b6-5f34bd1329c8",
-      "sha256": "549155aa85e2cebe15bdbb2fca8507af8ac098b042a6e9ed0d2feaf417c3500f",
-      "bytes": 731,
-      "agent": "cursor-agent",
-      "model": "composer-2.5-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 161796,
-      "skills": [
-        "ad-creative"
-      ],
-      "session_id": "routine-conv-d34f70ac-9cd8-41fb-9183-2b6263862d7c",
-      "user_input_preview": "https://nfsauto.by/design-system нужно переделать эту дизайн систему на всех вкладках",
-      "multi_turn": false,
-      "captured_at": "2026-05-26T09:07:05.083Z",
       "cli_version": null,
       "protocol_version": null,
       "anonymization_version": null
@@ -3449,26 +3169,6 @@
       "anonymization_version": null
     },
     {
-      "trace_id": "f154b511-9dcf-4d7c-8e21-1da25e50ea23",
-      "sha256": "1a1916e6e99cabe3ee78acd01c45349b1c7ea7556ad1f44e68516969c65e76bf",
-      "bytes": 3360,
-      "agent": "cursor-agent",
-      "model": "composer-2-fast",
-      "outcome": "succeeded",
-      "tool_count": 0,
-      "duration_ms": 137789,
-      "skills": [
-        "algorithmic-art"
-      ],
-      "session_id": "8c252113-3802-4020-bb00-171c1576ebd8",
-      "user_input_preview": "Can you also make it possible for us to move the 3D map around, so we can manually navigate to different places, zoom, etc?",
-      "multi_turn": true,
-      "captured_at": "2026-05-28T16:01:14.642Z",
-      "cli_version": null,
-      "protocol_version": null,
-      "anonymization_version": null
-    },
-    {
       "trace_id": "f315889c-9a6b-4cd2-b986-ec41ad038466",
       "sha256": "4d48cd4ba7bfaea6e309704e12feecebac8fe5d71c359eac33f64b3bdc3659ff",
       "bytes": 98246,
@@ -3589,29 +3289,26 @@
       "anonymization_version": null
     }
   ],
-  "total": 179,
-  "total_bytes": 4200634,
+  "total": 164,
+  "total_bytes": 4151474,
   "histograms": {
     "by_agent": {
       "codex": 38,
       "claude": 57,
       "gemini": 25,
       "opencode": 41,
-      "cursor-agent": 11,
-      "qwen": 2,
-      "copilot": 2,
       "deepseek": 2,
       "antigravity": 1
     },
     "by_outcome": {
-      "succeeded": 144,
-      "failed": 35
+      "succeeded": 130,
+      "failed": 34
     },
     "by_skill": {
-      "default": 71,
+      "default": 70,
       "agent-browser": 22,
-      "ad-creative": 50,
-      "algorithmic-art": 30,
+      "ad-creative": 45,
+      "algorithmic-art": 21,
       "magazine-web-ppt": 1,
       "brainstorming": 1,
       "penpot-flutter-design-source": 1,
@@ -3619,5 +3316,5 @@
       "data-report": 1
     }
   },
-  "sessions_with_multi_turn": 35
+  "sessions_with_multi_turn": 32
 }

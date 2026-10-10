@@ -409,11 +409,13 @@ Minimum local validation after implementation:
 ```sh
 # OpenDesign
 pnpm --filter @open-design/contracts typecheck
-pnpm --filter @open-design/daemon test
-pnpm --filter @open-design/web test
 pnpm guard
 pnpm typecheck
 ```
+
+(The `daemon`/`web` package test suites were removed with the repository's test
+layer; balance-display behavior is validated on real paths — daemon HTTP API,
+`od` CLI, or the running web UI.)
 
 Do not require Vela repository validation for the OpenDesign-only workstream.
 If the external Vela dependency is not deployed yet, OpenDesign validation

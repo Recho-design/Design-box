@@ -23,7 +23,7 @@ inputs:
     required: false
     default: 'false'
   install-profile:
-    description: Dependency installation boundary (workspace|source-web|release-executor|release-tools|release-validation|mac-runtime)
+    description: Dependency installation boundary (workspace|source-web|release-executor|release-tools|mac-runtime)
     required: false
     default: 'workspace'
   postinstall-intent:
@@ -64,7 +64,7 @@ runs:
       run: |
         case "$INSTALL_PROFILE" in
           workspace) ;;
-          source-web|release-executor|release-tools|release-validation|mac-runtime)
+          source-web|release-executor|release-tools|mac-runtime)
             if [ "${{ inputs.cache-tools }}" = "true" ]; then
               echo "$INSTALL_PROFILE install profile cannot cache the full workspace tool closure" >&2
               exit 1
@@ -167,7 +167,6 @@ runs:
           packages/*/node_modules
           tools/*/node_modules
           shells/*/node_modules
-          e2e/node_modules
         key: workspace-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ inputs.pnpm-version }}-${{ steps.tools.outputs.dependencies-key }}
 
     - name: Restore pnpm store
@@ -213,17 +212,6 @@ runs:
       run: >-
         pnpm install --frozen-lockfile --ignore-scripts
         --filter @open-design/tools-release...
-
-    - name: '[prepare] Release validation dependencies'
-      if: ${{ (steps.postinstall-plan.outputs.install-profile || inputs.install-profile) == 'release-validation' }}
-      shell: bash
-      run: >-
-        pnpm install --frozen-lockfile --ignore-scripts
-        --filter @open-design/e2e...
-        --filter @open-design/tools-dev...
-        --filter @open-design/tools-pack...
-        --filter @open-design/tools-release...
-        --filter @open-design/tools-serve...
 
     - name: '[prepare] macOS runtime product dependencies'
       if: ${{ (steps.postinstall-plan.outputs.install-profile || inputs.install-profile) == 'mac-runtime' }}
@@ -283,7 +271,6 @@ runs:
           packages/*/node_modules
           tools/*/node_modules
           shells/*/node_modules
-          e2e/node_modules
         key: ${{ steps.dependencies-cache.outputs.cache-primary-key }}
 
     - name: '[restore] Tool build closure'

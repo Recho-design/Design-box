@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Dispatch one prerelease validation lane (code tests, packaged smoke, or the
-# progressive Feishu card) as a workflow run of its own.
+# Dispatch one prerelease notification lane (the progressive Feishu card) as a
+# workflow run of its own.
 #
 # Why a dispatch and not a job: release-prerelease.yml holds a single
 # repository-wide concurrency group (`open-design-release-prerelease`,

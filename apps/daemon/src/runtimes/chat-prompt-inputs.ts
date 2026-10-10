@@ -7,7 +7,6 @@ import {
   type OdNextPromptBundleRecipeIdentityV2,
   serializeOdNextPromptBundleV2,
 } from '@open-design/contracts';
-import { renderResearchCommandContract } from '../prompts/research-contract.js';
 import {
   describeChangedStableSections,
   type StableChangedSection,
@@ -116,7 +115,6 @@ export function composeChatAgentTextPayload({
   formOverride,
   daemonSystemPrompt,
   runtimeToolPrompt,
-  researchCommandContract,
   runContextPrompt,
   connectedExternalMcpReference,
   browserUnavailableGuard,
@@ -135,7 +133,6 @@ export function composeChatAgentTextPayload({
   formOverride: string;
   daemonSystemPrompt: string;
   runtimeToolPrompt: string;
-  researchCommandContract: string;
   runContextPrompt: string;
   connectedExternalMcpReference: string;
   browserUnavailableGuard: string;
@@ -167,7 +164,6 @@ export function composeChatAgentTextPayload({
     form_override: formOverride,
     daemon_system_prompt: daemonSystemPrompt,
     runtime_tool_prompt: runtimeToolPrompt,
-    research_command_contract: researchCommandContract,
     run_context_prompt: runContextPrompt,
     connected_external_mcp_reference: connectedExternalMcpReference,
     browser_unavailable_guard: browserUnavailableGuard,
@@ -216,7 +212,6 @@ export function composeChatAgentTextPayload({
       stable_context_prompt: odNextRequestBundle.stableContext,
       frozen_skill_package: odNextRequestBundle.frozenSkillPackage,
       request_input_facts: odNextRequestBundle.requestInputFacts,
-      research_command_contract: researchCommandContract,
       run_context_prompt: runContextPrompt,
       connected_external_mcp_reference: connectedExternalMcpReference,
       browser_unavailable_guard: browserUnavailableGuard,
@@ -247,7 +242,6 @@ export function composeChatAgentTextPayload({
         stableRequestContext: odNextRequestBundle.stableContext,
         frozenSkillPackage: odNextRequestBundle.frozenSkillPackage,
         requestInputFacts: odNextRequestBundle.requestInputFacts,
-        researchCommandContract,
         runContext: runContextPrompt,
         connectedExternalMcp: connectedExternalMcpReference,
         browserUnavailableGuard,
@@ -269,7 +263,6 @@ export function composeChatAgentTextPayload({
   assertOdNextLegacyTextContributorCoverage(Object.keys(contributors), strategyInputStage);
 
   const clientInstructionPrompt = [
-    researchCommandContract,
     runContextPrompt,
     connectedExternalMcpReference,
     browserUnavailableGuard,
@@ -304,23 +297,6 @@ export function composeChatAgentTextPayload({
     clientInstructionPrompt,
     instructionPrompt,
   };
-}
-
-export function resolveResearchCommandContract(
-  research: { enabled?: boolean; query?: string; maxSources?: number } | null | undefined,
-  message: string,
-) {
-  if (!research || !research.enabled) return '';
-  const researchQuery =
-    typeof research.query === 'string' && research.query.trim()
-      ? research.query
-      : message;
-  return renderResearchCommandContract({
-    query: researchQuery,
-    ...(typeof research.maxSources === 'number'
-      ? { maxSources: research.maxSources }
-      : {}),
-  });
 }
 
 export function resolveChatExtraAllowedDirs({

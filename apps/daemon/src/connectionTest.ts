@@ -35,12 +35,10 @@ import {
   resolveSystemProxyEnv,
 } from '@open-design/platform';
 import { attachAcpSession } from './agent-protocol/index.js';
-import { attachPiRpcSession } from './agent-protocol/index.js';
 import { attachDshProfileSession } from './agent-protocol/index.js';
 import { createAgyStreamHandler, encodeAgyUserMessage } from './runtimes/agy-stream.js';
 import { createClaudeStreamHandler } from './runtimes/claude-stream.js';
 import { diagnoseClaudeCliFailure } from './claude-diagnostics.js';
-import { createCopilotStreamHandler } from './copilot-stream.js';
 import { createJsonEventStreamHandler } from './runtimes/json-event-stream.js';
 import { agentCliEnvForAgent, validateAgentCliEnv } from './app-config.js';
 import {
@@ -48,19 +46,17 @@ import {
   antigravityQuotaGuidance,
   classifyAgentAuthFailure,
   classifyAgentServiceFailure,
-  cursorAuthGuidance,
+  genericAuthGuidance,
   normalizeDeepSeekHarnessFailure,
   probeAgentAuthStatus,
 } from './runtimes/auth.js';
 import { loadMmdRouteLaunchEnv } from './runtimes/mmd-routes.js';
 import {
-  buildLegacyMaxTokensParam,
   buildMaxCompletionTokensParam,
   buildOpenAIChatTokenParam,
   isAzureOpenAIHostname,
   isUnsupportedMaxTokensError,
 } from './integrations/openai-chat-token-params.js';
-import { aihubmixHeaders } from './integrations/aihubmix.js';
 import type { AgentCliEnvPrefs } from './app-config.js';
 import type { RuntimeAgentDef } from './runtimes/types.js';
 import { preparePromptFileForAgent, type PreparedPromptFile } from './runtimes/prompt-file.js';
@@ -103,9 +99,9 @@ export { validateBaseUrl } from '@open-design/contracts/api/connectionTest';
 // whichever caller supplied the base URL. Resolve the hostname and re-run
 // the block-list against every address the system would actually connect to.
 //
-// Loopback is intentionally allowed for local LLM providers like Ollama; any
-// hostname that resolves to a loopback address (including `*.localhost` per
-// RFC 6761 and IPv4-mapped IPv6 loopback) follows that same carve-out.
+// Loopback is intentionally allowed for local OpenAI-compatible LLM servers;
+// any hostname that resolves to a loopback address (including `*.localhost`
+// per RFC 6761 and IPv4-mapped IPv6 loopback) follows that same carve-out.
 //
 // DNS lookup failures are *not* treated as a security signal — the caller is
 // going to surface a connection error from `fetch` anyway, and turning a
@@ -225,12 +221,13 @@ export function validateUserProviderBaseUrl(
  * discriminated union so callers don't have to repeat the
  * `validated.error || !validated.parsed` plumbing.
  *
- * Two callers today:
- *   - `byok-tools.ts` for the chat-tool image/video downloads
- *   - `media.ts` `renderSenseAudioImage` for the CLI agent path
- * Both hand the URL straight to `fetch(...)` next, so pair this
- * guard with `redirect: 'error'` on the fetch to also block a
- * 3xx hop into private space.
+ * No production caller right now: the renderers that materialised a
+ * gateway-returned asset URL went away with their providers. Kept as the
+ * daemon's single validated external-asset fetch primitive — it is the
+ * SSRF-proof way to download a URL an upstream handed back, and it is
+ * covered directly by `tests/asset-ssrf-loopback.test.ts`.
+ * It hands the URL straight to `fetch(...)`, so it pins `redirect: 'error'`
+ * itself to also block a 3xx hop into private space.
  *
  * Returns the DNS-resolved addresses that passed validation on the `ok` branch
  * so callers (e.g. {@link assertAndFetchExternalAsset}) can pin the actual
@@ -918,6 +915,20 @@ function isLikelyAuthErrorText(text: string): boolean {
 
 const GOOGLE_GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 
+// The four protocols that speak the OpenAI chat-completions wire. They share
+// one call shape and one response inspector; they differ only in default base
+// URL (and `custom` has none).
+const OPENAI_WIRE_PROTOCOLS: ReadonlySet<ConnectionTestProtocol> = new Set([
+  'openai',
+  'deepseek',
+  'xai',
+  'custom',
+]);
+
+function isOpenAiWireProtocol(protocol: ConnectionTestProtocol): boolean {
+  return OPENAI_WIRE_PROTOCOLS.has(protocol);
+}
+
 function normalizeProviderTestInput(
   input: ProviderConnectionInput,
 ): ProviderConnectionInput {
@@ -950,12 +961,9 @@ function inspectProviderCompletion(
   const obj = data && typeof data === 'object' ? data as Record<string, unknown> : null;
   if (!obj) return { valid: false };
 
-  if (protocol === 'openai' || protocol === 'azure' || protocol === 'senseaudio' || protocol === 'aihubmix') {
+  if (isOpenAiWireProtocol(protocol)) {
     const responseModel = typeof obj.model === 'string' ? obj.model : '';
     if (
-      // AIHubMix is omitted from the strict response-model check (like Azure):
-      // its gateway routes by model name and may echo a normalized id.
-      (protocol === 'openai' || protocol === 'senseaudio') &&
       enforceResponseModel &&
       responseModel &&
       requestedModel &&
@@ -993,23 +1001,6 @@ function inspectProviderCompletion(
     return {
       valid: Array.isArray((obj as { candidates?: unknown }).candidates),
       sample: 'valid completion',
-    };
-  }
-
-  if (protocol === 'ollama') {
-    const msg = (obj as { message?: { content?: unknown } }).message;
-    const hasContent = typeof msg?.content === 'string';
-    return {
-      valid: Array.isArray((obj as { messages?: unknown }).messages) || hasContent,
-      ...(hasContent ? { sample: truncateSample(msg?.content) } : {}),
-    };
-  }
-
-  if (protocol === 'bedrock') {
-    return {
-      valid: false,
-      kind: 'unknown',
-      detail: 'AWS Bedrock BYOK connection tests need AWS credential signing, which is not supported by the current API-key smoke test.',
     };
   }
 
@@ -1202,116 +1193,6 @@ async function validateLocalOpenAiModel(
   };
 }
 
-function isSenseAudioNonChatModel(model: string): boolean {
-  return (
-    model.startsWith('senseaudio-image-') ||
-    model.startsWith('doubao-seedream-') ||
-    model === 'sensenova-u1-fast' ||
-    model.startsWith('doubao-seedance-') ||
-    model.startsWith('senseaudio-asr-') ||
-    model.startsWith('senseaudio-tts-') ||
-    model.startsWith('senseaudio-music-')
-  );
-}
-
-async function validateSenseAudioNonChatModel(
-  input: ProviderTestRequest,
-  signal: AbortSignal,
-  start: number,
-  requestInit: Pick<RequestInit, 'dispatcher'> = {},
-): Promise<ConnectionTestResponse | null> {
-  if (input.protocol !== 'senseaudio' || !isSenseAudioNonChatModel(input.model)) {
-    return null;
-  }
-
-  const url = appendVersionedApiPath(String(input.baseUrl), '/models');
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...requestInit,
-      method: 'GET',
-      headers: { authorization: `Bearer ${String(input.apiKey)}` },
-      signal,
-      redirect: 'error',
-    });
-  } catch (err) {
-    const latencyMs = Date.now() - start;
-    const kind = networkErrorToKind(err);
-    return {
-      ok: false,
-      kind,
-      latencyMs,
-      model: input.model,
-      detail: networkErrorDetail(err, [input.apiKey]),
-    };
-  }
-
-  const latencyMs = Date.now() - start;
-  let rawText = '';
-  let data: unknown = {};
-  let parseError: unknown = null;
-  try {
-    rawText = await response.text();
-  } catch {
-    rawText = '';
-  }
-  try {
-    data = rawText ? JSON.parse(rawText) : {};
-  } catch (err) {
-    parseError = err;
-  }
-
-  if (parseError && response.ok) {
-    return {
-      ok: false,
-      kind: 'unknown',
-      latencyMs,
-      model: input.model,
-      status: response.status,
-      detail: redactSecrets(
-        parseError instanceof Error ? parseError.message : String(parseError),
-        [input.apiKey],
-      ),
-    };
-  }
-
-  if (!response.ok) {
-    const redactedDetail = redactSecrets(
-      extractProviderErrorDetail(data, rawText).slice(0, 240),
-      [input.apiKey],
-    );
-    return {
-      ok: false,
-      kind: statusToKind(response.status, redactedDetail),
-      latencyMs,
-      model: input.model,
-      status: response.status,
-      detail: redactedDetail,
-    };
-  }
-
-  const modelIds = extractOpenAiModelIds(data);
-  if (!modelIds.includes(input.model)) {
-    return {
-      ok: false,
-      kind: 'not_found_model',
-      latencyMs,
-      model: input.model,
-      status: response.status,
-      detail: `Model "${input.model}" is not reported by SenseAudio /models.`,
-    };
-  }
-
-  return {
-    ok: true,
-    kind: 'success',
-    latencyMs,
-    model: input.model,
-    status: response.status,
-    detail: 'SenseAudio model is available, but this media model is not chat-testable from Settings.',
-  };
-}
-
 interface ProviderCallShape {
   url: string;
   headers: Record<string, string>;
@@ -1432,81 +1313,22 @@ function buildProviderCall(input: ProviderTestRequest): ProviderCallShape {
           return '';
         },
       };
-    case 'aihubmix':
-      // AIHubMix is wire-compatible with OpenAI but carries the fixed APP-Code
-      // attribution header on every request (see aihubmixHeaders). Same body /
-      // response shape as the OpenAI case otherwise.
-      return {
-        url: appendVersionedApiPath(baseUrl, '/chat/completions'),
-        headers: {
-          'content-type': 'application/json',
-          ...aihubmixHeaders(apiKey),
-        },
-        body: {
-          model,
-          ...buildOpenAIChatTokenParam(model, PROVIDER_MAX_TOKENS),
-          messages: [{ role: 'user', content: SMOKE_PROMPT }],
-          stream: false,
-        },
-        extractText: extractOpenAIMessageText,
-      };
     case 'openai':
-    case 'senseaudio':
-      // SenseAudio is wire-compatible with OpenAI (POST /v1/chat/completions,
-      // Bearer auth, identical body + response shape), so the connection
-      // smoke test reuses the same call shape. We default the base URL
-      // upstream-side in chat-routes; this layer assumes the caller passed
-      // a concrete URL via the BYOK form.
+    case 'deepseek':
+    case 'xai':
+    case 'custom':
+      // All four share the OpenAI chat-completions wire. Only the real OpenAI
+      // host may take the Responses API route (decided by the resolved BYOK
+      // OpenCode provider package); deepseek / xai / custom only ever serve
+      // /chat/completions, and @ai-sdk/openai would speak the wrong wire at
+      // them.
       if (input.protocol === 'openai') {
         const runProviderPackage = resolveOpenAIConnectionTestRunProviderPackage(input);
         if (runProviderPackage === '@ai-sdk/openai') {
           return openAIResponsesProviderCall(baseUrl, apiKey, model);
         }
-        if (runProviderPackage === '@ai-sdk/openai-compatible') {
-          return openAIChatCompletionsProviderCall(baseUrl, apiKey, model);
-        }
       }
       return openAIChatCompletionsProviderCall(baseUrl, apiKey, model);
-    case 'azure': {
-      const url = new URL(baseUrl);
-      const basePath = url.pathname.replace(/\/+$/, '');
-      const usesVersionedOpenAIPath = /\/openai\/v\d+(?:$|\/)/.test(basePath);
-      const apiVersion =
-        typeof input.apiVersion === 'string' && input.apiVersion.trim()
-          ? input.apiVersion.trim()
-          : usesVersionedOpenAIPath
-            ? ''
-            : '2024-10-21';
-      url.pathname = usesVersionedOpenAIPath
-        ? `${basePath}/chat/completions`
-        : `${basePath}/openai/deployments/${encodeURIComponent(model)}/chat/completions`;
-      if (usesVersionedOpenAIPath && !apiVersion) {
-        url.searchParams.delete('api-version');
-      }
-      if (apiVersion) {
-        url.searchParams.set('api-version', apiVersion);
-      }
-      return {
-        url: url.toString(),
-        headers: {
-          'content-type': 'application/json',
-          'api-key': apiKey,
-        },
-        body: {
-          ...(usesVersionedOpenAIPath ? { model } : {}),
-          ...buildLegacyMaxTokensParam(PROVIDER_MAX_TOKENS),
-          messages: [{ role: 'user', content: SMOKE_PROMPT }],
-          stream: false,
-        },
-        retryBodyOnUnsupportedMaxTokens: {
-          ...(usesVersionedOpenAIPath ? { model } : {}),
-          messages: [{ role: 'user', content: SMOKE_PROMPT }],
-          stream: false,
-          ...buildMaxCompletionTokensParam(PROVIDER_MAX_TOKENS),
-        },
-        extractText: extractOpenAIMessageText,
-      };
-    }
     case 'google': {
       const effectiveBaseUrl = baseUrl.trim() || GOOGLE_GEMINI_DEFAULT_BASE_URL;
       return {
@@ -1535,32 +1357,6 @@ function buildProviderCall(input: ProviderTestRequest): ProviderCallShape {
         },
       };
     }
-    case 'ollama': {
-      const trimmedBase = baseUrl.replace(/\/+$/, '').replace(/\/api\/?$/, '');
-      return {
-        url: `${trimmedBase}/api/chat`,
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${apiKey}`,
-        },
-        body: {
-          model,
-          messages: [{ role: 'user', content: SMOKE_PROMPT }],
-          stream: false,
-        },
-        extractText: (data) => {
-          const message = (data as { message?: { content?: unknown } }).message;
-          if (message && typeof (message as { content?: unknown }).content === 'string') {
-            return (message as { content: string }).content;
-          }
-          return '';
-        },
-      };
-    }
-    case 'bedrock':
-      throw new Error(
-        'AWS Bedrock BYOK requires AWS credential signing; the current provider smoke test only supports API-key based providers.',
-      );
     default:
       throw new Error(`Unknown protocol: ${(input as { protocol?: string }).protocol}`);
   }
@@ -1662,14 +1458,6 @@ export async function testProviderConnection(
       proxyDispatcher.requestInit,
     );
     if (modelError) return modelError;
-
-    const senseAudioNonChatResult = await validateSenseAudioNonChatModel(
-      normalizedInput,
-      controller.signal,
-      start,
-      proxyDispatcher.requestInit,
-    );
-    if (senseAudioNonChatResult) return senseAudioNonChatResult;
 
     const requestInit = {
       ...proxyDispatcher.requestInit,
@@ -2174,19 +1962,6 @@ function attachAgentStreamHandlers(
       claude.feed(chunk);
     });
     child.on('close', () => claude.flush());
-  } else if (def.streamFormat === 'copilot-stream-json') {
-    const copilot = createCopilotStreamHandler((ev: unknown) => send('agent', ev));
-    child.stdout?.on('data', (chunk: string) => copilot.feed(chunk));
-    child.on('close', () => copilot.flush());
-  } else if (def.streamFormat === 'pi-rpc') {
-    acpSession = attachPiRpcSession({
-      child,
-      prompt,
-      cwd,
-      model: model ?? null,
-      send,
-      imagePaths: [],
-    });
   } else if (def.streamFormat === 'acp-json-rpc') {
     acpSession = attachAcpSession({
       child,
@@ -2492,7 +2267,7 @@ async function testAgentConnectionInternal(
         latencyMs,
         model,
         agentName: def.name,
-        detail: auth.message ?? cursorAuthGuidance(),
+        detail: auth.message ?? genericAuthGuidance(def.name),
         diagnostics: buildDiagnostics(),
       };
     }
@@ -2567,8 +2342,8 @@ async function testAgentConnectionInternal(
   };
 
   try {
-    if (input.agentId === 'opencode' || input.agentId === 'mimo') {
-      if (input.agentId === 'opencode') await prepareOpenCodeConnectionTestCwd(tempDir);
+    if (input.agentId === 'opencode') {
+      await prepareOpenCodeConnectionTestCwd(tempDir);
     }
     let args: string[];
     try {
@@ -2601,10 +2376,10 @@ async function testAgentConnectionInternal(
       // fail on unrelated user-installed OpenCode plugins. `opencode run
       // --pure` keeps the smoke test isolated while regular chat runs retain
       // the user's full plugin environment.
-      if ((input.agentId === 'opencode' || input.agentId === 'mimo') && !args.includes('--pure')) {
+      if (input.agentId === 'opencode' && !args.includes('--pure')) {
         args.push('--pure');
       }
-      if ((input.agentId === 'opencode' || input.agentId === 'mimo') && !args.includes('--title')) {
+      if (input.agentId === 'opencode' && !args.includes('--title')) {
         args.push('--title', 'Connection test');
       }
     } catch (err) {
@@ -2679,7 +2454,7 @@ async function testAgentConnectionInternal(
         latencyMs: Date.now() - start,
         model,
         agentName: def.name,
-        detail: auth.message ?? cursorAuthGuidance(),
+        detail: auth.message ?? genericAuthGuidance(def.name),
         diagnostics: buildDiagnostics(probeOverrides),
       };
     }
@@ -2828,7 +2603,7 @@ async function testAgentConnectionInternal(
       }
       const stderrTail = sink.getStderrTail().trim();
       const rawStdoutTail = sink.getRawStdoutTail().trim();
-      if ((input.agentId === 'opencode' || input.agentId === 'mimo') && exitedCleanly && rawStdoutTail) {
+      if (input.agentId === 'opencode' && exitedCleanly && rawStdoutTail) {
         const recoveredText = extractOpenCodeTextFromRawStdout(rawStdoutTail).trim();
         if (recoveredText) {
           return resultFromAgentText(recoveredText, {
@@ -2951,7 +2726,7 @@ async function testAgentConnectionInternal(
           latencyMs,
           model,
           agentName: def.name,
-          detail: auth.message ?? cursorAuthGuidance(),
+          detail: auth.message ?? genericAuthGuidance(def.name),
           diagnostics: buildDiagnostics({
             phase: 'connection_smoke_test',
             exitCode: winner.code,
@@ -3019,7 +2794,6 @@ async function testAgentConnectionInternal(
     if (
       def.promptViaStdin &&
       child.stdin &&
-      def.streamFormat !== 'pi-rpc' &&
       def.streamFormat !== 'dsh-profile-jsonl'
     ) {
       child.stdin.on('error', (err: NodeJS.ErrnoException) => {

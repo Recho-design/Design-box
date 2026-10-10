@@ -12,8 +12,6 @@ type ParserKind = string;
 
 type ParserState = {
   openCodeToolEvents: OpenCodeToolEvents;
-  cursorTextSoFar: string;
-  cursorTurnStart: number;
   openCodeToolUses: Set<string>;
   openCodeToolResults: Set<string>;
   codexToolUses: Set<string>;
@@ -285,7 +283,7 @@ function handleOpenCodeEvent(obj: unknown, onEvent: StreamEventHandler, state: P
     // rendered as an assistant message — the run looked like a fast clean
     // success while the user actually got nothing back. See issue #691.
     //
-    // Shape mirrors the qoder-stream contract (`{type, message, raw}`) so
+    // Shape mirrors the stream-parser error contract (`{type, message, raw}`) so
     // the daemon's existing error-handling path recognises it without
     // further wiring.
     const message = extractErrorMessage(
@@ -417,65 +415,6 @@ function handleGeminiEvent(obj: unknown, onEvent: StreamEventHandler, state: Par
   }
 
   return false;
-}
-
-function handleKimiEvent(obj: unknown, onEvent: StreamEventHandler): boolean {
-  if (!isRecord(obj)) return false;
-
-  if (obj.role === 'assistant' && Array.isArray(obj.tool_calls)) {
-    for (const rawCall of obj.tool_calls) {
-      const call = isRecord(rawCall) ? rawCall : null;
-      const fn = isRecord(call?.function) ? call.function : null;
-      const id = typeof call?.id === 'string' && call.id.trim()
-        ? call.id.trim()
-        : null;
-      const name = typeof fn?.name === 'string' && fn.name.trim()
-        ? fn.name.trim()
-        : null;
-      if (!id || !name) continue;
-      const input = safeParseJson(fn?.arguments) ?? fn?.arguments ?? null;
-      onEvent({ type: 'tool_use', id, name, input });
-    }
-    return true;
-  }
-
-  if (
-    obj.role === 'tool' &&
-    typeof obj.tool_call_id === 'string' &&
-    obj.tool_call_id.trim()
-  ) {
-    onEvent({
-      type: 'tool_result',
-      toolUseId: obj.tool_call_id.trim(),
-      content: stringifyContent(obj.content),
-      isError: false,
-    });
-    return true;
-  }
-
-  if (
-    obj.role === 'assistant' &&
-    typeof obj.content === 'string' &&
-    obj.content.length > 0
-  ) {
-    onEvent({ type: 'text_delta', delta: obj.content });
-    return true;
-  }
-
-  if (obj.role === 'meta' && obj.type === 'session.resume_hint') {
-    return true;
-  }
-
-  return false;
-}
-
-function extractCursorText(message: unknown): string {
-  const content = isRecord(message) ? message.content : undefined;
-  const blocks = Array.isArray(content) ? content : [];
-  return blocks
-    .filter((block): block is { type: 'text'; text: string } => isRecord(block) && block.type === 'text' && typeof block.text === 'string')
-    .map((block) => block.text)
-    .join('');
 }
 
 function normalizeTodoStatus(value: unknown): string {
@@ -626,104 +565,6 @@ function emitCodexTodoList(item: JsonObject, onEvent: StreamEventHandler): boole
     input,
   });
   return true;
-}
-
-function emitCursorTextDelta(text: string, onEvent: StreamEventHandler, state: ParserState): void {
-  // Timestamped assistant events WITHOUT `model_call_id` are cursor-agent's
-  // real-time incremental deltas (`--stream-partial-output`): the final turn
-  // text is the in-order concatenation of every such delta. Emit each one
-  // verbatim — do NOT dedupe by content. Legitimately repeated deltas
-  // (`"ha"`, `"ha"` -> `"haha"`) or a delta that happens to be a prefix of
-  // earlier text are real content, not duplicates; content-based prefix or
-  // equality checks would silently drop them. Duplicate suppression and
-  // dropped-chunk recovery belong to the buffered terminal replay paths
-  // (`model_call_id` and no-timestamp events) via reconcileCursorTurnReplay.
-  if (!text) return;
-  state.cursorTextSoFar += text;
-  onEvent({ type: 'text_delta', delta: text });
-}
-
-/**
- * Reconcile a Cursor terminal replay against the text already emitted for the
- * CURRENT turn. A terminal replay (either a `model_call_id` message or a
- * non-timestamped final assistant message) carries the full text for the
- * current turn only, so it must be compared against
- * `cursorTextSoFar.slice(cursorTurnStart)` — NOT the whole cross-turn buffer,
- * which would miss the current-turn prefix on later turns and re-append the
- * whole replay (duplicate output like "secondsecond turn").
- *
- * Only a verified prefix permits suffix recovery: if the emitted turn text is
- * a prefix of the replay (including the empty case where no chunk arrived),
- * emit the missing suffix. On divergence (a non-final chunk was dropped, so
- * the emitted text is not a prefix) leave the append-only stream untouched
- * rather than duplicate already-shown text. Always advances the turn boundary.
- */
-function reconcileCursorTurnReplay(text: string, onEvent: StreamEventHandler, state: ParserState): void {
-  const emittedTurn = state.cursorTextSoFar.slice(state.cursorTurnStart);
-  if (text && text !== emittedTurn && text.startsWith(emittedTurn)) {
-    const suffix = text.slice(emittedTurn.length);
-    if (suffix) onEvent({ type: 'text_delta', delta: suffix });
-    state.cursorTextSoFar += suffix;
-  }
-  state.cursorTurnStart = state.cursorTextSoFar.length;
-}
-
-function handleCursorEvent(obj: unknown, onEvent: StreamEventHandler, state: ParserState): boolean {
-  if (!isRecord(obj)) return false;
-
-  if (obj.type === 'system' && obj.subtype === 'init') {
-    onEvent({
-      type: 'status',
-      label: 'initializing',
-      model: typeof obj.model === 'string' ? obj.model : undefined,
-    });
-    return true;
-  }
-
-  if (obj.type === 'assistant' && obj.message) {
-    // Cursor sends a final assistant message that replays the full text for
-    // the current turn — either tagged with `model_call_id`, or (fallback)
-    // as a non-timestamped terminal assistant message. Both are reconciled
-    // against the current turn's emitted text via reconcileCursorTurnReplay.
-    if (typeof obj.model_call_id === 'string') {
-      const text = extractCursorText(obj.message);
-      reconcileCursorTurnReplay(text, onEvent, state);
-      return true;
-    }
-    const text = extractCursorText(obj.message);
-    if (!text) return false;
-    if (typeof obj.timestamp_ms === 'number') {
-      // Incremental streaming chunk within a turn — accumulate as usual.
-      emitCursorTextDelta(text, onEvent, state);
-      return true;
-    }
-    // Non-timestamped final assistant message: a terminal replay that marks a
-    // turn boundary. Reconcile against the current turn (not the whole
-    // cross-turn buffer) so later fallback-terminated turns do not duplicate
-    // output, then advance the turn boundary.
-    reconcileCursorTurnReplay(text, onEvent, state);
-    return true;
-  }
-
-  if (obj.type === 'result' && isRecord(obj.usage)) {
-    const usage: Usage = {};
-    if (typeof obj.usage.inputTokens === 'number') usage.input_tokens = obj.usage.inputTokens;
-    if (typeof obj.usage.outputTokens === 'number') usage.output_tokens = obj.usage.outputTokens;
-    if (typeof obj.usage.cacheReadTokens === 'number') {
-      usage.cached_read_tokens = obj.usage.cacheReadTokens;
-    }
-    if (typeof obj.usage.cacheWriteTokens === 'number') {
-      usage.cached_write_tokens = obj.usage.cacheWriteTokens;
-    }
-    onEvent({
-      type: 'usage',
-      usage,
-      durationMs: typeof obj.duration_ms === 'number' ? obj.duration_ms : undefined,
-    });
-    return true;
-  }
-
-  return false;
 }
 
 /**
@@ -1337,8 +1178,6 @@ function handleCodexEvent(obj: unknown, onEvent: StreamEventHandler, state: Pars
 function createParserState(): ParserState {
   return {
     openCodeToolEvents: new OpenCodeToolEvents(),
-    cursorTextSoFar: '',
-    cursorTurnStart: 0,
     openCodeToolUses: new Set<string>(),
     openCodeToolResults: new Set<string>(),
     codexToolUses: new Set<string>(),
@@ -1398,8 +1237,8 @@ export function createJsonEventStreamHandler(
   // Unrecognised lines are streamed to the browser and persisted as `raw`
   // events that nothing renders. They are bounded here, at the source, so the
   // live SSE fan-out, the daemon's run event buffer and the stored transcript
-  // all carry the same bounded line — a cursor-agent `editToolCall` completion
-  // alone repeats the edited file twice (see run-event-payload-budget.ts).
+  // all carry the same bounded line — a single tool-call completion frame
+  // alone can repeat a whole file twice (see run-event-payload-budget.ts).
   function handleLine(line: string): void {
     let obj: unknown;
     try {
@@ -1413,8 +1252,6 @@ export function createJsonEventStreamHandler(
 
     if (kind === 'opencode' && handleOpenCodeEvent(obj, onEvent, state)) return;
     if (kind === 'gemini' && handleGeminiEvent(obj, onEvent, state)) return;
-    if (kind === 'kimi' && handleKimiEvent(obj, onEvent)) return;
-    if (kind === 'cursor-agent' && handleCursorEvent(obj, onEvent, state)) return;
     if (kind === 'codex' && handleCodexEvent(obj, onEvent, state)) return;
 
     onEvent(boundedRawAgentEvent(line, obj));

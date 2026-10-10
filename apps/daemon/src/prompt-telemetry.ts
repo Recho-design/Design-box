@@ -22,7 +22,6 @@ export type PromptTelemetrySectionKind =
   | 'formOverride'
   | 'daemonSystemPrompt'
   | 'runtimeToolPrompt'
-  | 'researchCommandContract'
   | 'runContextPrompt'
   | 'clientSystemPrompt'
   | 'echoGuard'
@@ -144,7 +143,6 @@ const REDACTED_CONTENT_KINDS = new Set<PromptTelemetrySectionKind>([
   'formOverride',
   'daemonSystemPrompt',
   'runtimeToolPrompt',
-  'researchCommandContract',
   'runContextPrompt',
   'clientSystemPrompt',
   'echoGuard',
@@ -164,7 +162,6 @@ const SECTION_PRIORITY = new Map<PromptTelemetrySectionKind, number>([
   ['designSystemPrompt', 5],
   ['pluginStagePrompt', 5],
   ['odNextExactFinalText', 1],
-  ['researchCommandContract', 6],
   ['runContextPrompt', 7],
   ['echoGuard', 8],
   ['userRequest', 9],

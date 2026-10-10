@@ -53,7 +53,7 @@ export function parseMediaExecutionPolicyInput(value: unknown):
       if (typeof surface !== 'string' || !MEDIA_SURFACE_SET.has(candidate)) {
         return {
           ok: false,
-          message: 'mediaExecution.allowedSurfaces may only include image, video, or audio',
+          message: 'mediaExecution.allowedSurfaces may only include image or video',
         };
       }
       if (!surfaces.includes(candidate)) surfaces.push(candidate);

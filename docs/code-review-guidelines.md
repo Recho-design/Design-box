@@ -34,11 +34,10 @@ Run this test **before** reviewing implementation details. A PR passes only when
 A PR passes the relevance test when **all** of the following hold:
 
 - The PR description identifies the OpenDesign feature, command, protocol, package, resource format, or runtime path being changed.
-- Tests exercise existing OpenDesign flows through their public seams: artifact generation/rendering via documented daemon APIs, daemon HTTP/SSE endpoints, web UI on shipped routes, desktop/packaged launch behavior, sidecar status/IPC, `tools-dev`/`tools-pack` lifecycle commands, functional-skill/design-template/design-system/plugin/craft resource loading, or documented cross-boundary smoke behavior. Rendering domain content through a generic primitive does **not** count.
-- Tests target real routes, DOM, APIs, commands, fixtures, and user flows that exist in this repository.
-- Tests use the repository's existing harness, base URL, and lifecycle conventions — not hard-coded standalone app URLs.
-- Test assertions provide real signal. Tautological assertions (e.g. `expect(x + y).toBeGreaterThanOrEqual(0)`) are not coverage.
-- New sample content is a maintained fixture for an OpenDesign capability, minimal enough to support the test, and stored under the [first-party fixture rule](#first-party-fixture-rule).
+- The change exercises existing OpenDesign flows through their public seams: artifact generation/rendering via documented daemon APIs, daemon HTTP/SSE endpoints, web UI on shipped routes, desktop/packaged launch behavior, sidecar status/IPC, `tools-dev`/`tools-pack` lifecycle commands, functional-skill/design-template/design-system/plugin/craft resource loading, or documented cross-boundary behavior. Rendering domain content through a generic primitive does **not** count.
+- Validation targets real routes, DOM, APIs, commands, and user flows that exist in this repository.
+- Validation uses the repository's existing lifecycle conventions (`tools-dev`/`tools-pack` control plane) — not hard-coded standalone app URLs.
+- New sample content is a maintained fixture for an OpenDesign capability, minimal enough to support the change, and stored under the [first-party fixture rule](#first-party-fixture-rule).
 - New scripts use the documented `pnpm tools-dev` or `pnpm tools-pack` control plane and belong to an existing owned package/tool. Ad hoc launchers that hard-code local paths or assume user-specific tools are out of scope.
 
 Domain-specific UI or content (a customer vertical, marketing experiment, unrelated rendering demo, arbitrary product page) is out of scope unless it is explicitly a first-party OpenDesign fixture and the PR explains which OpenDesign capability it validates.
@@ -51,8 +50,8 @@ Governance documents — `AGENTS.md` files, contribution guides, review guidelin
 
 A fixture qualifies as first-party only when **all three** are true:
 
-1. It lives in `skills/`, `design-templates/`, `design-systems/`, `plugins/_official/`, `craft/`, the owning package's `tests/` directory, or `e2e/resources/`.
-2. It is referenced by a maintained test or runtime path.
+1. It lives in `skills/`, `design-templates/`, `design-systems/`, `plugins/_official/`, or `craft/`.
+2. It is referenced by a maintained runtime path.
 3. The PR description names that consumer.
 
 ### Close instead of request changes (maintainer-only)
@@ -60,7 +59,7 @@ A fixture qualifies as first-party only when **all three** are true:
 A maintainer (not any reviewer) may close instead of requesting changes when **any** of these are true and the core change is not salvageable on the existing branch:
 
 - The target product is wrong (PR builds a separate app, demo, or customer vertical).
-- The test harness is for another app.
+- The validation harness is for another app.
 - The DOM/API assumptions do not exist in this repo.
 - Scripts conflict with repository lifecycle rules in a way that requires rebuilding the change from scratch.
 
@@ -73,7 +72,6 @@ This is the canonical list. Any PR that recreates one of these is out of scope u
 - Removed app and package boundaries: `apps/nextjs`, `packages/shared`, `apps/landing-page`.
 - Root lifecycle aliases: `pnpm dev`, `pnpm dev:all`, `pnpm daemon`, `pnpm preview`, `pnpm start`.
 - Root aggregate aliases: `pnpm test`, `pnpm build`.
-- Root e2e aliases (e2e commands belong in the `e2e/` package — see `e2e/AGENTS.md`).
 - Cross-app private imports — for example, `apps/web/**` importing `apps/daemon/src/**`.
 - Shared web/daemon API shapes placed anywhere other than `packages/contracts`.
 - Next.js, Express, Node filesystem/process APIs, browser APIs, SQLite, daemon internals, or sidecar control-plane dependencies added to `packages/contracts`.
@@ -84,7 +82,7 @@ This is the canonical list. Any PR that recreates one of these is out of scope u
 
 ## 3. Ownership and scope
 
-Treat scope as an approval gate. This repository is for OpenDesign itself: the local web/daemon/desktop product, its sidecar and packaging infrastructure, shared contracts, development/release tools, e2e coverage of those surfaces, and first-party functional skills, rendering templates, design systems, plugins, and craft resources consumed by that product.
+Treat scope as an approval gate. This repository is for OpenDesign itself: the local web/daemon/desktop product, its sidecar and packaging infrastructure, shared contracts, development/release tools, and first-party functional skills, rendering templates, design systems, plugins, and craft resources consumed by that product.
 
 Accept a PR only when its boundary is clear, why the change belongs here is clear, and validation proves the touched boundary still works.
 
@@ -99,7 +97,7 @@ A PR is in scope when it passes the [Product relevance test](#1-product-relevanc
 | `apps/` | `apps/AGENTS.md`, then the nearest app-level `AGENTS.md` |
 | `packages/` | `packages/AGENTS.md`, then any nearer package guide |
 | `tools/` | `tools/AGENTS.md`, then any nearer tool guide |
-| `e2e/` | `e2e/AGENTS.md` |
+| `shells/` | `shells/terminal/AGENTS.md` |
 | `skills/` | `skills/AGENTS.md` |
 | `design-templates/` | `design-templates/AGENTS.md` |
 | `plugins/` | `plugins/AGENTS.md` |
@@ -112,7 +110,7 @@ infer ownership from a stale list in a PR description or this review guide.
 
 Every in-scope PR must also:
 
-- Keep source/test placement, TypeScript-first rules, runtime path conventions, and command boundaries intact.
+- Keep TypeScript-first rules, runtime path conventions, and command boundaries intact.
 - Include validation proportional to the changed boundary (see [Approval bar](#7-approval-bar)).
 
 ### Out of scope
@@ -120,10 +118,8 @@ Every in-scope PR must also:
 A PR is out of scope when it does any of the following — block or require a split:
 
 - Piggybacks unrelated cleanup, formatting, dependency churn, migrations, or feature work onto a focused fix.
-- Adds tests, fixtures, scripts, or UI for a separate product/domain that does not exercise an existing OpenDesign feature.
+- Adds code, fixtures, scripts, or UI for a separate product/domain that does not exercise an existing OpenDesign feature.
 - Recreates anything in [Forbidden surfaces](#2-forbidden-surfaces).
-- Adds tests under `src/`, puts package/app tests outside the package-level `tests/` directory, puts Playwright UI tests outside `e2e/ui/`, or moves app-owned component coverage into e2e.
-- Adds feature-depth scenarios to `e2e/specs/` instead of `e2e/tests/` (see `e2e/AGENTS.md` for the test-pyramid rules).
 - Changes functional skills, rendering templates, design systems, plugins, or craft content in a way that requires new runtime semantics without updating the owning daemon/resource contract and validation.
 - Introduces speculative abstractions, new packages, new lifecycle entrypoints, broad architecture rewrites, or cross-cutting migrations without a current product need and explicit ownership.
 - Changes generated output, vendored files, or compatibility JavaScript without the documented reason required by `AGENTS.md`.
@@ -132,22 +128,21 @@ A PR is out of scope when it does any of the following — block or require a sp
 
 After the relevance test passes, apply the lane that matches the PR. PRs that span lanes must satisfy each relevant lane and should still have one clear primary owner.
 
-### 4.1 Default (code, tests, command surfaces)
+### 4.1 Default (code, command surfaces)
 
-For TypeScript source, package/tool/app behavior, tests, command surfaces, runtime paths, packaging, and e2e automation.
+For TypeScript source, package/tool/app behavior, command surfaces, runtime paths, and packaging.
 
 **Accept when:**
 
 - The change belongs to an existing ownership area or updates the public seam connecting them.
 - Shared behavior lives in the owning package instead of being copied across app internals.
-- Tests are placed in the owning layer: package/app/tool tests in sibling `tests/`, Playwright UI automation in `e2e/ui/`, cross-boundary checks in `e2e/tests/`, PR/release smoke in `e2e/specs/`.
 - Validation covers the changed surface (see [Approval bar](#7-approval-bar)).
 
 **Block when:**
 
 - Unrelated refactors, dependency churn, formatting sweeps, or broad migrations hide the actual product change.
 - The PR bypasses contracts/protocols/package primitives or documented lifecycle tools to reach across boundaries.
-- New runtime or command entrypoints duplicate `tools-dev`, `tools-pack`, package-scoped commands, or documented e2e commands.
+- New runtime or command entrypoints duplicate `tools-dev`, `tools-pack`, or package-scoped commands.
 
 ### 4.2 Contract and protocol changes
 
@@ -159,7 +154,7 @@ For any change to `packages/contracts`, `packages/sidecar-proto`, persisted SQLi
 - Changes are backwards-compatible, OR there is an explicit migration plan: schema migration script, backfill strategy, or one-release window of compatible reads.
 - `packages/contracts` stays free of Next.js, Express, Node filesystem/process APIs, browser APIs, SQLite, daemon internals, and sidecar control-plane dependencies.
 - Sidecar process stamps still have exactly five fields: `channel`, `namespace`, `source`, `mode`, `app`.
-- Both producers and consumers have type/test coverage of the new shape.
+- Both producers and consumers have type coverage of the new shape, and the shared shape has been exercised on a real path where practical.
 
 **Block when:**
 
@@ -276,14 +271,14 @@ Review in this order. Each priority lists the concrete checks for it.
 
 - Confirm the change solves the stated problem without introducing regressions.
 - Read the issue, task, or PR description first; identify intended behavior before inspecting the diff.
-- For bug fixes, confirm the author established a feedback loop before the fix: did they reproduce the failure, minimize it, add a regression test at the right seam (or explain why no test seam fits), and re-run the original failing scenario? A bugfix without a reproduction or regression signal is a candidate for blocking review.
+- For bug fixes, confirm the author established a feedback loop before the fix: did they reproduce the failure along a real path (daemon HTTP API, `od` CLI, running web UI, or desktop app — the repository carries no test layer), minimize it, and re-run the original failing scenario to confirm the fix changes that behavior? A bugfix without a reproduction or a regression signal is a candidate for blocking review.
 - For UI changes, check accessibility, loading/error/empty states, keyboard behavior, and responsive layout.
 
 ### 5.2 Repository boundaries
 
 - Follow the ownership table above and read every applicable `AGENTS.md` from the root to the nearest changed directory before reviewing implementation details.
 - Confirm app internals stay private, shared DTOs live in `packages/contracts`, and sidecar concerns stay out of app business logic.
-- Confirm source/test placement: source-only `src/`, package/app/tool tests in sibling `tests/`, Playwright UI in `e2e/ui/`, cross-app/cross-runtime checks in `e2e/tests/`, PR/release smoke in `e2e/specs/`.
+- Confirm `src/` stays source-only, with generated output under `dist/` and documented compatibility artifacts where the guard allows them.
 - Look for stale references to anything in [Forbidden surfaces](#2-forbidden-surfaces).
 
 ### 5.3 Contracts and compatibility
@@ -326,9 +321,9 @@ Approve only when **all** of the following hold:
 
 - The change satisfies the requested behavior and respects repository boundaries.
 - `pnpm guard` and `pnpm typecheck` have run.
-- Package-scoped tests/builds matching the changed files have run (`pnpm --filter <package> test`/`build`, `e2e/specs/...` when relevant). Stamp/namespace changes have validated two concurrent namespaces and run desktop `inspect eval` and `inspect screenshot` per namespace. Path/log changes have run `pnpm tools-dev logs --namespace <name> --json` and confirmed log paths under `.tmp/tools-dev/<namespace>/...`.
+- Package-scoped builds matching the changed files have run (`pnpm --filter <package> build` when relevant), and real-path validation matching the change has been exercised (daemon HTTP API, `od` CLI, running web UI, desktop app — the repository carries no test layer). Stamp/namespace changes have validated two concurrent namespaces and run desktop `inspect eval` and `inspect screenshot` per namespace. Path/log changes have run `pnpm tools-dev logs --namespace <name> --json` and confirmed log paths under `.tmp/tools-dev/<namespace>/...`.
 - Any skipped validation is explicitly justified in the PR.
-- New risk is proportionate to the change and covered by tests, types, guards, or clearly documented manual validation.
+- New risk is proportionate to the change and covered by types, guards, or clearly documented manual validation.
 - Follow-up work is unnecessary for correctness or explicitly tracked outside the review.
 
 ### Documentation-only review additions
@@ -345,9 +340,9 @@ For documentation-heavy PRs, reviewers should also check:
 
 Concrete examples of PRs that should be closed under [Close instead of request changes](#close-instead-of-request-changes-maintainer-only). Tag references back to the [Product relevance test](#1-product-relevance-test) rules they violated.
 
-- **Domain-specific app smuggled in as tests.** A PR adding tests for a "Quranic Arabic Learning App" with selectors like `#dashboard`, `#exercise`, `.vocabulary-item`, `.arabic-word` when those surfaces are not part of OpenDesign — violates the "tests target real routes/DOM/APIs" rule.
-- **Standalone-app E2E URLs.** Playwright tests hard-coding `http://localhost:17573/index.html` instead of using the configured OpenDesign app flow — violates the "use the existing harness, base URL, and lifecycle conventions" rule.
-- **Tautological assertions.** `expect(count + exerciseCount).toBeGreaterThanOrEqual(0)` — violates the "test assertions provide real signal" rule.
+- **Domain-specific app smuggled in as fixtures.** A PR adding scripts or fixtures for a "Quranic Arabic Learning App" with selectors like `#dashboard`, `#exercise`, `.vocabulary-item`, `.arabic-word` when those surfaces are not part of OpenDesign — violates the "validation targets real routes/DOM/APIs" rule.
+- **Standalone-app URLs.** Validation scripts hard-coding `http://localhost:17573/index.html` instead of using the configured OpenDesign app flow — violates the "use the existing lifecycle conventions" rule.
+- **Tautological validation.** A validation script whose checks can never fail (e.g. asserting a count is `>= 0`) — violates the "validation provides real signal" rule.
 - **Ad hoc launcher script.** A new root script that hard-codes `~/projects/open-design`, assumes a user-specific tool such as `fnm`, or bypasses `pnpm tools-dev` — violates the "scripts use the documented control plane" rule and recreates a [Forbidden surface](#2-forbidden-surfaces).
 
-A reasonable underlying intent (e.g. "we need RTL or Arabic coverage") does not justify keeping such a PR open. Ask for a fresh PR that exercises the actual OpenDesign app through the existing harness.
+A reasonable underlying intent (e.g. "we need RTL or Arabic coverage") does not justify keeping such a PR open. Ask for a fresh PR that exercises the actual OpenDesign app through the existing control plane.

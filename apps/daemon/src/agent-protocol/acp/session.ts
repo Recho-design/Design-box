@@ -1328,7 +1328,7 @@ export function attachAcpSession({
     },
     // The durable upstream session handle to persist for resume, or null when
     // none was reported (older agents, or a handshake that never established a
-    // session). Mirrors pi-rpc's getLastSessionPath().
+    // session). Mirrors the session-file discovery the other adapters use.
     getDurableSessionId() {
       return durableSessionId;
     },

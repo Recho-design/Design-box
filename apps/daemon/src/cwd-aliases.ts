@@ -99,7 +99,7 @@ async function copyTreeDereferenced(srcDir: string, destDir: string): Promise<vo
  * reach skill side files via a cwd-relative path. Idempotent and
  * non-throwing — failures are logged and surfaced via the result so the
  * caller falls back to absolute-path delivery (`--add-dir` for
- * Claude/Copilot, embedded absolute path in the preamble for others).
+ * Claude, embedded absolute path in the preamble for others).
  *
  * The previous-turn copy is replaced wholesale on every call, which is
  * the simplest correct way to handle skill-source updates (e.g. the

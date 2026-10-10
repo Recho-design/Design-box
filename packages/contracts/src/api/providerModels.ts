@@ -11,8 +11,8 @@ export interface ProviderModelsRequest extends ReasoningExecutionRequestFields {
   protocol: ConnectionTestProtocol;
   baseUrl: string;
   apiKey: string;
-  // Azure only. Kept in the contract so the request shape can stay aligned
-  // with provider testing, even though Azure model discovery is not supported.
+  // Retained for shape compatibility with existing callers; the daemon no
+  // longer branches on it for any protocol.
   apiVersion?: string;
 }
 

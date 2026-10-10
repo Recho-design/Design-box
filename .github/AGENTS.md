@@ -1,6 +1,6 @@
 # GitHub automation guide
 
-This directory is still only partially standardized. Several historical workflows and helper locations do not yet follow one uniform shape. Do not copy old patterns blindly. For new work, bug fixes, and cleanup, use the `ci.yml` + `comment.atom.yml` + `autofix.atom.yml` + `report.atom.yml` + `.github/scripts/handoff.py` system as the reference topology unless a maintainer explicitly chooses a different boundary.
+This directory is still only partially standardized. Several historical workflows and helper locations do not yet follow one uniform shape. Do not copy old patterns blindly. For new work, bug fixes, and cleanup, use the `ci.yml` + `comment.atom.yml` + `autofix.atom.yml` + `.github/scripts/handoff.py` system as the reference topology unless a maintainer explicitly chooses a different boundary.
 
 ## Required reading
 
@@ -9,17 +9,15 @@ Before changing GitHub automation, read the current versions of:
 - `.github/workflows/ci.yml`
 - `.github/workflows/comment.atom.yml`
 - `.github/workflows/autofix.atom.yml`
-- `.github/workflows/report.atom.yml`
 - `.github/scripts/handoff.py`
 - `.github/config/runners.json`, `.github/config/scopes.json`, and `.github/config/convergence.json`
 - `.github/scripts/runners.py`, `.github/scripts/scopes.py`, and `.github/scripts/convergence.py`
 - `.github/workflows/convergence.atom.yml` and `.github/scripts/lib/r2.py` when changing reusable workload results
 - `docs/ci/workload-products.md` when changing reusable workload product publication or restoration
 - `specs/current/ci.md` when changing scope rules, confidence tiers, or planner invariants
-- `e2e/tests/packaged-smoke-workflow.test.ts`
-- `scripts/approve-fork-pr-workflows.ts` and `e2e/tests/scripts/approve-fork-pr-workflows.test.ts` when touching fork PR approval behavior
+- `scripts/approve-fork-pr-workflows.ts` when touching fork PR approval behavior
 
-If the change affects cross-workflow behavior, update the topology tests instead of relying only on workflow YAML review.
+If the change affects cross-workflow behavior, update the relevant workflow/script self-checks instead of relying only on workflow YAML review.
 
 ## Architecture
 
@@ -38,12 +36,11 @@ Atomic capability layer:
 - Capability workflows perform reusable trusted operations from well-defined inputs.
 - `comment.atom.yml` consumes `handoff-comment-*` artifacts and upserts pure text PR comments.
 - `autofix.atom.yml` consumes `handoff-autofix-*` artifacts and applies same-repository patches.
-- `report.atom.yml` consumes `handoff-report-*` artifacts and handles advanced comments that need trusted materialization, such as dependency install, R2 access, artifact processing, or report generation before upsert.
 - `rerun.atom.yml` watches completed `ci` runs and requests one `gh run rerun --failed` when leaf jobs died to runner/spot cancel. Decision logic lives in `.github/scripts/rerun_infra_cancel.py`; it must not rerun ordinary assertion failures or stale heads.
 - `convergence.atom.yml` consumes successful `handoff-convergence-*` artifacts and is the sole trusted publisher of immutable reusable workload results.
-- `.github/scripts/handoff.py` owns artifact names, directory layout, discovery, and contract validation for `comment`, `autofix`, `report`, and `convergence` handoffs.
+- `.github/scripts/handoff.py` owns artifact names, directory layout, discovery, and contract validation for `comment`, `autofix`, and `convergence` handoffs.
 
-Default rule: do not add a new domain-specific follow-on workflow such as `foo.comment.atom.yml`, `foo.autofix.atom.yml`, or `foo.report.atom.yml` until the flow has been tested against these existing atomic capabilities.
+Default rule: do not add a new domain-specific follow-on workflow such as `foo.comment.atom.yml` or `foo.autofix.atom.yml` until the flow has been tested against these existing atomic capabilities.
 
 ## Directory conventions
 
@@ -99,7 +96,6 @@ Use `.github/scripts/handoff.py` for all CI follow-on artifact names and paths. 
 
 - `handoff/comment/<id>/metadata.json` plus `body.md`
 - `handoff/autofix/<id>/metadata.json` plus `patch.diff`
-- `handoff/report/<id>/metadata.json`
 - `handoff/convergence/<id>/metadata.json` plus `candidate.json`
 
 Artifact names must come from `handoff.py artifact-name <kind> <id>`, and download patterns must come from `handoff.py artifact-pattern <kind>`.
@@ -118,7 +114,7 @@ Use `comment.atom.yml` for pure text PR comments only.
 - The body must contain a stable marker.
 - The workflow validates PR state, draft state, head SHA, and base SHA before upsert.
 - It writes the GitHub API payload through `jq -n --rawfile body ...` and `gh api --input`.
-- It must not install dependencies, access R2, execute report scripts, understand Nix, understand visual diffs, or checkout PR code.
+- It must not install dependencies, access R2, execute scripts, or checkout PR code.
 
 ### `autofix.atom.yml`
 
@@ -132,33 +128,11 @@ Use `autofix.atom.yml` for same-repository patch application.
 - Prefer the configured bot app token for pushes so follow-up CI is triggered as expected.
 - Do not use this workflow for arbitrary commands, generated scripts, or PR-head code execution.
 
-### `report.atom.yml`
-
-Use `report.atom.yml` for advanced comments, meaning comment bodies that are not pure text inputs.
-
-Examples include reports that need:
-
-- downloading and combining artifacts,
-- installing dependencies,
-- accessing R2 or other trusted secrets,
-- rendering media or diffs,
-- generating a rich markdown body from trusted base code.
-
-`report.atom.yml` is a trusted writer and materializer. It may upsert comments directly because that is part of the advanced comment capability, but it must do so with the same file-backed payload hygiene as `comment.atom.yml`.
-
-Rules:
-
-- Treat all PR-produced artifacts as untrusted data.
-- Do not checkout or execute PR-head code in `report.atom.yml`.
-- Checkout trusted base/default code before running repository scripts.
-- Validate PR state, draft state, head SHA, and base SHA before secret use and again before comment upsert when practical.
-- Keep report type dispatch explicit. If multiple report types grow, add a clear handler boundary instead of burying branching in shell fragments.
-
 ## Fork PR approval
 
 `fork-pr-workflow-approval.yml` and `scripts/approve-fork-pr-workflows.ts` are a separate security boundary. They may approve low-risk fork PR `pull_request` runs, but must not approve trusted `workflow_run` capability workflows.
 
-Keep `.github/workflows/ci.yml` as the only approved workflow path unless a maintainer explicitly expands the allowlist. `comment.atom.yml`, `autofix.atom.yml`, `report.atom.yml`, release workflows, deployment workflows, and any workflow with trusted secrets or write permissions must stay outside fork auto-approval.
+Keep `.github/workflows/ci.yml` as the only approved workflow path unless a maintainer explicitly expands the allowlist. `comment.atom.yml`, `autofix.atom.yml`, release workflows, deployment workflows, and any workflow with trusted secrets or write permissions must stay outside fork auto-approval.
 
 ## Common iteration flow
 
@@ -166,16 +140,13 @@ Keep `.github/workflows/ci.yml` as the only approved workflow path unless a main
    - Validation or business decision: start in `ci.yml`.
    - Pure text PR comment: produce `handoff/comment` and let `comment.atom.yml` consume it.
    - Same-repo patch: produce `handoff/autofix` and let `autofix.atom.yml` consume it.
-   - Rich/generated comment: produce `handoff/report` and let `report.atom.yml` materialize and upsert it.
    - New naming, paths, or metadata: update `.github/scripts/handoff.py`.
 2. Update scope routing in `.github/config/scopes.json`, then run `python3 .github/scripts/scopes.py validate`.
 3. Declare workload input closure, execution class, product contract, and explicit reuse opt-in in `.github/config/convergence.json`; use `"*"` until a narrower set has high-confidence evidence.
-4. Update topology coverage in `e2e/tests/packaged-smoke-workflow.test.ts` or the relevant script test.
-5. Run the focused checks:
+4. Run the focused checks:
    - `python3 .github/scripts/handoff.py self-check`
    - `actionlint -color`
-   - `pnpm --filter @open-design/e2e test tests/packaged-smoke-workflow.test.ts`
-6. Run repo-level checks before handing off:
+5. Run repo-level checks before handing off:
    - `pnpm guard`
    - `pnpm typecheck`
 
@@ -185,19 +156,11 @@ Use `git diff --check` before finishing workflow edits.
 
 ### Should I add a new `*.comment.atom.yml` workflow?
 
-Usually no. If the body is already final markdown, produce `handoff/comment` and use `comment.atom.yml`. If the body must be generated from artifacts, secrets, or report code, produce `handoff/report` and use `report.atom.yml`.
-
-### Why not put rich visual report generation in `comment.atom.yml`?
-
-Because `comment.atom.yml` is the pure text comment shell. Installing dependencies, using R2 secrets, downloading screenshots, and generating diffs are advanced comment materialization, which belongs in `report.atom.yml`.
-
-### Why can `report.atom.yml` upsert comments directly?
-
-`report.atom.yml` is not a pure producer. It is the auditable advanced comment capability: materialize a non-pure text comment and publish it. The key boundary is that this power is explicit in one workflow with trusted inputs, stale checks, and file-backed payload hygiene.
+Usually no. If the body is already final markdown, produce `handoff/comment` and use `comment.atom.yml`. Comment bodies that need trusted materialization (dependency install, R2 access, artifact processing) would require a new capability workflow with an explicit trust boundary — add one only after a maintainer decision, never by copying historical patterns.
 
 ### Why does `autofix.atom.yml` skip fork PRs?
 
-Fork PR branches are not writable by the base repository in the same trust model, and pushing generated changes to forks would require a different permission and ownership design. Skip fork PRs and use comments or report output for contributor guidance.
+Fork PR branches are not writable by the base repository in the same trust model, and pushing generated changes to forks would require a different permission and ownership design. Skip fork PRs and use comments for contributor guidance.
 
 ### Can trusted `workflow_run` workflows checkout PR code?
 
@@ -209,4 +172,4 @@ GitHub artifact behavior is easy to drift: artifact names must be unique per upl
 
 ### Where should tests live?
 
-Cross-workflow topology tests belong in `e2e/tests/` when they observe repository-level behavior. Root `scripts/` is test-free (enforced by `pnpm guard`); script behavior-contract coverage lives in `e2e/tests/scripts/`. Do not add one-off `*.test.ts` files just because a workflow helper exists; prefer existing topology coverage and helper self-checks when that is enough.
+This repository no longer carries a test layer. Cross-workflow topology coverage now lives in each helper's `self-check` (for example `python3 .github/scripts/handoff.py self-check`) and workflow-level assertions. Do not add one-off `*.test.ts` files just because a workflow helper exists; prefer helper self-checks when that is enough.

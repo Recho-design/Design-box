@@ -20,12 +20,6 @@ import {
 import type { ImageGenerationRequestSummary } from '../media/image-generation-retry.js';
 import type { RouteDeps } from '../server-context.js';
 import { proxyDispatcherRequestInit } from '../connectionTest.js';
-import {
-  aihubmixCatalogUrl,
-  parseAIHubMixCatalog,
-  AIHUBMIX_DEFAULT_BASE_URL,
-  type AIHubMixCatalogType,
-} from '../integrations/aihubmix.js';
 import { isSandboxModeEnabled } from '../sandbox-mode.js';
 import { createChatArtifactBlobStore } from '../chat-artifacts/blob-store.js';
 import { captureChatArtifactSnapshotFromBytes } from '../chat-artifacts/capture.js';
@@ -195,20 +189,10 @@ function reconciledMediaTaskFile(
 }
 
 function mediaProviderId(model: string): string | undefined {
-  const registered = findMediaModel(model)?.provider;
-  if (registered) return registered;
-  if (model.startsWith('fal-ai/')) return 'fal';
-  if (model.startsWith('aihubmix-')) return 'aihubmix';
-  return undefined;
+  return findMediaModel(model)?.provider;
 }
 
-// Short in-memory cache for the AIHubMix media catalogue so the picker can
-// refresh without hammering the upstream public endpoint. Keyed by
-// `${baseUrl}|${type}`. Values expire after AIHUBMIX_CATALOG_TTL_MS.
-const AIHUBMIX_CATALOG_TTL_MS = 5 * 60 * 1000;
-const aihubmixCatalogCache = new Map<string, { at: number; models: Array<{ id: string; label: string }> }>();
-
-export interface RegisterMediaRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'ids' | 'auth' | 'media' | 'appConfig' | 'orbit' | 'nativeDialogs' | 'projectStore' | 'projectFiles' | 'conversations' | 'research'> {}
+export interface RegisterMediaRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'ids' | 'auth' | 'media' | 'appConfig' | 'orbit' | 'nativeDialogs' | 'projectStore' | 'projectFiles' | 'conversations'> {}
 
 export type LegacyMediaRouteGrantDecision =
   | { ok: true; grant: ToolTokenGrant | null }
@@ -264,7 +248,7 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
   const chatArtifactQuota = resolveChatArtifactQuota(process.env);
   const { authorizeToolRequest, optionalToolGrantFromRequest, requestProjectOverride } = ctx.auth;
   const { randomUUID } = ctx.ids;
-  const { MEDIA_PROVIDERS, MEDIA_ASPECTS, VIDEO_LENGTHS_SEC, AUDIO_DURATIONS_SEC, readMaskedConfig, writeConfig, generateMedia, createMediaTask, persistMediaTask, appendTaskProgress, notifyTaskWaiters, getLiveMediaTask, mediaTaskSnapshot, listMediaTasksByProject, listElevenLabsVoiceOptions } = ctx.media;
+  const { MEDIA_PROVIDERS, MEDIA_ASPECTS, VIDEO_LENGTHS_SEC, readMaskedConfig, writeConfig, generateMedia, createMediaTask, persistMediaTask, appendTaskProgress, notifyTaskWaiters, getLiveMediaTask, mediaTaskSnapshot, listMediaTasksByProject } = ctx.media;
   const { readAppConfig, writeAppConfig } = ctx.appConfig;
   const onAppConfigWritten =
     typeof ctx.appConfig.onAppConfigWritten === 'function'
@@ -275,7 +259,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
   const { getWorkspaceProjectByProjectId, getProject } = ctx.projectStore;
   const { listFiles, resolveProjectDir, resolveProjectFilePath } = ctx.projectFiles;
   const { insertConversation, upsertMessage } = ctx.conversations;
-  const { searchResearch, ResearchError } = ctx.research;
   const getResolvedPort = () => resolvedPortRef.current;
 
   const mediaPolicyForGrant = (grant: ToolTokenGrant | null):
@@ -314,8 +297,8 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     if (!project) return res.status(404).json({ error: 'project not found' });
 
     const surface = req.body?.surface;
-    if (surface !== 'image' && surface !== 'video' && surface !== 'audio') {
-      return sendApiError(res, 400, 'BAD_REQUEST', 'surface must be image, video, or audio');
+    if (surface !== 'image' && surface !== 'video') {
+      return sendApiError(res, 400, 'BAD_REQUEST', 'surface must be image or video');
     }
     const model = typeof req.body?.model === 'string' ? req.body.model : '';
     if (!model) {
@@ -467,17 +450,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
           : undefined,
         length:
           typeof req.body?.length === 'number' ? req.body.length : undefined,
-        duration:
-          typeof req.body?.duration === 'number'
-            ? req.body.duration
-            : undefined,
-        voice: req.body?.voice,
-        audioKind: req.body?.audioKind,
-        language: typeof req.body?.language === 'string' ? req.body.language : undefined,
-        loop: typeof req.body?.loop === 'boolean' ? req.body.loop : undefined,
-        promptInfluence: typeof req.body?.promptInfluence === 'number'
-          ? req.body.promptInfluence
-          : undefined,
         compositionDir: req.body?.compositionDir,
         image: req.body?.image,
         images: Array.isArray(req.body?.images) ? req.body.images : undefined,
@@ -722,75 +694,9 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       providers: MEDIA_PROVIDERS.filter(isMediaProviderOffered),
       image: offeredModelsForSurface('image'),
       video: offeredModelsForSurface('video'),
-      audio: {
-        music: offeredModelsForSurface('audio', 'music'),
-        speech: offeredModelsForSurface('audio', 'speech'),
-        sfx: offeredModelsForSurface('audio', 'sfx'),
-      },
       aspects: MEDIA_ASPECTS,
       videoLengthsSec: VIDEO_LENGTHS_SEC,
-      audioDurationsSec: AUDIO_DURATIONS_SEC,
     });
-  });
-
-  // Live AIHubMix media catalogue. The static IMAGE_MODELS registry only
-  // seeds a couple of AIHubMix entries; the picker calls this to list the full
-  // image-generation catalogue straight from AIHubMix
-  // (GET /api/v1/models?type=image_generation, public). Ids are prefixed
-  // `aihubmix-` so they stay unique and route through the AIHubMix renderer
-  // (which strips the prefix to the wire name). Falls back to the cached copy
-  // on upstream failure so a transient blip doesn't empty the picker.
-  app.get('/api/media/providers/aihubmix/models', async (req, res) => {
-    if (!isLocalSameOrigin(req, getResolvedPort())) {
-      return res.status(403).json({ error: 'cross-origin request rejected' });
-    }
-    const raw = req.query.type;
-    const type: AIHubMixCatalogType =
-      raw === 'llm' || raw === 'video' || raw === 'tts'
-        ? raw
-        : 'image_generation';
-    // This is an unauthenticated, public GET. The AIHubMix catalogue lives at a
-    // single fixed origin, so we deliberately do NOT honour a caller-supplied
-    // `baseUrl` here — letting the caller pick the fetch target would open an
-    // SSRF hole (e.g. pointing the daemon at http://169.254.169.254/ cloud
-    // metadata). Hard-code the official origin instead; a custom BYOK base URL
-    // only ever needs to differ for authenticated chat/media calls, not for
-    // browsing the public model catalogue.
-    const baseUrl = AIHUBMIX_DEFAULT_BASE_URL;
-    const cacheKey = `${baseUrl}|${type}`;
-    const cached = aihubmixCatalogCache.get(cacheKey);
-    if (cached && Date.now() - cached.at < AIHUBMIX_CATALOG_TTL_MS) {
-      return res.json({ ok: true, cached: true, models: cached.models });
-    }
-    const dispatcher = proxyDispatcherRequestInit();
-    try {
-      const resp = await fetch(aihubmixCatalogUrl(baseUrl, type), {
-        ...dispatcher.requestInit,
-        method: 'GET',
-        // The catalogue endpoint is public — no auth header (sending an empty
-        // Bearer would be rejected by some gateways).
-        redirect: 'error',
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!resp.ok) {
-        if (cached) return res.json({ ok: true, stale: true, models: cached.models });
-        return res.status(502).json({ ok: false, detail: `aihubmix catalog ${resp.status}` });
-      }
-      const data = await resp.json();
-      const models = parseAIHubMixCatalog(data).map((m) => ({
-        id: `aihubmix-${m.id}`,
-        label: m.label,
-      }));
-      aihubmixCatalogCache.set(cacheKey, { at: Date.now(), models });
-      return res.json({ ok: true, models });
-    } catch (err: any) {
-      if (cached) return res.json({ ok: true, stale: true, models: cached.models });
-      return res
-        .status(502)
-        .json({ ok: false, detail: String(err && err.message ? err.message : err) });
-    } finally {
-      await dispatcher.close();
-    }
   });
 
   app.get('/api/media/config', async (_req, res) => {
@@ -816,30 +722,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     }
   });
 
-  app.get('/api/media/providers/elevenlabs/voices', async (req, res) => {
-    if (!isLocalSameOrigin(req, getResolvedPort())) {
-      return res.status(403).json({ error: 'cross-origin request rejected' });
-    }
-    try {
-      const rawLimit = Number(req.query.limit);
-      const limit = Number.isFinite(rawLimit) ? rawLimit : undefined;
-      const proxyDispatcher = proxyDispatcherRequestInit(process.env);
-      try {
-        const voices = await listElevenLabsVoiceOptions(PROJECT_ROOT, {
-          limit,
-          requestInit: proxyDispatcher.requestInit,
-        });
-        res.json({ voices });
-      } finally {
-        await proxyDispatcher.close();
-      }
-    } catch (err: any) {
-      const message = String(err && err.message ? err.message : err);
-      const status = message.includes('no ElevenLabs API key') ? 400 : 502;
-      res.status(status).json({ error: message });
-    }
-  });
-
   // Model catalogue for a provider the user configured, for the Settings →
   // Media "fetch models" button. The daemon makes the call instead of the
   // browser so the stored API key never leaves the daemon and the redirect /
@@ -848,9 +730,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
   // providers flagged `supportsModelFetch` are served — either one of those
   // missing would make this an open proxy for any URL in the path.
   app.get('/api/media/providers/:id/model-options', async (req, res) => {
-    // `/model-options`, not `/models`: the earlier-registered AIHubMix public
-    // catalogue (`/api/media/providers/aihubmix/models`, above) would shadow
-    // this generic route and answer it with the old directory contract.
     if (!isLocalSameOrigin(req, getResolvedPort())) {
       return res.status(403).json({ error: 'cross-origin request rejected' });
     }
@@ -1166,48 +1045,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
       const body: any = { error: String(err && err.message ? err.message : err) };
       if (code) body.code = code;
       res.status(status).json(body);
-    }
-  });
-
-  app.post('/api/research/search', async (req, res) => {
-    if (!isLocalSameOrigin(req, getResolvedPort())) {
-      return res.status(403).json({
-        error:
-          'cross-origin request rejected: research search is restricted to the local UI / CLI',
-      });
-    }
-
-    try {
-      const proxyDispatcher = proxyDispatcherRequestInit(process.env);
-      try {
-        const result = await searchResearch({
-          projectRoot: PROJECT_ROOT,
-          query: req.body?.query,
-          maxSources:
-            typeof req.body?.maxSources === 'number'
-              ? req.body.maxSources
-              : undefined,
-          providers: Array.isArray(req.body?.providers)
-            ? req.body.providers
-            : undefined,
-          requestInit: proxyDispatcher.requestInit,
-        });
-        res.json(result);
-      } finally {
-        await proxyDispatcher.close();
-      }
-    } catch (err: any) {
-      if (err instanceof ResearchError) {
-        return res.status(err.status).json({
-          error: { code: err.code, message: err.message },
-        });
-      }
-      res.status(500).json({
-        error: {
-          code: 'RESEARCH_FAILED',
-          message: String(err && err.message ? err.message : err),
-        },
-      });
     }
   });
 

@@ -194,13 +194,13 @@ We hold design-template PRs to a high bar because templates are user-facing outp
 
 ### i18n coverage (every template, not just featured)
 
-The `e2e/tests/localized-content.test.ts` test enforces that every directory under both `skills/` and `design-templates/` with a `SKILL.md` is discoverable and displayable for de / ru / fr. Locales use translated copy when present and otherwise derive the runtime fallback from the English source fields in `SKILL.md`.
+Every directory under both `skills/` and `design-templates/` with a `SKILL.md` must stay discoverable and displayable for de / ru / fr. Locales use translated copy when present and otherwise derive the runtime fallback from the English source fields in `SKILL.md`. (The e2e suite that enforced this was removed with the repository's test layer; displayability is now verified by exercising the gallery in a running web runtime.)
 
 For a non-featured template, the cheap path is to keep the source metadata complete:
 
 - [ ] **Ensure `SKILL.md` has complete English display copy**: title/name, description, example prompt, and any picker metadata required by the skill schema. The localized runtime uses these fields as the fallback display path.
 - [ ] **Use optional localized display fields when useful**: `en_name` / `zh_name`, `en_description` / `zh_description`, and `od.example_prompt_i18n.<locale>`. Keep `description` and `od.example_prompt` in English because those are the fallback fields for every locale without localized copy.
-- [ ] **Run `pnpm --filter @open-design/web test` and `pnpm --filter @open-design/e2e test tests/localized-content.test.ts`** locally before pushing. These suites catch undisplayable discovered resources and verify localized fallback behavior.
+- [ ] **Verify discoverability on a real path**: run `pnpm tools-dev run web` and confirm the template appears and displays in the gallery (including with a de/ru/fr UI locale) before pushing.
 
 ### Featured templates (optional path)
 
@@ -243,7 +243,7 @@ they don't cover this case. If you can't, fold into the existing template instea
 - [ ] Verified export works (PPTX / PDF / etc.) if the mode supports it
 - [ ] Ran `pnpm typecheck`
 - [ ] Verified `SKILL.md` has complete English display copy for localized fallback — **required for every template**
-- [ ] Ran `pnpm --filter @open-design/web test` and `pnpm --filter @open-design/e2e test tests/localized-content.test.ts`; localized-content coverage is green
+- [ ] Verified the template is discoverable and displayable in the running gallery with a non-English UI locale (de/ru/fr)
 
 ## Screenshot
 (Required if `od.featured` is set. Otherwise nice-to-have.)

@@ -201,7 +201,6 @@ export interface ServerContext {
   appConfig: any;
   orbit: any;
   nativeDialogs: any;
-  research: any;
   mcp: {
     pendingAuth: any;
     daemonUrlRef: { current: string };

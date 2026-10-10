@@ -24,7 +24,7 @@ import { useT } from '../../../i18n';
 import type { ImageRow as ImageRowData } from '../../../runtime/chat/contract';
 import { formatElapsed } from '../../../runtime/chat/format';
 import { PixelLiquid } from '../../PixelLiquid';
-import { AudioIcon, FailIcon, ImageIcon, RetryIcon, VideoIcon } from './icons';
+import { FailIcon, ImageIcon, RetryIcon, VideoIcon } from './icons';
 import { StatusMark } from './StatusMark';
 import styles from './record.module.css';
 
@@ -45,14 +45,18 @@ import styles from './record.module.css';
 type MediaSurface = ImageRowData['surface'];
 
 interface SurfaceCopy {
-  batch: 'chat.record.imageBatch' | 'chat.record.audioBatch' | 'chat.record.videoBatch';
-  count: 'chat.record.imageCount' | 'chat.record.audioCount' | 'chat.record.videoCount';
-  pendingNote: 'chat.record.imagePending' | 'chat.record.audioPending' | 'chat.record.videoPending';
-  view: 'chat.record.viewImage' | 'chat.record.viewAudio' | 'chat.record.viewVideo';
+  batch: 'chat.record.imageBatch' | 'chat.record.videoBatch';
+  count: 'chat.record.imageCount' | 'chat.record.videoCount';
+  pendingNote: 'chat.record.imagePending' | 'chat.record.videoPending';
+  view: 'chat.record.viewImage' | 'chat.record.viewVideo';
   icon: () => ReactElement;
   preview: 'image' | 'glyph';
 }
 
+/* The `audio` entry that used to sit between these two is gone with the audio
+   surface itself: `MEDIA_SURFACES` in `@open-design/contracts` is image +
+   video now, so `row.surface` can no longer name it. The `chat.record.*Audio`
+   copy keys are left in `i18n/types.ts` for the dead-key sweep in S6. */
 const SURFACE_COPY: Record<MediaSurface, SurfaceCopy> = {
   image: {
     batch: 'chat.record.imageBatch',
@@ -61,14 +65,6 @@ const SURFACE_COPY: Record<MediaSurface, SurfaceCopy> = {
     view: 'chat.record.viewImage',
     icon: ImageIcon,
     preview: 'image',
-  },
-  audio: {
-    batch: 'chat.record.audioBatch',
-    count: 'chat.record.audioCount',
-    pendingNote: 'chat.record.audioPending',
-    view: 'chat.record.viewAudio',
-    icon: AudioIcon,
-    preview: 'glyph',
   },
   video: {
     batch: 'chat.record.videoBatch',

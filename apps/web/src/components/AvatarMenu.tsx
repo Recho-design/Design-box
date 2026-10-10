@@ -10,6 +10,7 @@ import {
   agentModelIsSelectable,
   defaultAgentModelId,
   effectiveAgentModelChoice,
+  offeredAgentModelOptions,
 } from './agentModelSelection';
 import {
   modelVersionLabel,
@@ -20,20 +21,10 @@ import {
   providerModelsCacheKey,
 } from './providerModelsCache';
 import { KNOWN_PROVIDERS } from '../state/config';
-import { SUGGESTED_MODELS_BY_PROTOCOL } from '../state/apiProtocols';
 import { fetchProviderModels } from '../providers/provider-models';
-import {
-  canReachWorkspaceBillingEntrance,
-  workspaceBillingAuthorityContext,
-} from '@open-design/contracts';
 import type { AgentInfo, AppConfig, ExecMode, ProviderModelOption } from '../types';
-import { openExternalUrl } from '../providers/registry';
 import { isMacPlatform } from '../utils/platform';
-import {
-  useWorkspaceBillingResponse,
-  useWorkspaceContext,
-  workspaceBillingSummaryForContext,
-} from '../collab/useWorkspaceContext';
+import { useWorkspaceBillingResponse, useWorkspaceContext } from '../collab/useWorkspaceContext';
 import {
   projectWorkspaceContext,
   projectWorkspaceScopeReady,
@@ -250,7 +241,13 @@ export function AvatarMenu({
     () => agents.find((a) => a.id === config.agentId) ?? null,
     [agents, config.agentId],
   );
-  const currentAgentModelOptions = useMemo(() => currentAgent?.models ?? [], [currentAgent]);
+  // Offered options collapse to the synthetic `default` when the daemon only
+  // has its own static table for this CLI (`modelsSource: 'fallback'`); the
+  // readouts below still read the full list. See `offeredAgentModelOptions`.
+  const currentAgentModelOptions = useMemo(
+    () => offeredAgentModelOptions(currentAgent),
+    [currentAgent],
+  );
 
 
 
@@ -291,24 +288,13 @@ export function AvatarMenu({
   // #6142 collapsed this into a read-only readout). Models come from the
   // shared Settings cache when the host passes one, with a local discovery
   // fetch as fallback so surfaces without cache wiring still get the live
-  // catalogue; the curated suggested list seeds the merge either way.
+  // catalogue. Only what `/api/provider/models` returned is offered — the
+  // curated suggestion table this used to merge in is gone.
   const apiProtocol = config.apiProtocol ?? 'anthropic';
-  const byokProvider = useMemo(
-    () =>
-      KNOWN_PROVIDERS.find(
-        (provider) =>
-          provider.protocol === apiProtocol &&
-          (config.apiProviderBaseUrl
-            ? provider.baseUrl === config.apiProviderBaseUrl
-            : false),
-      ) ?? KNOWN_PROVIDERS.find((provider) => provider.protocol === apiProtocol),
-    [apiProtocol, config.apiProviderBaseUrl],
-  );
   const byokModelsKey = providerModelsCacheKey(
     apiProtocol,
     config.baseUrl ?? '',
     config.apiKey ?? '',
-    config.apiVersion ?? '',
   );
   const [discoveredByokModels, setDiscoveredByokModels] = useState<
     Record<string, ProviderModelOption[]>
@@ -321,11 +307,9 @@ export function AvatarMenu({
   useEffect(() => {
     if (!open || config.mode !== 'api') return;
     if (fetchedByokModels.length > 0) return;
-    if (apiProtocol === 'azure' || apiProtocol === 'ollama') return;
     const baseUrl = config.baseUrl?.trim() ?? '';
     if (!/^https?:\/\//i.test(baseUrl)) return;
-    // AIHubMix's catalogue is public; every other protocol needs a key.
-    if (apiProtocol !== 'aihubmix' && !(config.apiKey ?? '').trim()) return;
+    if (!(config.apiKey ?? '').trim()) return;
     const key = byokModelsKey;
     let cancelled = false;
     void fetchProviderModels({
@@ -341,7 +325,7 @@ export function AvatarMenu({
         }));
       })
       .catch(() => {
-        // Non-fatal: the list falls back to the suggested seed models.
+        // Non-fatal: the list stays empty and the popover shows its empty state.
       });
     return () => {
       cancelled = true;
@@ -356,12 +340,7 @@ export function AvatarMenu({
     fetchedByokModels.length,
   ]);
 
-  const byokModelOptions = mergeProviderModelOptions(
-    fetchedByokModels,
-    byokProvider?.preferredModels.length
-      ? byokProvider.preferredModels
-      : SUGGESTED_MODELS_BY_PROTOCOL[apiProtocol] ?? [],
-  );
+  const byokModelOptions = mergeProviderModelOptions(fetchedByokModels);
 
   // Selected-model readout shown inside the trigger (left of the Send button).
   // Hidden by default in CSS; composer-row contexts opt it in.
@@ -438,7 +417,7 @@ export function AvatarMenu({
             <>
               {hasSelectableModels && currentAgent ? (
                 <div className="avatar-model-section">
-                  {currentAgent.models && currentAgent.models.length > 0 ? (
+                  {currentAgentModelOptions.length > 0 ? (
                     <div className="avatar-select-row">
                       <span className="avatar-select-label">
                         {t('avatar.modelLabel')}
@@ -450,7 +429,7 @@ export function AvatarMenu({
                         data-testid="avatar-model-list"
                       >
                         {(currentModelId &&
-                        !currentAgent.models.some((m) => m.id === currentModelId)
+                        !currentAgentModelOptions.some((m) => m.id === currentModelId)
                           ? [
                               ...currentAgentModelOptions,
                               {

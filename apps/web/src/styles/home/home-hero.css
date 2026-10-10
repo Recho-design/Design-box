@@ -2678,55 +2678,24 @@
 .home-hero__model-option-icon--dalle {
   color: #111827;
 }
-.home-hero__model-option-icon--seed {
-  color: #3c8cff;
-}
-.home-hero__model-option-icon--sense {
-  color: #1A74FF;
-}
 .home-hero__model-option-icon--grok {
   color: #111827;
 }
 .home-hero__model-option-icon--google {
   color: #4285f4;
 }
-.home-hero__model-option-icon--router {
-  color: #353535;
-}
-.home-hero__model-option-icon--flux {
-  color: #0f766e;
-}
-.home-hero__model-option-icon--elevenlabs {
-  color: #111827;
-}
-.home-hero__model-option-icon--fishaudio {
-  color: #7c6ee6;
-}
-.home-hero__model-option-icon--minimax {
-  color: #e73562;
-}
-.home-hero__model-option-icon--suno {
-  color: #111827;
-}
-.home-hero__model-option-icon--audio {
-  color: #c05621;
-}
 .home-hero__model-option-icon--custom {
   color: var(--text-muted);
 }
 [data-theme="dark"] .home-hero__model-option-icon--openai img,
 [data-theme="dark"] .home-hero__model-option-icon--dalle img,
-[data-theme="dark"] .home-hero__model-option-icon--grok img,
-[data-theme="dark"] .home-hero__model-option-icon--elevenlabs img,
-[data-theme="dark"] .home-hero__model-option-icon--suno img {
+[data-theme="dark"] .home-hero__model-option-icon--grok img {
   filter: invert(1) brightness(1.2);
 }
 @media (prefers-color-scheme: dark) {
   html:not([data-theme="light"]) .home-hero__model-option-icon--openai img,
   html:not([data-theme="light"]) .home-hero__model-option-icon--dalle img,
-  html:not([data-theme="light"]) .home-hero__model-option-icon--grok img,
-  html:not([data-theme="light"]) .home-hero__model-option-icon--elevenlabs img,
-  html:not([data-theme="light"]) .home-hero__model-option-icon--suno img {
+  html:not([data-theme="light"]) .home-hero__model-option-icon--grok img {
     filter: invert(1) brightness(1.2);
   }
 }

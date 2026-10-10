@@ -1922,7 +1922,7 @@ export function buildDesignSystemSkillsMarkdown(input: {
   lines.push(
     `This package is a portable **${category}** design system for ${guide.deliverables}. ` +
       'Hand the unzipped folder to any AI coding agent — Claude Code, Codex, Cursor, ' +
-      'Gemini, OpenCode, or Qwen — alongside `DESIGN.md`, and it will produce on-brand ' +
+      'Gemini, or OpenCode — alongside `DESIGN.md`, and it will produce on-brand ' +
       'work without further art direction.',
   );
   lines.push('');

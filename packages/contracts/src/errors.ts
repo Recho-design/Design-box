@@ -24,8 +24,8 @@ export const API_ERROR_CODES = [
   'AGENT_CONNECTION_DROPPED',
   'AGENT_PROMPT_TOO_LARGE',
   // An ACP agent CLI answered `initialize` and then refused to open a session
-  // (`session/new` / `session/load`) without naming a cause of its own — the
-  // shape Kimi Code 0.37.x / 0.38.0 fails in. Nothing streamed, so the run
+  // (`session/new` / `session/load`) without naming a cause of its own.
+  // Nothing streamed, so the run
   // produced nothing, and re-running the identical request against the
   // identical build only reproduces it. The one variable left is the installed
   // CLI build, so clients render "this version can't start a session — change

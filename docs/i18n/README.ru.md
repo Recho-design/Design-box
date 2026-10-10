@@ -641,7 +641,6 @@ gh issue develop <number>   # создать ветку и worktree
 
 # 3. Внесите изменение и запустите проверки
 pnpm guard && pnpm typecheck
-pnpm --filter @open-design/<package> test
 
 # 4. Откройте PR
 gh pr create --fill

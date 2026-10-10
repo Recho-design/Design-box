@@ -23,8 +23,6 @@
 //                         from the buttons on this very card.
 //   RELEASE_STATE         complete | partial; partial means artifacts exist but channel latest was not promoted
 //   RELEASE_NOTE          optional operator-facing explanation for a partial release
-//   MAC_ARM64_SMOKE_RESULT macOS arm64 packaged smoke outcome (success | failure | skipped)
-//   WIN_X64_SMOKE_RESULT  Windows x64 packaged smoke outcome (success | failure | skipped)
 //   STREAM_LABEL          human label for the trigger (e.g. "release 分支推送" / "每日定时")
 //   REPO                  owner/name
 //   RUN_URL               link back to the GitHub Actions run
@@ -75,21 +73,11 @@ const runUrl = optional("RUN_URL");
  * version metadata to R2, which makes it the one honest answer. The workflow
  * conclusion is not: it goes red whenever ANY job in the release run fails,
  * including advisory jobs and jobs that run after publication, so keying off it
- * paints the card red — and hides the smoke annotations — while the downloads
- * beside them work perfectly. A caller that does not pass the URL at all keeps
- * the old BUILD_STATE behaviour, so this stays safe for the lanes that have not
- * been rewired.
+ * paints the card red while the downloads beside it work perfectly. A caller
+ * that does not pass the URL at all keeps the old BUILD_STATE behaviour, so
+ * this stays safe for the lanes that have not been rewired.
  */
 const packagePublished = versionMetadataUrl.length > 0 || buildState === "success";
-
-const smokeFailures = packagePublished
-  ? [
-      { failureText: "macOS arm64 smoke 失败", result: optional("MAC_ARM64_SMOKE_RESULT") },
-      { failureText: "Windows x64 smoke 失败", result: optional("WIN_X64_SMOKE_RESULT") },
-    ]
-      .filter((entry) => entry.result === "failure")
-      .map((entry) => entry.failureText)
-  : [];
 
 const MAX_CHANGELOG_LINES = 30;
 
@@ -163,15 +151,6 @@ function buildCard(): FeishuCard {
   fields.push({ is_short: true, text: { tag: "lark_md", content: `**触发**\n${streamLabel}` } });
 
   const elements: FeishuElement[] = [{ tag: "div", fields }];
-  if (smokeFailures.length > 0) {
-    elements.push({
-      tag: "div",
-      text: {
-        tag: "lark_md",
-        content: `**Smoke 告警**\n${smokeFailures.map((failure) => `- ${failure}`).join("\n")}\n\n产物已继续发布，可通过下方链接下载。`,
-      },
-    });
-  }
   if (releaseState === "partial") {
     const detail = releaseNote.length > 0 ? `\n\n${releaseNote}` : "";
     elements.push({
@@ -203,13 +182,11 @@ function buildCard(): FeishuCard {
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: smokeFailures.length > 0 || releaseState === "partial" ? "orange" : headerTemplate(),
+      template: releaseState === "partial" ? "orange" : headerTemplate(),
       title: {
         tag: "plain_text",
         content: releaseState === "partial"
           ? `⚠️ Open Design ${channelLabel} ${version} · 未更新 ${channelLabel} latest`
-          : smokeFailures.length > 0
-          ? `⚠️ Open Design ${channelLabel} ${version} · ${smokeFailures.join("、")}`
           : `🚀 Open Design ${channelLabel} ${version}`,
       },
     },

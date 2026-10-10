@@ -148,8 +148,6 @@ jobs:
           BUILD_STATE: ${{ needs.build.result }}
           RELEASE_STATE: ${{ needs.build.outputs.release_state }}
           RELEASE_NOTE: ${{ needs.build.outputs.release_state == 'partial' && '共享 beta/latest 当前版本高于 main，已保留原指针；本次仅发布可下载的版本化快照。' || '' }}
-          MAC_ARM64_SMOKE_RESULT: ${{ needs.build.outputs.mac_arm64_smoke_result }}
-          WIN_X64_SMOKE_RESULT: ${{ needs.build.outputs.win_x64_smoke_result }}
           MAC_ARM64_URL: ${{ needs.build.outputs.mac_arm64_url }}
           WIN_URL: ${{ needs.build.outputs.win_x64_url }}
           STREAM_LABEL: "每日定时"
@@ -186,6 +184,6 @@ jobs:
 
             **构建 ref**: `${{ needs.resolve.outputs.ref }}`
 
-            独立的 prerelease Windows canary 不受该 metadata 门禁影响；请结合两个 workflow 判断是发布状态问题还是产品 smoke 问题。
+            独立的 prerelease Windows canary 不受该 metadata 门禁影响；请结合两个 workflow 判断是发布状态问题还是产品构建问题。
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: node --experimental-strip-types tools/release/src/notifications/feishu-notice.ts

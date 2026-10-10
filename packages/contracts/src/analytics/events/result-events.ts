@@ -28,7 +28,7 @@ export interface MediaGenerationResultProps {
   project_id: string;
   task_id: string;
   run_id?: string;
-  surface: 'image' | 'video' | 'audio';
+  surface: 'image' | 'video';
   provider_id: string;
   model_id: string;
   result: 'success' | 'failed';
@@ -676,8 +676,8 @@ export interface RunFinishedProps extends Omit<RunCreatedProps, 'area'> {
   // Cache-hit of the turn's FIRST model call (vs `cache_hit_ratio`, which is the
   // last/aggregate call). The first call is the session-reuse signal: within a
   // turn, later calls re-read the growing cached prefix and inflate the
-  // aggregate regardless of reuse. Per-call-usage agents (claude/opencode/
-  // codebuddy/pi) source this from the stream; codex from its rollout.
+  // aggregate regardless of reuse. Per-call-usage agents (claude/opencode)
+  // source this from the stream; codex from its rollout.
   first_call_input_tokens?: number;
   first_call_cache_read_input_tokens?: number;
   first_call_cache_hit_ratio?: number;

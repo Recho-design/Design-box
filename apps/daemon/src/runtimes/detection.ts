@@ -219,7 +219,7 @@ async function fetchModels(
     });
     const parsed = def.listModels.parse(String(stdout));
     // Empty / null parse result means the CLI didn't actually return a
-    // usable list (e.g. cursor-agent's "No models available"); fall back
+    // usable list (e.g. a CLI's "No models available"); fall back
     // to the static hint so the picker isn't stuck on Default-only.
     if (!parsed || parsed.length === 0) {
       return { models: def.fallbackModels, source: 'fallback' };

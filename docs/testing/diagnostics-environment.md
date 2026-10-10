@@ -65,10 +65,8 @@ error message, command arguments, stdout, stderr, proxy credentials, PAC URL or
 workspace name. A bounded stderr tail may be inspected transiently to categorize
 CLI timeout, proxy, DNS or TLS failures; only the category is retained.
 
-`apps/daemon/tests/services/diagnostics-evidence.test.ts` covers a 100,000-error
-burst, distinct-group and byte limits, idle behavior, collection single-flight,
-slow/failed writes, proxy redaction, and checkpoint rotation. Export tests open
-real ZIPs, verify the added summary and prior checkpoint, and assert redaction.
-Directory and CLI adapter tests verify error evidence without changing business
-results. Windows configuration parsing is exercised with fixtures; it does not
-substitute for Windows-native performance measurements.
+The evidence collector's limits (100,000-error burst cap, distinct-group and
+byte limits, idle behavior, collection single-flight, slow/failed writes, proxy
+redaction, checkpoint rotation) and the ZIP summary layout are product behavior.
+The repository no longer carries the tests that pinned them, so verify changes
+here against a real export (`od diagnostics export --json`) rather than a suite.

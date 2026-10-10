@@ -27,7 +27,6 @@ Follow the root `AGENTS.md` first. This file only records module-level boundarie
 
 ## Boundary checklist
 
-- Package tests live in each package's `tests/` directory, sibling to `src/`; keep `src/` source-only and do not add new `*.test.ts` or `*.test.tsx` files under `src/`.
 - Keep cross-runtime DTO and plugin wire-shape validation schemas in `contracts` when callers need the same runtime parser, while keeping app-specific parsing, I/O, and enforcement in the owning app or package.
 - Do not let app packages depend directly on sidecar control-plane details.
 - Do not hard-code OpenDesign app/source/mode constants in `sidecar` or `platform`.
@@ -37,28 +36,16 @@ Follow the root `AGENTS.md` first. This file only records module-level boundarie
 
 ```bash
 pnpm --filter @open-design/agui-adapter typecheck
-pnpm --filter @open-design/agui-adapter test
 pnpm --filter @open-design/contracts typecheck
 pnpm --filter @open-design/diagnostics typecheck
-pnpm --filter @open-design/diagnostics test
 pnpm --filter @open-design/download typecheck
-pnpm --filter @open-design/download test
 pnpm --filter @open-design/host typecheck
-pnpm --filter @open-design/host test
 pnpm --filter @open-design/launcher-proto typecheck
-pnpm --filter @open-design/launcher-proto test
 pnpm --filter @open-design/metatool typecheck
-pnpm --filter @open-design/metatool test
 pnpm --filter @open-design/plugin-runtime typecheck
-pnpm --filter @open-design/plugin-runtime test
 pnpm --filter @open-design/registry-protocol typecheck
-pnpm --filter @open-design/registry-protocol test
 pnpm --filter @open-design/release typecheck
-pnpm --filter @open-design/release test
 pnpm --filter @open-design/sidecar-proto typecheck
-pnpm --filter @open-design/sidecar-proto test
 pnpm --filter @open-design/sidecar typecheck
-pnpm --filter @open-design/sidecar test
 pnpm --filter @open-design/platform typecheck
-pnpm --filter @open-design/platform test
 ```

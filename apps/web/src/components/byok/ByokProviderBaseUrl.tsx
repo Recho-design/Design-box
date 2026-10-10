@@ -1,8 +1,6 @@
 import type { Ref } from 'react';
-import type { ApiProtocol } from '../../types';
 
 interface ByokProviderBaseUrlProps {
-  apiProtocol: ApiProtocol;
   inputRef: Ref<HTMLInputElement>;
   baseUrl: string;
   baseUrlError: string | null;
@@ -15,7 +13,6 @@ interface ByokProviderBaseUrlProps {
     customize: string;
     invalid: string;
     defaultHint: string;
-    azureHint: string;
   };
   onBlur: () => void;
   onChange: (value: string) => void;
@@ -24,7 +21,6 @@ interface ByokProviderBaseUrlProps {
 }
 
 export function ByokProviderBaseUrl({
-  apiProtocol,
   inputRef,
   baseUrl,
   baseUrlError,
@@ -91,11 +87,6 @@ export function ByokProviderBaseUrl({
       {baseUrlReadOnly ? (
         <span className="field-inline-status">
           {labels.defaultHint}
-        </span>
-      ) : null}
-      {apiProtocol === 'azure' ? (
-        <span className="field-inline-status">
-          {labels.azureHint}
         </span>
       ) : null}
     </label>

@@ -1,6 +1,6 @@
 # Directory guide
 
-This file is the single source of truth for agents entering this repository. Read this file first; after entering `apps/`, `packages/`, `tools/`, or `e2e/`, read that layer's `AGENTS.md` for module-level details. Do not copy module details back into the root file; root stays focused on cross-repository boundaries, workflow, and commands.
+This file is the single source of truth for agents entering this repository. Read this file first; after entering `apps/`, `packages/`, `tools/`, or `shells/`, read that layer's `AGENTS.md` for module-level details. Do not copy module details back into the root file; root stays focused on cross-repository boundaries, workflow, and commands.
 
 ## Core documentation index
 
@@ -9,14 +9,14 @@ This file is the single source of truth for agents entering this repository. Rea
 - Architecture and protocols: `docs/architecture.md`, `docs/skills-protocol.md`, `docs/agent-adapters.md`, `docs/modes.md`.
 - Historical product baseline: `docs/spec.md`, `docs/roadmap.md` (both explicitly archived; do not treat their dated decisions as current behavior).
 - References and current plans: `docs/references.md`, `docs/code-review-guidelines.md`, `specs/current/maintainability-roadmap.md`, `specs/current/ci.md` (CI scope confidence methodology — required before changing planner confidence, routing, or omission policy in `.github/config/scopes.json` and `.github/scripts/scopes.py`), `specs/current/chat-panel-next.md` (ChatPanel 重构:基线、任务进度规格、决策记录、踩过的坑 — 改 chat 渲染管线/工具调用展示/执行记录前必读), `specs/current/chat-panel-next-plan.md` (交付计划与纠偏节点).
-- Directory-level agent guidance: `.github/AGENTS.md`, `apps/AGENTS.md`, `packages/AGENTS.md`, `tools/AGENTS.md`, `e2e/AGENTS.md`, `apps/web/src/components/chat/AGENTS.md` (chat 组件分层、`--chat-*` 样式接缝、降级形态与测试规约).
+- Directory-level agent guidance: `.github/AGENTS.md`, `apps/AGENTS.md`, `packages/AGENTS.md`, `tools/AGENTS.md`, `apps/web/src/components/chat/AGENTS.md` (chat 组件分层、`--chat-*` 样式接缝与降级形态).
 - Packaged auto-update architecture and high-confidence local harness: read `tools/pack/AGENTS.md` section "Packaged auto-update architecture and harness" before touching packaged updater code, release-channel identity, installer behavior, or updater UI.
 - Packaged build cache contract: `tools/pack/CACHE.md` (determinant rules, materialization-time parameters, confidence grading — required before changing any build-cache node key).
 - Prompt composition has two independent implementations behind a rollout switch: `docs/prompt-composition.md` (fork point, variant axes, host runtime contract table, worked examples — required before changing any prompt text, in `apps/daemon/src/prompts/`, `packages/contracts/src/prompts/`, or under `plugins/_official/scenarios/od-next-strategy/`). See "Prompt variants" below.
 
 ## Workspace directories
 
-- Workspace packages come from `pnpm-workspace.yaml`: `apps/*`, `packages/*`, `shells/*`, `tools/*`, and `e2e`.
+- Workspace packages come from `pnpm-workspace.yaml`: `apps/*`, `packages/*`, `shells/*`, and `tools/*`.
 - Top-level content directories: `skills/` (functional skills the agent invokes mid-task — utilities, briefs, packagers; see `skills/AGENTS.md`), `design-templates/` (rendering catalogue: decks, prototypes, image/video/audio templates; see `design-templates/AGENTS.md` and `specs/current/skills-and-design-templates.md`), `design-systems/` (brand `DESIGN.md` files), `craft/` (universal brand-agnostic craft rules a skill can opt into via `od.craft.requires`), `mocks/` (replay-based mock CLIs for `opencode`/`claude`/`codex`/`gemini`/`cursor-agent`/`deepseek`/`qwen`/`grok`, the ACP family `devin`/`hermes`/`kilo`/`kimi`/`kiro`/`vibe`, and the AMR `vela` CLI (login + models + ACP), built from anonymized Langfuse traces — PATH-overlay drop-in for tests and self-validation; see `mocks/README.md`).
 - `apps/web` is the Next.js 16 App Router + React 18 web runtime; do not restore `apps/nextjs`.
 - `apps/daemon` is the local privileged daemon and `od` bin. It owns `/api/*`, agent spawning, skills, design systems, artifacts, and static serving.
@@ -31,12 +31,12 @@ This file is the single source of truth for agents entering this repository. Rea
 - `tools/pack` is the local packaged build/start/stop/logs control plane, packaged updater harness, installer identity/registry validation surface, and mac beta release artifact preparation surface.
 - `tools/serve` is the local fixture-service control plane; first service is `tools-serve start updater` for deterministic updater metadata and artifacts.
 - `tools/release` owns release metadata, storage publishing, release reports, and notification-facing data contracts; packaged artifact construction and smoke testing remain in `tools/pack`.
-- `e2e` owns user-level end-to-end smoke tests and Playwright UI automation; read `e2e/AGENTS.md` before editing its tests or commands.
+- This repository carries no test layer: package-level `tests/` directories, the `e2e/` package, and test frameworks (vitest/Playwright) have been removed. When behavior needs pinning again, rewrite tests from scratch or copy them from the upstream repository — do not restore them wholesale on a whim.
 
 ## Inactive or placeholder directories
 
-- `apps/nextjs`, `packages/shared`, and `apps/landing-page` have been removed; do not recreate or reference them.
-- Local runtime data, `.tmp/`, Playwright reports, and agent scratch directories must stay out of git. For daemon-managed data paths, read and follow **Daemon data directory contract** below; do not restate or improvise path conventions elsewhere.
+- `apps/nextjs`, `packages/shared`, and `apps/landing-page` have been removed; do not recreate or reference them. The `e2e/` workspace package and all package-level `tests/` directories have also been removed (see "Workspace directories" above).
+- Local runtime data, `.tmp/`, and agent scratch directories must stay out of git. For daemon-managed data paths, read and follow **Daemon data directory contract** below; do not restate or improvise path conventions elsewhere.
 
 # Development workflow
 
@@ -140,8 +140,7 @@ obvious, block the PR and request core-maintainer guidance.
 ## Root command boundary
 
 - Keep root scripts reserved for true repo-level checks and tools control-plane entrypoints: `pnpm guard`, `pnpm typecheck`, `pnpm tools-dev`, `pnpm tools-pack`, and `pnpm tools-serve`.
-- Do not add root aggregate `pnpm build` or `pnpm test` aliases. Build/test commands must stay package-scoped (`pnpm --filter <package> ...`) or tool-scoped (`pnpm tools-pack ...`).
-- Do not add root e2e aliases; e2e package commands and ownership rules live in `e2e/AGENTS.md`.
+- Do not add root aggregate `pnpm build` or `pnpm test` aliases. Build commands must stay package-scoped (`pnpm --filter <package> ...`) or tool-scoped (`pnpm tools-pack ...`).
 
 ## GitHub automation boundary
 
@@ -150,36 +149,37 @@ Read `.github/AGENTS.md` before editing `.github/workflows/`, `.github/scripts/`
 CI-related GitHub automation uses a two-layer architecture:
 
 - Business layer workflows own product or validation decisions. `ci.yml` is the main low-privilege PR, merge-queue, and manual validation workflow. It detects scope, runs checks, and produces typed handoff artifacts.
-- Atomic capability workflows own reusable trusted operations. `comment.atom.yml` publishes pure text PR comments, `autofix.atom.yml` applies same-repository patches, and `report.atom.yml` materializes advanced comments that need trusted dependencies, secrets, or report generation before upsert.
+- Atomic capability workflows own reusable trusted operations. `comment.atom.yml` publishes pure text PR comments, `autofix.atom.yml` applies same-repository patches, and `convergence.atom.yml` publishes reusable workload results.
 
-Do not add a new business-named follow-on workflow such as `foo.comment.atom.yml` or `bar.autofix.atom.yml` without first trying to express the flow as a `ci.yml` producer plus the existing `comment`, `autofix`, or `report` capability. Keep artifact naming, storage layout, and parser behavior centralized in `.github/scripts/handoff.py`; do not let individual workflows invent parallel handoff conventions.
+Do not add a new business-named follow-on workflow such as `foo.comment.atom.yml` or `bar.autofix.atom.yml` without first trying to express the flow as a `ci.yml` producer plus the existing `comment`, `autofix`, or `convergence` capability. Keep artifact naming, storage layout, and parser behavior centralized in `.github/scripts/handoff.py`; do not let individual workflows invent parallel handoff conventions.
 
-## CI test-set orchestration guidance
+## CI validation-set orchestration guidance
 
 Use the following as a recommended convergence model, not a repository-wide
-conformance gate. Existing workflows and coarse test lanes may remain while
-their boundaries are understood. Do not block an unrelated change or require it
-to repay adjacent orchestration debt solely because it touches an existing
-lane. Apply these recommendations incrementally when the local scope and
-measured scheduling benefit justify the migration.
+conformance gate. Existing workflows and coarse validation lanes may remain
+while their boundaries are understood. Do not block an unrelated change or
+require it to repay adjacent orchestration debt solely because it touches an
+existing lane. Apply these recommendations incrementally when the local scope
+and measured scheduling benefit justify the migration.
 
-Prefer one selection direction: changed paths → source units → test sets →
+Prefer one selection direction: changed paths → source units → validation sets →
 execution workloads. Because the `plan` job runs before and governs downstream
 jobs, new omission policy should live in the planner rather than rely on a
 downstream guard to justify it after scheduling has already occurred.
 
 When a CI area is being reorganized, prefer three named responsibilities:
 
-- **Source units** name stable ownership or behavior boundaries in production,
-  test, fixture, and control-plane paths. Prefer composing repeated selectors
-  under a named unit instead of copying prefixes into unrelated rules.
-- **Test sets** name independently useful semantic validation groups. Their
-  membership and execution contract should converge on one authoritative
-  declaration instead of accumulating more matrix or file-list copies across
-  planner configuration, workflow YAML, and framework-local registries.
-- **Routes** map source units to the test sets required to validate them. Routes
-  should express impact rather than runner mechanics; runner image, setup,
-  sharding, and job packing can remain execution concerns derived after
+- **Source units** name stable ownership or behavior boundaries in production
+  and control-plane paths. Prefer composing repeated selectors under a named
+  unit instead of copying prefixes into unrelated rules.
+- **Validation sets** name independently useful semantic validation groups
+  (guard, typecheck, i18n structure, package builds). Their membership and
+  execution contract should converge on one authoritative declaration instead
+  of accumulating more matrix or file-list copies across planner configuration
+  and workflow YAML.
+- **Routes** map source units to the validation sets required to validate them.
+  Routes should express impact rather than runner mechanics; runner image,
+  setup, sharding, and job packing can remain execution concerns derived after
   selection.
 
 Good split candidates have a stable boundary, change work that can actually be
@@ -195,27 +195,26 @@ conservative behavior such as:
 
 - unknown, mixed, unresolved, invalid, or below-threshold input selects the
   conservative full plan;
-- editing a test, fixture, or suite manifest selects the test set that consumes
-  it; shared harness, contract, setup, or lockfile changes fan out to every
+- editing shared harness, contract, setup, or lockfile content fans out to every
   affected set;
-- making a selected test-set identifier that the executor cannot run fail
+- making a selected validation-set identifier that the executor cannot run fail
   visibly instead of being ignored;
-- direct planner tests cover representative in-bound, out-of-bound, mixed, and
+- direct planner checks cover representative in-bound, out-of-bound, mixed, and
   fallback inputs without reimplementing the evaluator in another language.
 
 Keep scope routing and reusable-result convergence conceptually orthogonal:
-scope answers which test sets are necessary for a change, while convergence
-answers whether an identically declared workload already has a validated,
-reusable successful result. New designs should not use result availability to
-weaken source-to-test coverage or copy route policy into
-`.github/config/convergence.json`. Prefer productless reusable workloads; when a
-workload owns products, declare the complete typed reuse manifest with it.
+scope answers which validation sets are necessary for a change, while
+convergence answers whether an identically declared workload already has a
+validated, reusable successful result. New designs should not use result
+availability to weaken source-to-validation coverage or copy route policy into
+`.github/config/convergence.json`. Prefer productless reusable workloads; when
+a workload owns products, declare the complete typed reuse manifest with it.
 
 For work whose purpose is CI orchestration, start by inventorying the current
 chain from changed path to match, effect, workload, job command, and concrete
-test cases. Prefer naming or removing implicit joins before making them finer.
-Changes under `.github/` must also follow `.github/AGENTS.md` and the current
-confidence methodology in `specs/current/ci.md`.
+validation cases. Prefer naming or removing implicit joins before making them
+finer. Changes under `.github/` must also follow `.github/AGENTS.md` and the
+current confidence methodology in `specs/current/ci.md`.
 
 ## Release channel model
 
@@ -224,17 +223,12 @@ confidence methodology in `specs/current/ci.md`.
 - Prerelease builds macOS x64 (Intel) on every run. `release-prerelease.yml` takes an `enable_mac_x64` input that defaults to `true`, and `notify-release-feishu.yml` (the push-to-`release/**` entry point) forwards `true` on push. The switch stays because Intel is the pipeline's critical path — it runs on the slower `macos-15-intel` fleet, ~33 min against ~21 min for every other platform — so a run that is explicitly not about Intel can buy that time back. Turning it off costs that build its promotion eligibility, so it is not a routine choice.
 - **A prerelease built without `enable_mac_x64` cannot be promoted to stable.** Stable ships Intel and stable's gate is validated prerelease artifacts, so an Intel-less prerelease has not validated the Intel artifact stable will ship. This is enforced, not merely documented: `validateStablePrereleaseMetadata` in `tools/release/src/metadata/prepare-stable.ts` requires `platforms.macIntel` (with `enabled: true`, `arch: "x64"`, `signed: true`, and versioned dmg/zip URLs) in the promoted prerelease's metadata, so promoting an Intel-less prerelease fails the stable `metadata` job instead of silently shipping an unvalidated Intel build. `platforms.linux` is deliberately not required there.
 - The `notify-release-feishu.yml` forwarding for a default-on boolean must be `${{ github.event_name != 'workflow_dispatch' || inputs.<flag> }}`, never `${{ inputs.<flag> || true }}`. `inputs` is unset on push, so the second form reads correctly there — but on a dispatch where the operator UNCHECKED the box, `false || true` is also true and the switch becomes unturnoffable. (A default-*off* boolean uses `${{ inputs.<flag> || false }}` for the mirror-image reason: a bare `${{ inputs.<flag> }}` forwards `''` to a `type: boolean` callee input.)
-- `enable_smoke` and `enable_tests` also default to `true`, because neither costs the build anything any more — see "Prerelease validation runs outside the pipeline" below. `mac_sign_mode` (default `sign-only`) codesigns without the Apple notary round-trip; `notarize` is the pre-stable setting, since stable ships notarized. `win_x64_smoke_mode` still chooses how deep the Windows smoke goes, and applies only when `enable_smoke` is on.
+- `mac_sign_mode` (default `sign-only`) codesigns without the Apple notary round-trip; `notarize` is the pre-stable setting, since stable ships notarized. The former `enable_smoke` / `enable_tests` / `win_x64_smoke_mode` inputs were removed together with the packaged smoke suites and the release test lanes — a prerelease package is validated by a person installing it, not by machine tests.
 - **Signing is not optional for a prerelease that will be promoted.** `validateStablePrereleaseMetadata` requires `platforms.mac.signed == true` and `platforms.macIntel.signed == true`, so `mac_sign_mode: no` produces a prerelease that cannot become a stable release. Notarization has no metadata field and is therefore not checked — which is exactly why it, and not signing, is what the fast default drops.
-- **Automated tests do not gate prerelease delivery.** A prerelease exists so a person can install it and test it by hand; machine CI is a parallel opinion about the same commit rather than a valve on delivery, and a flaky suite must never cost the team a day's package. Do not reintroduce a test job into `build_*` or `publish`'s `needs`/`if`; if a check must genuinely block delivery, that is a channel-policy decision, not a workflow edit.
-- **Prerelease validation runs outside the pipeline.** `release-prerelease.yml` holds one repository-wide concurrency group (`open-design-release-prerelease`, `cancel-in-progress: false`), so any job that outlives `publish` keeps that group held and stops the NEXT prerelease from *starting*. Making the test jobs advisory was therefore not enough — they still blocked the next build. The workflow now contains only `metadata → build_* → publish` plus two fire-and-forget dispatcher jobs, and the validation lives in three dispatched workflows with concurrency groups scoped to the origin run:
-  - `release-prerelease-tests.yml` — `functional_e2e`, `e2e_vitest`, `daemon_unit_tests`, `verify`, dispatched as soon as the build commit resolves.
-  - `release-prerelease-smoke.yml` — the packaged mac/Windows smoke, dispatched after `publish`. It does **not** test a local build directory: `.github/scripts/release/smoke-artifacts.ts` reads the published version metadata, downloads the DMG / setup.exe a user would get, verifies its sha256 sidecar, and writes it to the one path `tools-pack <platform> install` reads. Linux keeps its in-job smoke, because the whole Linux lane is opt-in behind `vars.ENABLE_STABLE_LINUX` and is on nobody's critical path.
-  - `release-prerelease-card.yml` — the progressive Feishu card.
-  All three are dispatched through `.github/scripts/release/dispatch-validation.sh`, which aims `gh workflow run` at the built branch first and the default branch second, so a release branch cut before these lanes existed still gets validated. A dispatch failure is loud and non-blocking: nothing depends on the dispatcher jobs.
-- **One writer owns the release card.** A Feishu `PATCH` replaces the entire card, so build jobs updating "their own" row would each erase the other two's. `release-prerelease-card.yml` therefore owns the message alone and learns everything by polling the jobs API of the three runs; `tools/release/src/notifications/prerelease-card.ts` renders the card as a total function of that state (unit-tested in `tools/release/tests/prerelease-card.test.ts`) and `feishu-app.ts` is the application-bot transport. The card is posted on the watcher's first poll, before any package exists, and every later state edits that same message: the channel learns a release is under way rather than waiting out the build window in silence. The rule that used to withhold it (a "构建中…" card left standing forever when a build dies) is now carried by rendering instead — a dead lane renders its own terminal state, `allPlatformsFailed` turns the card red once every expected platform has reported without shipping, and the watcher's timeout stamps the card rather than abandoning it. Per-platform durations and the whole-round clock come from the `started_at` / `completed_at` the watcher already polls; live numbers are quantized to the minute so the card does not PATCH itself on every poll.
+- **Prerelease validation is a human activity.** `release-prerelease.yml` holds one repository-wide concurrency group (`open-design-release-prerelease`, `cancel-in-progress: false`), so any job that outlives `publish` keeps that group held and stops the NEXT prerelease from *starting*. The workflow therefore contains only `metadata → build_* → publish → cleanup_partial_release_assets` plus one fire-and-forget `dispatch_validation` job whose sole remaining dispatch is the Feishu card. The former dispatched test/smoke lanes (`release-prerelease-tests.yml`, `release-prerelease-smoke.yml`) were removed with the repository's test layer. `dispatch_validation` is dispatched through `.github/scripts/release/dispatch-validation.sh`, which aims `gh workflow run` at the built branch first and the default branch second, so a release branch cut before the card existed still gets notified. A dispatch failure is loud and non-blocking: nothing depends on the dispatcher job.
+- **One writer owns the release card.** A Feishu `PATCH` replaces the entire card, so build jobs updating "their own" row would each erase the other two's. `release-prerelease-card.yml` therefore owns the message alone and learns everything by polling the jobs API of the build run; `tools/release/src/notifications/prerelease-card.ts` renders the card as a total function of that state and `feishu-app.ts` is the application-bot transport. The card is posted on the watcher's first poll, before any package exists, and every later state edits that same message: the channel learns a release is under way rather than waiting out the build window in silence. The rule that used to withhold it (a "构建中…" card left standing forever when a build dies) is now carried by rendering instead — a dead lane renders its own terminal state, `allPlatformsFailed` turns the card red once every expected platform has reported without shipping, and the watcher's timeout stamps the card rather than abandoning it. Per-platform durations and the whole-round clock come from the `started_at` / `completed_at` the watcher already polls; live numbers are quantized to the minute so the card does not PATCH itself on every poll.
 - **`version_metadata_url` is the authoritative "did a package ship?" signal, not the workflow conclusion.** The conclusion goes red for anything anywhere in the release run, including work that happens after publication, so keying a notification off it paints the card red while its own download buttons work. The progressive card takes that answer from the published metadata it verifies rather than from a job conclusion, and `tools/release/src/notifications/feishu.ts` keeps the same rule (`VERSION_METADATA_URL` outranks `BUILD_STATE`, falling back to it only for callers that do not pass a URL) for the daily beta stream.
-- **The prerelease Feishu notification has exactly one source: `release-prerelease-card.yml`.** The transitional one-shot webhook card that lived in `notify-release-feishu.yml`'s `notify` job was retired once the progressive card had carried four real releases; that workflow now only builds. Do not add a second prerelease notifier — the card is a PATCH-in-place message with a single writer, and a second poster produces the duplicate the transition existed to end. `tools/release/src/notifications/feishu.ts` and the `FEISHU_RELEASE_WEBHOOK` / `FEISHU_RELEASE_SIGN_SECRET` secrets stay: `notify-daily-feishu.yml` still renders the beta download card through them, and `cut-release`, `cut-patch-release`, `backport-automerge`, `bake-plugin-previews-automerge`, `main-prerelease-win-smoke`, and `dsh-upstream-drift` all post through the same webhook.
+- **The prerelease Feishu notification has exactly one source: `release-prerelease-card.yml`.** The transitional one-shot webhook card that lived in `notify-release-feishu.yml`'s `notify` job was retired once the progressive card had carried four real releases; that workflow now only builds. Do not add a second prerelease notifier — the card is a PATCH-in-place message with a single writer, and a second poster produces the duplicate the transition existed to end. `tools/release/src/notifications/feishu.ts` and the `FEISHU_RELEASE_WEBHOOK` / `FEISHU_RELEASE_SIGN_SECRET` secrets stay: `notify-daily-feishu.yml` still renders the beta download card through them, and `cut-release`, `cut-patch-release`, `backport-automerge`, `bake-plugin-previews-automerge`, and `dsh-upstream-drift` all post through the same webhook.
 - `preview` is an independent early-access channel with stable-like release rigor. It should use preview versions such as `X.Y.Z-preview.N`, publish to the `preview` R2 channel, publish updater feeds under `preview/latest`, and follow stable's platform policy including the existing optional Linux enablement.
 - `stable` is the formal delivery channel. Do not make stable promotion depend on preview; stable continues to depend on prerelease only.
 - Public packaged app identity must stay channel-distinct: stable uses `Open Design`, beta uses `Open Design Beta`, prerelease uses `Open Design Prerelease`, and preview uses `Open Design Preview`. Do not ship beta, prerelease, or preview mac DMGs whose drag-install app bundle is `Open Design.app`.
@@ -242,12 +236,12 @@ confidence methodology in `specs/current/ci.md`.
 
 ## Boundary constraints
 
-- Tests under `apps/`, `packages/`, and `tools/` live in a package/app/tool-level `tests/` directory sibling to `src/`; keep `src/` source-only and do not add new `*.test.ts` or `*.test.tsx` files under `src/`. Playwright UI automation belongs to `e2e/ui/`, not app packages.
-- App packages must not import another app's private `src/` or `tests/` implementation as a shared helper. In particular, `apps/web/**` must not import `apps/daemon/src/**`; web/daemon integration belongs behind HTTP APIs, `packages/contracts`, and app-local provider boundaries.
-- Cross-app, cross-runtime, or repository-resource consistency checks belong in `e2e/tests/` when they need to observe more than one app/package boundary; promote reusable logic to a pure package instead of borrowing another app's private source.
+- This repository carries no test layer: package-level `tests/` directories, the `e2e/` package, and test frameworks were removed wholesale. Keep `src/` source-only; when behavior needs pinning again, rewrite tests from scratch or copy them from the upstream repository rather than restoring them wholesale.
+- App packages must not import another app's private `src/` implementation as a shared helper. In particular, `apps/web/**` must not import `apps/daemon/src/**`; web/daemon integration belongs behind HTTP APIs, `packages/contracts`, and app-local provider boundaries.
+- Cross-app, cross-runtime, or repository-resource consistency checks should live at real integration boundaries (daemon HTTP APIs, packaged harnesses); promote reusable logic to a pure package instead of borrowing another app's private source.
 - Keep shared API DTOs, SSE event unions, error shapes, task shapes, and example payloads in `packages/contracts`; update contracts before wiring divergent web/daemon request or response shapes.
 - Keep `packages/contracts` pure TypeScript and free of Next.js, Express, Node filesystem/process APIs, browser APIs, SQLite, daemon internals, and sidecar control-plane dependencies.
-- Keep project-owned entrypoints, modules, scripts, tests, reporters, and configs TypeScript-first; generated `dist/*.js` is runtime output, and source edits belong in `.ts` files.
+- Keep project-owned entrypoints, modules, scripts, reporters, and configs TypeScript-first; generated `dist/*.js` is runtime output, and source edits belong in `.ts` files.
 - New `.js`, `.mjs`, or `.cjs` files need an explicit generated/vendor/compatibility reason and must pass `pnpm guard`.
 - App business logic must not know about sidecar/control-plane concepts. Keep sidecar awareness in `apps/<app>/sidecar` or the desktop sidecar entry wrapper.
 - Shared web/daemon app contracts belong in `packages/contracts`; that package must not depend on Next.js, Express, Node filesystem/process APIs, browser APIs, SQLite, daemon internals, or the sidecar control-plane protocol.
@@ -266,7 +260,7 @@ Every user-facing capability must be reachable through both the web UI **and** t
 - The CLI form must support `--json` for machine-readable output and accept long-form prompts via `--prompt-file <path|->`, so jobs that pipe through `xargs`, `jq`, and `<heredoc` stay clean.
 - Adding a new capability is a three-step closure: HTTP endpoint in `apps/daemon/src/*-routes.ts` (with a contract type in `packages/contracts/src/api/`), UI surface in `apps/web/src/`, and `od <capability>` subcommand in `apps/daemon/src/cli.ts` registered through `SUBCOMMAND_MAP`. Land all three in the same PR; do not stage them across PRs.
 - The PR template's Surface area checklist must reflect *both* surfaces. If you ticked UI, tick CLI too — and vice-versa — or explain in the PR body why the missing surface is genuinely not applicable (e.g. an internal-only daemon health probe). "I'll do the CLI later" is not a valid reason.
-- Existing reference points: `od automation …` mirrors the Automations tab against `/api/routines`; `od plugin …`, `od ui …`, `od project …`, `od media …`, `od mcp …`, `od research …` follow the same shape. Copy that pattern for new capabilities.
+- Existing reference points: `od automation …` mirrors the Automations tab against `/api/routines`; `od plugin …`, `od ui …`, `od project …`, `od media …`, `od mcp …` follow the same shape. Copy that pattern for new capabilities.
 
 ## Git commit policy
 
@@ -279,15 +273,15 @@ Every user-facing capability must be reachable through both the web UI **and** t
 - "What users will see" describes the change from a user's perspective — what they click, what new thing appears, what default behavior changed — not from a code perspective.
 - The Surface area checklist must reflect actual surfaces touched; check every box that applies, including extension points (`skills/`, `design-systems/`, `design-templates/`, `craft/`), CLI flags, env vars, i18n keys, and new root `package.json` dependencies.
 - If any UI surface is checked, attach screenshots showing the entry point — where users discover the change — not just the feature in isolation; before/after is best for behavior changes.
-- For bug-fix PRs, link the red-spec test that reproduces the bug and confirm it went red on `main` and green on the branch, per the `Bug follow-up workflow` section above.
+- For bug-fix PRs, describe in the body how the bug reproduces on `main` and how the fix changes that behavior, per the `Bug follow-up workflow` section above. The repository carries no test layer, so there is no red-spec test to link.
 - `CONTRIBUTING.md` covers PR scope, title format, dependency policy, and the issue-first rule for non-trivial features; `docs/code-review-guidelines.md` is the reviewer-facing complement.
 
 ## Code review guide
 
 - Use `docs/code-review-guidelines.md` as the repository-wide review standard. That document is the operational guide; this `AGENTS.md` is the source of truth when the two disagree.
 - Walk reviews top-down through `docs/code-review-guidelines.md`: Product relevance test → forbidden surfaces → ownership/scope → matching lane → checklist → comments → approval bar.
-- Pick the matching review lane: default code/tests, contract and protocol changes, design-system additions, skill additions, or craft additions.
-- Before reviewing changes under `apps/`, `packages/`, `tools/`, or `e2e/`, read that directory's `AGENTS.md` and apply its local boundaries.
+- Pick the matching review lane: default code, contract and protocol changes, design-system additions, skill additions, or craft additions.
+- Before reviewing changes under `apps/`, `packages/`, `tools/`, or `shells/`, read that directory's `AGENTS.md` and apply its local boundaries.
 - Blocking review feedback should focus on correctness, security/secrets, data integrity, repository boundary violations, contract/migration breakage, missing required validation, or high-risk maintainability issues.
 - Only maintainers may close a PR instead of requesting changes, and only when the change is not salvageable on the existing branch (wrong target product, foreign test harness, DOM/API assumptions absent from this repo, or scripts that conflict with lifecycle rules).
 
@@ -316,7 +310,7 @@ Before changing any prompt text — in any of those locations — read `docs/pro
 - `claude-stream.ts` reads the turn's `stop_reason` from **three** frames, because Claude Code moved the field and the daemon does not control which build a user has installed. In order of precedence per message: (1) `stream_event` → `message_delta` → `delta.stop_reason`, the only place Claude Code 2.1.259 carries it, available only when `--include-partial-messages` is negotiated; (2) `assistant` → `message.stop_reason`, the legacy shape, which 2.1.259 leaves `null` on every frame but which older CLIs and argv-compatible forks still populate; (3) the terminal `result` frame, surfaced as `usage`, present on every build and flag combination. `emitTurnEndOnce` dedupes them by assistant message id so a build that fills both (1) and (2) announces one turn once. There is deliberately no version gate — nothing tells us which release stopped filling the legacy field, and forks version themselves independently.
 - Whichever source fires, `turn_end` is emitted AFTER every tool_use of the message has been emitted, so the daemon never closes stdin before it has seen the turn's tool calls. Only a main-turn frame may fire it: a forwarded Task sub-agent frame carries a non-null top-level `parent_tool_use_id` and is refused (#5487).
 - A `result` frame ends one **user turn**, not the CLI process: a stream-json session whose stdin stays open emits one `result` per turn and keeps reading. That makes it a valid per-turn reset point for `claude-stream.ts`'s artifact-echo dedup, and on a build with no in-stream boundary at all it is the only one.
-- Verbatim CLI recordings backing all of the above live in `apps/daemon/tests/fixtures/claude-cli-recordings/` (see its `README.md`). Assert new turn-boundary behavior against those, **not** against the older hand-built Claude fixtures elsewhere in `apps/daemon/tests/` — those put `stop_reason` on the `assistant` wrapper and describe a stream the current CLI no longer produces.
+- The turn-boundary rules above were derived from verbatim CLI recordings that lived in `apps/daemon/tests/fixtures/claude-cli-recordings/` before the test layer was removed; the historical insight still holds even though the fixtures are gone. The older hand-built Claude fixtures described a stream the current CLI no longer produces: they put `stop_reason` on the `assistant` wrapper. Do not resurrect that shape.
 - The host asks the user clarifying questions through the `<question-form>` artifact (see "Asking the user questions" below), NOT through a stdin-injected `tool_result`. There is no `AskUserQuestion` tool wiring, no `/api/runs/:id/tool-result` endpoint, and no host-answer return path. The stream-json input skeleton is generic infrastructure, and its one product consumer is `POST /api/runs/:id/steer` (「引导对话」, B11): the USER pushes a further message into a turn that is still running, which is the opposite direction from `<question-form>`. Admissibility lives in `apps/daemon/src/runtimes/run-steering.ts` (`classifyRunSteering`) — do not re-derive it at a call site, and do not extend it into a host-question path.
 
 ## Starting a physical Run
@@ -349,7 +343,7 @@ Before changing any prompt text — in any of those locations — read `docs/pro
 - New component-owned UI styles should default to CSS Modules next to the component (`Component.module.css`) instead of expanding global stylesheets. This is preferred for isolated components, panels, menus, drawers, toolbars, cards, and form sections.
 - When touching an existing component with nearby global styles, prefer migrating that component's local selectors to a CSS Module as part of the change if it is small and testable. Do not mix a large mechanical move with behavior/styling changes in the same patch.
 - Keep global class names only for deliberate shared contracts: reusable primitives, theme hooks, third-party/content styling, cross-component layout, or selectors that rely on global cascade/specificity. Document any new global selector group with its owning feature.
-- CSS refactors must preserve cascade semantics. For mechanical splits, verify expanded import content/order matches the previous stylesheet; for CSS Module migrations, validate the affected UI path with `pnpm --filter @open-design/web typecheck` and a focused build/test or visual check when practical.
+- CSS refactors must preserve cascade semantics. For mechanical splits, verify expanded import content/order matches the previous stylesheet; for CSS Module migrations, validate the affected UI path with `pnpm --filter @open-design/web typecheck` and a focused build or visual check when practical.
 
 ## Web component reuse
 
@@ -373,35 +367,26 @@ Before changing any prompt text — in any of those locations — read `docs/pro
 
 ## Validation strategy
 
-- Before adding, repairing, or optimizing tests, follow
-  [`docs/testing/test-efficiency.zh-CN.md`](docs/testing/test-efficiency.zh-CN.md)
-  for completion signals, virtual-clock usage, isolation, and performance
-  validation.
+- The repository carries no test layer. Real-path validation (running builds, driving the daemon over HTTP, exercising `od` subcommands, using the desktop app) is the acceptance oracle; there are no unit/e2e suites to lean on.
 - After package, workspace, or command-entry changes, run `pnpm install` so workspace links and generated dist entries stay fresh.
 - For agent-stream / parser changes (`apps/daemon/src/runtimes/claude-stream.ts`, `json-event-stream.ts`, `qoder-stream.ts`, etc.), replay a recorded session through the mock CLIs in `mocks/` to verify event shapes round-trip without burning provider budget. PATH-overlay activation: `export PATH="$PWD/mocks/bin:$PATH" OD_MOCKS_TRACE=<8-char-id> OD_MOCKS_NO_DELAY=1`. See `mocks/README.md` for the trace catalog and selection knobs.
 - Docker image smoke/publish lives only in `.github/workflows/docker-image.yml` and is outside the core `ci.yml` / `Validate workspace` / merge queue gate.
-- Before marking regular work ready, run at least `pnpm guard` and `pnpm typecheck`, plus the package-scoped tests/builds that match the files changed. Do not use or add root `pnpm test`/`pnpm build` aliases.
+- Before marking regular work ready, run at least `pnpm guard` and `pnpm typecheck`, plus the package-scoped builds that match the files changed. Do not use or add root `pnpm test`/`pnpm build` aliases.
 - For local web runtime loops, prefer `pnpm tools-dev run web --daemon-port <port> --web-port <port>`.
-- For e2e tests that need a tools-dev daemon/web runtime, use the shared tools-dev harness under `e2e/lib/tools-dev/` and the framework suite adapters (`e2e/lib/playwright/suite.ts`, `e2e/lib/vitest/suite.ts`). Do not hand-spawn `tools-dev` from test cases or duplicate lifecycle helpers under framework-specific folders.
-- Playwright UI tests must import `test`/`expect` from `@/playwright/suite`, not directly from `@playwright/test`; type-only imports from `@playwright/test` remain fine. The suite owns one isolated tools-dev daemon/web/data root per Playwright worker. Do not add a shared-runtime fallback; set Playwright workers to `1` when constrained.
-- Playwright suite code must not own workspace prebuild policy. CI and callers keep the existing prebuild steps; `tools-dev` daemon freshness checks are only a fallback guard.
 - On a GUI-capable machine, validate desktop by running `pnpm tools-dev`, then `pnpm tools-dev inspect desktop status`.
 - Stamp/namespace changes must validate two concurrent namespaces and run desktop `inspect eval` plus `inspect screenshot` for each namespace.
 - Path/log changes must run `pnpm tools-dev logs --namespace <name> --json` and confirm log paths are under `.tmp/tools-dev/<namespace>/...`.
 
 ## Bug follow-up workflow
 
-The following is a working playbook for routine bug follow-ups, distilled from recent practice. Treat it as a default action shape, not a contract — production reality always has edges these bullets can't anticipate, so use judgment when the situation doesn't fit cleanly.
+The following is a working playbook for routine bug follow-ups, distilled from recent practice. Treat it as a default action shape, not a contract — production reality always has edges these bullets can't anticipate, so use judgment when the situation doesn't fit cleanly. With the test layer removed, "observable behavior" means a real path: the daemon HTTP API, the `od` CLI, the running web UI, or the desktop app — not a spec file.
 
-- **Lead with a red spec.** Default to encoding the bug as a falsifiable test that goes red before any source change, so the fix is anchored in observable behavior rather than source-code intuition. If a red spec can't be written cheaply, that's usually a signal to clarify scope rather than push forward on a guess.
-- **Try the cheapest layer first.** Reach for the lightest test layer that can still see the symptom (e2e Vitest at the daemon HTTP boundary → app-local Vitest → Playwright UI → platform-native harnesses), and drop down only when the cheaper layer can't.
-- **Hold the spec's scope.** Defects discovered outside the bug's described boundary belong in a follow-up — their own red spec, their own PR — not in this fix. List them in the PR body's "Adjacent issues" section with the rationale and move on.
+- **Reproduce first.** Confirm the bug against the real path (daemon HTTP call, `od` subcommand, running UI) before touching source, so the fix is anchored in observable behavior rather than source-code intuition. If it can't be reproduced cheaply, that's usually a signal to clarify scope rather than push forward on a guess.
+- **Hold the fix's scope.** Defects discovered outside the bug's described boundary belong in a follow-up — its own issue and PR — not in this fix. List them in the PR body's "Adjacent issues" section with the rationale and move on.
 - **Let the fix read as an invariant.** Prefer a named helper whose docblock describes what must hold over a bolt-on `if` guard with apologetic history-comments. The call site should read as intent.
-- **Diff against the baseline.** When neighboring suites have pre-existing failures, stash or check out upstream before claiming "no new failures."
+- **Diff against the baseline.** When neighboring behavior has pre-existing oddities, verify against upstream or a clean checkout before claiming "no new regressions."
 - **Link the issue from the PR body.** Use `Fixes #N` / `Closes #N` / `Resolves #N` so the issue auto-closes on merge and the release-time reverse lookup (`gh issue view N --json closedByPullRequestsReferences` → `git tag --contains <merge sha>`) actually has a chain to follow. The repo's PR template prompts for this; deleting the prompt is fine when the PR genuinely closes nothing.
-- **Stage human verification for visible bugs.** When the symptom needs an eye to confirm — UI, platform-native behavior, animations, race conditions a unit test can't see — green specs alone aren't acceptance. Stand up a buggy-vs-fix comparison the reviewer can drive themselves (typical shape: two namespaced runtimes, one on `main`, one on the fix branch), and seed any required data only through production HTTP APIs; source-level test backdoors invalidate the verification because they prove a fake flow rather than the real one.
-
-For a worked example of one full loop (red e2e spec → fix → green), see `e2e/tests/dialog/stop-reconciles-message.test.ts` (issue #135).
+- **Stage human verification for visible bugs.** When the symptom needs an eye to confirm — UI, platform-native behavior, animations, race conditions a scripted check can't see — fix-and-run is not acceptance on its own. Stand up a buggy-vs-fix comparison the reviewer can drive themselves (typical shape: two namespaced runtimes, one on `main`, one on the fix branch), and seed any required data only through production HTTP APIs; source-level test backdoors invalidate the verification because they prove a fake flow rather than the real one.
 
 # Common commands
 
@@ -426,9 +411,7 @@ pnpm typecheck
 
 ```bash
 pnpm --filter @open-design/web typecheck
-pnpm --filter @open-design/web test
 pnpm --filter @open-design/web build
-pnpm --filter @open-design/daemon test
 pnpm --filter @open-design/daemon build
 pnpm --filter @open-design/desktop build
 pnpm --filter @open-design/tools-dev build
