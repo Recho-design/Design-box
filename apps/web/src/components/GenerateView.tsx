@@ -7,11 +7,20 @@ import type {
   PlaygroundGenerationListResponse,
   PlaygroundTransferResponse,
 } from '@open-design/contracts';
-import { Button, Input, Select, Textarea } from '@open-design/components';
+import { Button, Input } from '@open-design/components';
 import type { MediaProviderCredentials, Project } from '../types';
 import { useI18n } from '../i18n';
 import { invalidateProjectFilesCache, projectFileUrl } from '../providers/registry';
-import { isMediaModelPickerReady } from '../media/provider-readiness';
+import { isMediaProviderPickerReady } from '../media/provider-readiness';
+import {
+  IMAGE_MODELS,
+  MEDIA_PROVIDERS,
+  findProvider,
+  mediaModelProviderId,
+} from '../media/models';
+import type { MediaProviderId } from '../media/models';
+import { CustomSelect } from './CustomSelect';
+import type { CustomSelectItem } from './CustomSelect';
 import { Icon } from './Icon';
 import styles from './GenerateView.module.css';
 
@@ -19,11 +28,11 @@ interface Props {
   initialProjectId?: string;
   projects?: Project[];
   /**
-   * Saved media-provider credentials. The model suggestions below are filtered
-   * through `isMediaModelPickerReady`, so the dropdown only ever offers models
-   * whose provider the user can actually dispatch to. Omitted (or undefined)
-   * means "credentials not loaded yet" — the readiness helper treats that as
-   * ready and the full catalogue stays visible.
+   * Saved media-provider credentials. The image-source dropdown filters
+   * entries through `isMediaProviderPickerReady`, so an unconfigured
+   * provider shows up disabled instead of dispatchable-and-doomed.
+   * Omitted (or undefined) means "credentials not loaded yet" — the
+   * readiness helper treats that as ready and every source stays enabled.
    */
   mediaProviders?: Record<string, MediaProviderCredentials>;
 }
@@ -45,6 +54,34 @@ interface OptimisticCard {
 type CardItem = PlaygroundGeneration | OptimisticCard;
 
 const MEDIA_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
+
+/** 生图源候选：integrated 且目录里注册过 image 模型的 provider（目录顺序）。 */
+const IMAGE_SOURCE_PROVIDERS = MEDIA_PROVIDERS.filter(
+  (p) => p.integrated && IMAGE_MODELS.some((m) => m.provider === p.id),
+);
+
+/** provider 的默认目录模型 id：default 标记优先，否则目录第一个。 */
+function defaultCatalogModelId(providerId: MediaProviderId): string {
+  const models = IMAGE_MODELS.filter((m) => m.provider === providerId);
+  return models.find((m) => m.default)?.id ?? models[0]?.id ?? '';
+}
+
+/**
+ * 拉取 provider 的可用模型列表。契约 `200 { ok: true, models: [{ id }] }`；
+ * 非 200 / 形状不对按失败处理（与 SettingsDialog 的同名逻辑一致）。
+ */
+async function fetchProviderModelOptions(providerId: MediaProviderId): Promise<string[]> {
+  const res = await fetch(`/api/media/providers/${providerId}/model-options`);
+  const payload = (await res.json().catch(() => null)) as
+    | { ok?: boolean; models?: Array<{ id?: string }>; error?: string }
+    | null;
+  if (!res.ok || !payload || payload.ok !== true || !Array.isArray(payload.models)) {
+    throw new Error(payload?.error ?? `HTTP ${res.status}`);
+  }
+  return payload.models
+    .filter((m): m is { id: string } => typeof m?.id === 'string' && m.id.length > 0)
+    .map((m) => m.id);
+}
 
 /**
  * 从错误响应体里读人话。daemon 的信封是 `{ error: { message } }`，但路由 catch
@@ -84,33 +121,125 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     }
   }, [initialProjectId, eligibleProjects]);
 
-  // Model suggestions from GET /api/media/models. The route publishes the
-  // whole catalogue, so the list is filtered down to models whose provider the
-  // user has configured before it reaches the dropdown — offering a model the
-  // run cannot dispatch is how a user ends up with a failed generation and no
-  // idea why.
-  const [suggestedModels, setSuggestedModels] = useState<string[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/media/models')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data) return;
-        const models: string[] = [];
-        if (Array.isArray(data.image)) {
-          for (const m of data.image) {
-            if (typeof m?.id === 'string') models.push(m.id);
-          }
-        }
-        setSuggestedModels(models);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-  const readySuggestedModels = useMemo(
-    () => suggestedModels.filter((id) => isMediaModelPickerReady(id, mediaProviders)),
-    [suggestedModels, mediaProviders],
+  // ── 生图源 / 模型 ──
+  // null = 用户尚未手动选择，跟随自动默认（第一个 enabled 的 provider）。
+  // mediaProviders 从 undefined 变为已加载时自动默认可重算一次；用户手动切换
+  // 后 userPickedSource 落定，不再被重置。
+  const [userPickedSource, setUserPickedSource] = useState<MediaProviderId | null>(null);
+  const [selectedModel, setSelectedModel] = useState('');
+
+  const sourceOptions = useMemo(
+    () =>
+      IMAGE_SOURCE_PROVIDERS.map((p) => ({
+        provider: p,
+        // custom-image 镜像 daemon renderer 的 keyless 语义：永远可选。
+        enabled: isMediaProviderPickerReady(p.id, mediaProviders) || p.id === 'custom-image',
+      })),
+    [mediaProviders],
   );
+  const autoSourceId = useMemo(
+    () =>
+      sourceOptions.find((o) => o.enabled)?.provider.id
+      ?? sourceOptions[0]?.provider.id
+      ?? 'custom-image',
+    [sourceOptions],
+  );
+  const selectedSource: MediaProviderId = userPickedSource ?? autoSourceId;
+
+  const sourceItems: CustomSelectItem[] = useMemo(
+    () =>
+      sourceOptions.map(({ provider, enabled }) => ({
+        value: provider.id,
+        label: enabled ? provider.label : `${provider.label} ${t('generate.sourceUnconfigured')}`,
+        disabled: !enabled,
+      })),
+    [sourceOptions, t],
+  );
+
+  const sourceSupportsModelFetch = findProvider(selectedSource)?.supportsModelFetch === true;
+
+  // 按 provider 缓存拉取结果；切换回已拉取的源不重复请求（deps 里的
+  // fetchedModelIds 命中即短路）。不做 in-flight ref 拦截：dev 下 StrictMode
+  // 双调用 effect，第 1 次的闭包被 cleanup 标记 cancelled 后，ref 拦截会挡住
+  // 第 2 次重新发起，200 的响应就此被丢弃且不再有下次——依赖 deps 短路 +
+  // cancelled 旗标足够，双请求只在 dev 挂载瞬间发生一次。
+  const [fetchedModelIds, setFetchedModelIds] = useState<Partial<Record<MediaProviderId, string[]>>>({});
+  const [fetchingModelIds, setFetchingModelIds] = useState<Partial<Record<MediaProviderId, boolean>>>({});
+
+  useEffect(() => {
+    if (!sourceSupportsModelFetch) return;
+    if (fetchedModelIds[selectedSource]) return;
+    let cancelled = false;
+    setFetchingModelIds((prev) => ({ ...prev, [selectedSource]: true }));
+    fetchProviderModelOptions(selectedSource)
+      .then((ids) => {
+        if (cancelled) return;
+        setFetchedModelIds((prev) => ({ ...prev, [selectedSource]: ids }));
+      })
+      .catch(() => {
+        // 静默回退：失败不缓存、不提示，下拉只保留目录模型；下次切回再试。
+      })
+      .finally(() => {
+        // cancelled 时不抹 loading：本次 fetch 已作废，抹掉会闪掉正在进行的
+        // 下一发（StrictMode 第 2 次 / 切源后的重发）的加载态。被作废源的
+        // loading 残留为 true 无害——该源的下一次拉取落定时自愈。
+        if (!cancelled) {
+          setFetchingModelIds((prev) => ({ ...prev, [selectedSource]: false }));
+        }
+      });
+    return () => { cancelled = true; };
+  }, [selectedSource, sourceSupportsModelFetch, fetchedModelIds]);
+
+  // 生图源变化时清空模型选择回默认档；复用参数恢复（源+模型同批落位）跳过一次。
+  const skipModelResetRef = useRef(false);
+  useEffect(() => {
+    if (skipModelResetRef.current) {
+      skipModelResetRef.current = false;
+      return;
+    }
+    setSelectedModel('');
+  }, [selectedSource]);
+
+  const catalogModels = useMemo(
+    () => IMAGE_MODELS.filter((m) => m.provider === selectedSource),
+    [selectedSource],
+  );
+  const sourceDefaultModelId = useMemo(() => defaultCatalogModelId(selectedSource), [selectedSource]);
+  const configuredSourceModel = mediaProviders?.[selectedSource]?.model?.trim();
+  const sourceModelsLoading = fetchingModelIds[selectedSource] === true;
+
+  const modelItems: CustomSelectItem[] = useMemo(() => {
+    // 只显示用户配置源实际可拉到的模型（§2026-10-12 修订后续：目录内置
+    // id 一律不列——它们只是 daemon 目录的常量，不代表该源真的可调度）。
+    // 默认档 = provider 配置里存的模型名；无配置且未拉取到任何模型时，
+    // 默认档就是唯一选项（显示当前 provider 配置为空的事实）。
+    const items: CustomSelectItem[] = [
+      {
+        value: '',
+        label: configuredSourceModel
+          ? `${t('generate.modelDefault')} · ${configuredSourceModel}`
+          : t('generate.modelDefaultUnset'),
+      },
+    ];
+    for (const id of fetchedModelIds[selectedSource] ?? []) {
+      items.push({ value: id, label: id });
+    }
+    if (sourceModelsLoading) {
+      items.push({ value: '__models-loading__', label: t('generate.modelsLoading'), disabled: true });
+    }
+    return items;
+  }, [configuredSourceModel, fetchedModelIds, selectedSource, sourceModelsLoading, t]);
+
+  /**
+   * 提交语义（与 daemon 侧配套）：默认档 → 目录默认 id、无 override；所选名
+   * 命中目录 → model = 目录 id；否则 model 兜底目录默认 id、override 带所选名。
+   */
+  const resolveDispatchModel = useCallback(() => {
+    const chosen = selectedModel.trim();
+    if (!chosen) return { model: sourceDefaultModelId, modelOverride: null as string | null };
+    const catalogHit = catalogModels.some((m) => m.id === chosen) ? chosen : null;
+    return { model: catalogHit ?? sourceDefaultModelId, modelOverride: chosen };
+  }, [selectedModel, catalogModels, sourceDefaultModelId]);
 
   // History state
   const [generations, setGenerations] = useState<PlaygroundGeneration[]>([]);
@@ -121,7 +250,6 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
 
   // Input bar state
   const [prompt, setPrompt] = useState('');
-  const [modelOverride, setModelOverride] = useState('');
   const [aspect, setAspect] = useState<string>('1:1');
   const [quality, setQuality] = useState<string>('standard');
   const [count, setCount] = useState<number>(1);
@@ -138,6 +266,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   const [transferring, setTransferring] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Fetch initial history when selectedTarget changes
   useEffect(() => {
@@ -230,14 +359,15 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     setIsSubmitting(true);
     const targetProjectId = selectedTarget === 'scratch' ? undefined : selectedTarget;
     const optimisticId = `opt-${Date.now()}`;
+    const { model: dispatchModel, modelOverride: dispatchOverride } = resolveDispatchModel();
 
     const optCard: OptimisticCard = {
       isOptimistic: true,
       id: optimisticId,
       targetProjectId: targetProjectId ?? null,
       surface: 'image',
-      model: 'custom-image',
-      modelOverride: modelOverride.trim() || null,
+      model: dispatchModel,
+      modelOverride: dispatchOverride,
       prompt: trimmedPrompt,
       params: { aspect, quality, count },
       status: 'running',
@@ -251,8 +381,8 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
       const reqBody: PlaygroundGenerateRequest = {
         targetProjectId,
         surface: 'image',
-        model: 'custom-image',
-        modelOverride: modelOverride.trim() || undefined,
+        model: dispatchModel,
+        modelOverride: dispatchOverride ?? undefined,
         prompt: trimmedPrompt,
         aspect,
         quality,
@@ -295,10 +425,17 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   // Card action: Reuse prompt & parameters
   const handleReuse = (card: CardItem) => {
     setPrompt(card.prompt);
-    if (card.modelOverride) setModelOverride(card.modelOverride);
+    // 从目录 id 反查 provider 恢复生图源；模型恢复为 override ?? 目录 id。
+    const reuseSource = mediaModelProviderId(card.model);
+    if (reuseSource && reuseSource !== selectedSource) {
+      skipModelResetRef.current = true;
+      setUserPickedSource(reuseSource);
+    }
+    setSelectedModel(card.modelOverride || card.model);
     if (card.params?.aspect) setAspect(card.params.aspect);
     if (card.params?.quality) setQuality(card.params.quality);
     if (card.params?.count) setCount(card.params.count);
+    promptTextareaRef.current?.focus();
   };
 
   // Card action: Turn generated file into reference chip
@@ -400,6 +537,18 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   // Combine optimistic cards and server generations
   const allCards: CardItem[] = [...optimisticCards, ...generations];
 
+  // Top-bar target dropdown options
+  const targetItems: CustomSelectItem[] = useMemo(
+    () => [
+      { value: 'scratch', label: t('generate.targetScratch') },
+      ...eligibleProjects.map((p) => ({
+        value: p.id,
+        label: t('generate.targetProject', { name: p.name || p.id }),
+      })),
+    ],
+    [eligibleProjects, t],
+  );
+
   return (
     <div className={styles.generateView} data-testid="generate-view" onPaste={handlePaste} onDrop={handleDrop}>
       {/* Top Bar */}
@@ -407,17 +556,13 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
         <div className={styles.targetSelector}>
           <div className={styles.targetIconBadge}><Icon name="folder" size={14} /></div>
           <span className={styles.targetLabel}>{t('generate.target')}</span>
-          <Select
+          <CustomSelect
             className={styles.targetSelect}
             value={selectedTarget}
-            onChange={(e) => setSelectedTarget(e.target.value)}
-            data-testid="generate-target-select"
-          >
-            <option value="scratch">{t('generate.targetScratch')}</option>
-            {eligibleProjects.map((p) => (
-              <option key={p.id} value={p.id}>{t('generate.targetProject', { name: p.name || p.id })}</option>
-            ))}
-          </Select>
+            options={targetItems}
+            onChange={setSelectedTarget}
+            ariaLabel={t('generate.target')}
+          />
         </div>
 
         <div className={styles.topBarMeta}>
@@ -449,6 +594,8 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             const isScratch = card.targetProjectId === null;
             const isSingle = files.length === 1;
             const aspectStyle = card.params?.aspect ? { aspectRatio: card.params.aspect.replace(':', ' / ') } : undefined;
+            // 徽标优先显示实际模型名（override），否则目录 id。
+            const modelBadge = card.modelOverride || card.model;
 
             return (
               <article key={card.id} className={styles.card} data-testid={`generate-card-${card.id}`}>
@@ -458,7 +605,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
                     <p className={styles.cardPrompt}>{card.prompt}</p>
                   </div>
                   <div className={styles.cardMeta}>
-                    {card.modelOverride && <span className={styles.badge} title={card.modelOverride}>{card.modelOverride}</span>}
+                    {modelBadge && <span className={styles.badge} title={modelBadge}>{modelBadge}</span>}
                     {card.params?.aspect && <span className={styles.badge}><Icon name="crop" size={10} /><span>{card.params.aspect}</span></span>}
                     {card.params?.quality && <span className={styles.badge}><span>{card.params.quality}</span></span>}
                     {isRunning && <span className={`${styles.badge} ${styles.badgeRunning}`}><span className={styles.pulseDot} /><span>{t('generate.generating')}</span></span>}
@@ -564,10 +711,16 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             </div>
           )}
 
-          <div className={styles.promptRow}>
-            <Textarea
+          <div
+            className={styles.promptRow}
+            onClick={() => promptTextareaRef.current?.focus()}
+          >
+            <textarea
+              ref={promptTextareaRef}
               className={styles.promptTextarea}
               placeholder={t('generate.promptPlaceholder')}
+              aria-label={t('generate.promptPlaceholder')}
+              data-testid="generate-prompt-input"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={2}
@@ -593,40 +746,64 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
                   e.target.value = '';
                 }}
               />
-              <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage} title={t('generate.addReference')}>
-                <Icon name="attach" size={13} /><span>{uploadingImage ? t('common.loading') : t('generate.addReference')}</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                className={styles.attachBtn}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingImage}
+                title={t('generate.addReference')}
+                aria-label={t('generate.addReference')}
+              >
+                <Icon name="attach" size={13} />
               </Button>
 
               <span className={styles.toolbarDivider} />
 
               <div className={styles.paramItem}>
-                <label htmlFor="gen-model-override" className={styles.paramLabel}>{t('generate.modelLabel')}</label>
-                <Input
-                  id="gen-model-override"
-                  list="gen-model-suggestions"
-                  className={styles.paramInput}
-                  value={modelOverride}
-                  onChange={(e) => setModelOverride(e.target.value)}
-                  placeholder={t('generate.modelPlaceholder')}
+                <span className={styles.paramLabel}>{t('generate.sourceLabel')}</span>
+                <CustomSelect
+                  className={styles.sourceSelect}
+                  value={selectedSource}
+                  options={sourceItems}
+                  onChange={(v) => setUserPickedSource(v as MediaProviderId)}
+                  ariaLabel={t('generate.sourceLabel')}
                 />
-                <datalist id="gen-model-suggestions">
-                  {readySuggestedModels.map((m) => (<option key={m} value={m} />))}
-                </datalist>
+              </div>
+
+              <div className={`${styles.paramItem} ${styles.paramItemModel}`}>
+                <span className={styles.paramLabel}>{t('generate.modelLabel')}</span>
+                <CustomSelect
+                  value={selectedModel}
+                  options={modelItems}
+                  onChange={setSelectedModel}
+                  ariaLabel={t('generate.modelLabel')}
+                />
               </div>
 
               <div className={styles.paramItem}>
-                <label htmlFor="gen-aspect" className={styles.paramLabel}>{t('generate.aspect')}</label>
-                <Select id="gen-aspect" className={styles.paramSelect} value={aspect} onChange={(e) => setAspect(e.target.value)}>
-                  {MEDIA_ASPECTS.map((asp) => (<option key={asp} value={asp}>{asp}</option>))}
-                </Select>
+                <span className={styles.paramLabel}>{t('generate.aspect')}</span>
+                <CustomSelect
+                  className={styles.aspectSelect}
+                  value={aspect}
+                  options={MEDIA_ASPECTS.map((asp) => ({ value: asp, label: asp }))}
+                  onChange={setAspect}
+                  ariaLabel={t('generate.aspect')}
+                />
               </div>
 
               <div className={styles.paramItem}>
-                <label htmlFor="gen-quality" className={styles.paramLabel}>{t('generate.quality')}</label>
-                <Select id="gen-quality" className={styles.paramSelect} value={quality} onChange={(e) => setQuality(e.target.value)}>
-                  <option value="standard">{t('generate.qualityDefault')}</option>
-                  <option value="high">High</option>
-                </Select>
+                <span className={styles.paramLabel}>{t('generate.quality')}</span>
+                <CustomSelect
+                  className={styles.qualitySelect}
+                  value={quality}
+                  options={[
+                    { value: 'standard', label: t('generate.qualityDefault') },
+                    { value: 'high', label: 'High' },
+                  ]}
+                  onChange={setQuality}
+                  ariaLabel={t('generate.quality')}
+                />
               </div>
 
               <div className={styles.paramItem}>
@@ -688,16 +865,14 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
           <div className={styles.transferDialog} onClick={(e) => e.stopPropagation()}>
             <div className={styles.transferTitle}>{t('generate.transfer')}</div>
             <div className={styles.transferField}>
-              <label htmlFor="gen-transfer-project-select" className={styles.transferLabel}>{t('generate.transferSelectProject')}</label>
-              <Select
-                id="gen-transfer-project-select"
-                className={styles.transferSelect}
+              <span className={styles.transferLabel}>{t('generate.transferSelectProject')}</span>
+              <CustomSelect
                 value={transferDestinationPid}
-                onChange={(e) => setTransferDestinationPid(e.target.value)}
+                options={eligibleProjects.map((p) => ({ value: p.id, label: p.name || p.id }))}
+                onChange={setTransferDestinationPid}
+                ariaLabel={t('generate.transferSelectProject')}
                 disabled={transferring}
-              >
-                {eligibleProjects.map((p) => (<option key={p.id} value={p.id}>{p.name || p.id}</option>))}
-              </Select>
+              />
             </div>
             <div className={styles.transferActions}>
               <Button variant="secondary" size="sm" onClick={() => setTransferTargetGenId(null)} disabled={transferring}>

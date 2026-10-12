@@ -748,13 +748,16 @@ async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig)
   // from the deployment in the path so omitting it keeps payloads
   // compatible across both flavors. The wire-name (post-alias) goes
   // on the body so the user's alias from issue #1277 reaches the API.
+  // A caller-supplied modelOverride (Playground source switch) wins
+  // over both the alias and the provider config.
   if (!azure) {
-    body.model = ctx.wireModel;
+    body.model = ctx.modelOverride || ctx.wireModel;
   }
-  // Capability branches key off the CATALOG id (not the alias) so a
-  // user who aliased `dall-e-3` to a custom Azure / proxy deployment
-  // still gets the DALL-E-specific quality + response_format flags
-  // (lefarcen + codex P2 on PR #1309).
+  // Capability branches key off the CATALOG id (not the alias/override) so a
+  // user who aliased `dall-e-3` to a custom Azure / proxy deployment — or
+  // switched the Playground to it with a modelOverride — still gets the
+  // DALL-E-specific quality + response_format flags (lefarcen + codex P2 on
+  // PR #1309). The override only rewrites the wire name, never the template.
   if (ctx.model.startsWith('dall-e-')) {
     body.response_format = 'b64_json';
     body.quality = ctx.model === 'dall-e-3' ? 'hd' : 'standard';
@@ -811,7 +814,7 @@ async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig)
   const tag = azure ? 'azure-openai' : 'openai';
   return {
     bytes,
-    providerNote: `${tag}/${ctx.wireModel} · ${ctx.aspect} · ${bytes.length} bytes`,
+    providerNote: `${tag}/${ctx.modelOverride || ctx.wireModel} · ${ctx.aspect} · ${bytes.length} bytes`,
     suggestedExt: '.png',
   };
 }
@@ -1061,7 +1064,10 @@ async function renderGrokImage(ctx: MediaContext, credentials: ProviderConfig): 
 
   const aspectRatio = grokAspectFor(ctx.aspect);
   const body = {
-    model: ctx.wireModel,
+    // Caller-supplied override (Playground source switch) wins over the
+    // alias-resolved wire name; capability branches are unaffected because
+    // the grok renderer has none.
+    model: ctx.modelOverride || ctx.wireModel,
     prompt: ctx.prompt || 'A high-quality reference image.',
     n: 1,
     aspect_ratio: aspectRatio,
@@ -1104,7 +1110,7 @@ async function renderGrokImage(ctx: MediaContext, credentials: ProviderConfig): 
   // trusts the extension.
   return {
     bytes,
-    providerNote: `grok/${ctx.wireModel} · ${aspectRatio} · ${bytes.length} bytes`,
+    providerNote: `grok/${ctx.modelOverride || ctx.wireModel} · ${aspectRatio} · ${bytes.length} bytes`,
     suggestedExt: sniffImageExt(bytes),
   };
 }
@@ -1118,7 +1124,15 @@ async function renderNanoBananaImage(ctx: MediaContext, credentials: ProviderCon
   }
 
   const baseUrl = (credentials.baseUrl || NANOBANANA_DEFAULT_BASE_URL).replace(/\/$/, '');
-  const wireModel = (credentials.model || ctx.wireModel || NANOBANANA_DEFAULT_MODEL).trim();
+  // Caller-supplied override (Playground source switch) wins over the provider
+  // config's model and the catalog wire name; capability branches (none here)
+  // still key off the catalog id.
+  const wireModel = (
+    ctx.modelOverride
+    || credentials.model
+    || ctx.wireModel
+    || NANOBANANA_DEFAULT_MODEL
+  ).trim();
   const body = {
     contents: [{
       parts: [{

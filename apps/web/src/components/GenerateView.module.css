@@ -28,14 +28,21 @@
 
 .targetLabel { font-size: 13px; font-weight: 500; color: var(--text-muted); user-select: none; }
 
-/* 后代选择器抬高特异性以覆盖共享皮肤（.control 的 8px 纵向 padding 与
-   强制高度叠加会把文字顶出可视区）；白底去灰填充，边框/圆角/焦点仍走共享皮肤 */
+/* CustomSelect(od-select) 紧凑化，沿用旧原生 Select 覆盖的同一视觉档位：
+   外壳改 auto 宽（全局 .od-select 是 width:100%，会撑满顶栏弹性空间），
+   trigger 压到 30px 高、12px 字号、白底去灰填充；边框/圆角/焦点仍走共享皮肤。
+   trigger 是 button 而非原生 select，宽度跟随选中项文字，超长项目名由
+   od-select-value 自带的 ellipsis 截断，max-width 兜底防顶栏被撑爆。 */
 .targetSelector .targetSelect {
   width: auto;
-  height: 30px;
+  min-width: 160px;
+  max-width: 280px;
+}
+.targetSelector .targetSelect :global(.od-select-trigger) {
+  min-height: 30px;
+  padding: 0 8px 0 10px;
+  gap: 6px;
   font-size: 12px;
-  padding: 0 28px 0 10px;
-  line-height: 28px;
   background: var(--bg);
 }
 
@@ -284,17 +291,37 @@
 .refChipRemove:hover { color: var(--text-strong); background: var(--bg-muted); }
 .refChipRemove:focus-visible { outline: 2px solid var(--accent); }
 
-.promptRow { padding: 12px 14px 4px 14px; }
+.promptRow {
+  padding: 12px 14px 4px 14px;
+  cursor: text;
+}
 
-/* display:block 消除 textarea 作为 inline-block 坐在基线上时留下的行盒下沉空间：
-   该幻影 4.5px 会让 .promptRow 高出其真实内容（12+48+4=64px）而变成 68.5px，
-   从而在工具行坐标上被 elementFromPoint 命中（盒子越界但与工具行零视觉重叠）。 */
 .promptTextarea {
   display: block;
-  min-height: 48px; max-height: 160px;
-  background: transparent; border: none; padding: 0; box-shadow: none;
+  width: 100%;
+  min-height: 48px;
+  max-height: 160px;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-strong);
+  caret-color: var(--text-strong);
+  resize: none;
 }
-.promptTextarea:focus { border: none; box-shadow: none; }
+.promptTextarea::placeholder {
+  color: var(--text-muted);
+}
+.promptTextarea:focus {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
 
 .composerToolbar {
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
@@ -311,14 +338,6 @@
 
 /* 同 .targetSelector .targetSelect：高度收窄时同步收 padding，line-height 对齐
    内容盒（28 - 2px 边框 = 26px），文字垂直居中不被截断；透明底消除灰带 */
-.composerToolbar .paramSelect {
-  width: auto;
-  height: 28px;
-  font-size: 11px;
-  padding: 0 26px 0 8px;
-  line-height: 26px;
-  background: var(--bg);
-}
 .composerToolbar .paramInput {
   width: 140px;
   height: 28px;
@@ -327,7 +346,40 @@
   line-height: 26px;
   background: var(--bg);
 }
-.paramInputCount { width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
+.paramInputCount { width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* ── 参数区控件按内部文字量定宽 ──
+   宽度落在 od-select 外壳上（全局 .od-select 是 width:100%，不定宽会互相挤压）：
+   生图源 128px（"xAI Grok Imagine" 级标签）、比例 68px（"16:9"）、质量 88px
+   （"默认"/"High"）。模型名最长，宽度落在 paramItem 上吃弹性空间（150px 起），
+   od-select 外壳默认 width:100% 自动填满扣除 label 后的剩余宽度。 */
+.composerToolbar .sourceSelect { width: 128px; }
+.composerToolbar .aspectSelect { width: 68px; }
+.composerToolbar .qualitySelect { width: 88px; }
+.paramItemModel { flex: 1 1 150px; min-width: 150px; }
+
+/* 同旧 .paramSelect 覆盖的理由：共享皮肤 .od-select-trigger 的 36px min-height
+   与 7px 纵向 padding 会把工具行撑高一档；在工具栏作用域内压到 28px 高、11px
+   字号、白底去灰填充（与 console 白卡一致），边框/圆角/焦点仍走共享皮肤。
+   值文字超宽由 od-select-value 自带 ellipsis 截断。 */
+.composerToolbar :global(.od-select-trigger) {
+  min-height: 28px;
+  padding: 0 6px 0 8px;
+  gap: 4px;
+  font-size: 11px;
+  background: var(--bg);
+}
+
+/* 「添加参考图」图标钮：28×28 与参数区控件同高，居中放图标。
+   后代选择器抬高特异性，避免与共享 Button .sm 档（height:auto、11px 内距）
+   的单类规则比加载顺序 */
+.composerToolbar .attachBtn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
 .submitGroup { display: flex; align-items: center; gap: 10px; margin-inline-start: auto; }
 .shortcutKbd { display: inline-flex; align-items: center; gap: 3px; user-select: none; }
@@ -389,15 +441,6 @@
 .transferTitle { font-size: 16px; font-weight: 600; color: var(--text-strong); letter-spacing: -0.01em; }
 .transferField { display: flex; flex-direction: column; gap: 8px; }
 .transferLabel { font-size: 12px; font-weight: 500; color: var(--text-muted); display: block; }
-
-/* 弹窗内保持产品标准灰填充，只修高度/padding 叠加导致的文字截断 */
-.transferDialog .transferSelect {
-  width: 100%;
-  height: 34px;
-  font-size: 13px;
-  padding: 0 28px 0 10px;
-  line-height: 32px;
-}
 
 .transferActions {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 4px;

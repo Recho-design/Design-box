@@ -44,9 +44,9 @@ export interface PlaygroundGeneration {
   /** null = scratch（不属于任何项目）。 */
   targetProjectId: string | null;
   surface: PlaygroundSurface;
-  /** v1 恒为 `'custom-image'`（目录 id，不是 wire 模型名）。 */
+  /** image 目录模型 id（目录 id，不是 wire 模型名）。 */
   model: string;
-  /** 实际模型名（v1 由调用方指定；无 override 且未配置时生成会明确失败）。 */
+  /** 实际 wire 模型名（优先于 provider 配置与目录别名；未配置时 custom-image 无默认模型，生成会明确失败）。 */
   modelOverride?: string | null;
   prompt: string;
   params: PlaygroundGenerationParams;
@@ -61,7 +61,7 @@ export interface PlaygroundGenerateRequest {
   /** 缺省 = scratch。 */
   targetProjectId?: string;
   surface: PlaygroundSurface;
-  /** v1 只接受 `'custom-image'`。 */
+  /** image 目录模型 id（见 GET /api/media/models），如 `custom-image`、`gpt-image-2`。 */
   model: string;
   modelOverride?: string;
   prompt: string;

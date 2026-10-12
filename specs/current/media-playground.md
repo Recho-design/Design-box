@@ -31,6 +31,16 @@ v2 = **全局「生成」视图（Media Playground）**取代弹窗，支持临�
 | D5 | 渠道 | 复用媒体生成提供商管道（`generateMedia` 分发器），不另写生成实现 |
 | D6 | 模型语义 | v1 沿用：`model` 固定 `'custom-image'`，模型名由 `modelOverride` 自由指定（接缝见下） |
 
+> **2026-10-12 修订（D6 放开）**：`model` 已放开为任意 **image 目录 id**
+> （`findMediaModel` + `modelsForSurface('image')` 校验，`custom-image` 自然
+> 继续合法），错误文案改为 `model must be an image model id from
+> /api/media/models`。`modelOverride` 的语义（「Caller-supplied provider
+> model name; wins over provider config + alias」）在全部 image renderer
+> （openai 非 Azure 分支 / grok / nanobanana / custom-image）统一为最高优先；
+> 能力分支（尺寸、dall-e-3 的 response_format/quality、gpt-image 的
+> quality）仍按目录 id 走。源切换 UI（生图源下拉 + model-options 自动拉取）
+> 落在 GenerateView（web 侧）。
+
 未来接缝（本次不建，但结构预留）：
 - **视频**：`media_playground_generations.surface` 列已存在但 **v1 不加
   CHECK 约束**，就是为 surface 扩展免迁移；DTO 的 `surface` 同理。
@@ -322,6 +332,17 @@ sendDisabled 时隐藏）。点击**不再 navigate 到 `/generate`**，而是�
   **列表仅作可编辑示例**（C 建议 4）：datalist 形态、placeholder 说明
   「示例值，实际模型名以你的端点为准」——不暗示这些 id 由 custom-image
   端点支持（请求固定 `model:'custom-image'`，填的是上游 `modelOverride`）。
+- **2026-10-12 修订**：上一段的「请求固定 `model:'custom-image'`」约束已
+  随 D6 放开失效——`model` 现在接受任意 image 目录 id（见 §2 D6 修订
+  注记），源切换下拉落在 GenerateView，`modelOverride` 在所有 image
+  renderer 中优先于 provider 配置。
+- **2026-10-12 修订（模型下拉只列可拉取模型）**：模型下拉**不再列目录
+  内置 id**（`IMAGE_MODELS` 常量只是 daemon 目录，不代表该 provider 可
+  调度），选项 = 默认档（provider 配置的模型名；未配置显示
+  `generate.modelDefaultUnset`）+ `/model-options` 拉回的 id。提交语义
+  不变：默认档仍派发目录默认 id（`resolveDispatchModel` 的 fallback），
+  所选名作为 `modelOverride` 传 daemon。custom-image 等无
+  `supportsModelFetch` 的源只有默认档一档（其模型名本就来自用户配置）。
 - 图片预览复用既有 Lightbox/预览模式；样式走 `GenerateView.module.css`
   （组件旁，不进 `styles/` 全局，O4），遵守动画哲学（enter 200ms
   ease-out、exit 140ms；卡片从 `scale(0.9)+opacity:0` 进入）。

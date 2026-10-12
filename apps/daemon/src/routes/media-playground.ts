@@ -15,6 +15,7 @@ import type {
 
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
 import { errorText, generateMediaBatch } from '../media/generate-media-batch.js';
+import { findMediaModel, modelsForSurface } from '../media/models.js';
 import {
   captureMediaGenerationResult,
   resolveMediaAnalyticsContext,
@@ -624,9 +625,20 @@ function validateGenerateRequest(body: Partial<PlaygroundGenerateRequest>): Requ
   if (body.surface !== 'image') {
     return { status: 400, code: 'BAD_REQUEST', message: 'surface must be image' };
   }
-  // v1 固定走 custom-image 通道，实际模型名由 modelOverride 自由指定（D6 接缝）。
-  if (body.model !== 'custom-image') {
-    return { status: 400, code: 'BAD_REQUEST', message: 'model must be custom-image' };
+  // model 已放开到任意 image 目录 id（2026-10-12 修订 D6）：管道
+  // （generateMedia 分发器）本就按目录 id 分发 provider，所以这里只做
+  // 「是 image surface 注册模型」的校验；custom-image 仍是合法取值之一。
+  // 实际 wire 模型名由 modelOverride 自由指定（在各 image renderer 里
+  // 优先于 provider 配置与别名）。
+  const modelDef = typeof body.model === 'string' ? findMediaModel(body.model) : null;
+  const isImageModel = modelDef !== null
+    && modelsForSurface('image').some((m) => m.id === modelDef.id);
+  if (!isImageModel) {
+    return {
+      status: 400,
+      code: 'BAD_REQUEST',
+      message: 'model must be an image model id from /api/media/models',
+    };
   }
   if (typeof body.prompt !== 'string' || !body.prompt.trim()) {
     return { status: 400, code: 'BAD_REQUEST', message: 'prompt is required' };

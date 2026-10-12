@@ -1722,7 +1722,7 @@ async function playgroundRequest(daemonUrl, requestPath, init = {}) {
 async function runPlaygroundGenerate(flags, rawArgs) {
   const daemonUrl = await cliDaemonUrl(flags);
   if (!flags.model) {
-    console.error('--model required. v1 accepts: custom-image');
+    console.error('--model required. Accepts any image model id from the catalog (see `od media playground` help or GET /api/media/models)');
     process.exit(2);
   }
   const prompt = await readPromptFromFlags(flags);
@@ -2288,8 +2288,8 @@ files folder so the FileViewer can preview it immediately.`);
  */
 function printMediaPlaygroundHelp() {
   console.log(`Usage:
-  od media playground generate [--project <id>] --model custom-image
-      --model-override <name> [--count n] [--aspect 16:9] [--quality high]
+  od media playground generate [--project <id>] --model <image-model-id>
+      [--model-override <name>] [--count n] [--aspect 16:9] [--quality high]
       [--image <ref> ...] --prompt-file <path|-> | --prompt "<text>"
   od media playground upload <file>... [--project <id>]
   od media playground list [--json] [--limit n] [--target scratch|<pid>]
@@ -2303,9 +2303,12 @@ Target:
                   project uses its own folder, so Design Files sees it).
 
 generate:
-  --model            v1 accepts custom-image only. The wire model name is
-                     --model-override; an endpoint with no configured model
-                     fails the run and says so instead of sending a placeholder.
+  --model            Any image model id from the catalog (GET /api/media/models),
+                     e.g. --model gpt-image-2 or --model custom-image. The
+                     optional --model-override carries the real wire model name
+                     and wins over the provider config and catalog defaults;
+                     an endpoint with no configured model fails the run and
+                     says so instead of sending a placeholder.
   --count <1-10>     Clamped. One request renders N files and answers once;
                      a failed slot carries its own error, its siblings are
                      still reported. Artifacts are <generationId>-<n>.<ext>.

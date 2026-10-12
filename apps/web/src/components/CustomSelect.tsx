@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { CSSProperties, KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 
@@ -37,10 +37,58 @@ interface FlatOption extends CustomSelectOption {
 }
 
 interface MenuPosition {
-  top: number;
+  /** 向下展开：菜单上缘 = 触发器下缘 + gap。 */
+  top?: number;
+  /** 向上展开：菜单下缘 = 触发器上缘 - gap（bottom 锚定，菜单自然贴住触发器，
+   * 不再按 maxHeight 预留高度悬空）。 */
+  bottom?: number;
   left: number;
   width: number;
   maxHeight: number;
+}
+/**
+ * 量 menu 自身需占的最小宽度：在 body 挂一个不可见的测量副本，逐个读
+ * option 行的自然宽（行 padding + check 列 + gap，与 `.od-select-menu` /
+ * `.od-select-option` 的现行值对齐），取 max。动态内容（provider 拉回的
+ * 模型 id、项目名）量出来才是准的 —— 与主界面 type-pill 行的探针量宽
+ * 同一思路：量自然宽度，而不是把 menu 钉死在触发器宽度上。
+ */
+function measureMenuNaturalWidth(options: CustomSelectItem[]): number {
+  const menu = document.createElement('div');
+  menu.className = 'od-select-menu portal';
+  menu.style.position = 'fixed';
+  menu.style.visibility = 'hidden';
+  menu.style.width = 'auto';
+  menu.style.left = '-9999px';
+  menu.style.top = '0';
+  // 入场动画起始帧是 scale(0.93)，不关掉会把量出的宽度打 93 折。
+  menu.style.animation = 'none';
+  // 测量行：按钮外壳用 flex 造不出 grid 列（check 图标列 16px + gap 8px），
+  // 直接补进增量里更稳 —— 见函数尾。
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'od-select-option';
+  button.style.display = 'flex';
+  button.style.width = 'auto';
+  button.style.whiteSpace = 'nowrap';
+  document.body.appendChild(menu);
+  let max = 0;
+  try {
+    for (const item of options) {
+      const entries = isGroup(item) ? item.options : [item];
+      for (const option of entries) {
+        button.textContent = option.label;
+        menu.appendChild(button);
+        max = Math.max(max, button.getBoundingClientRect().width);
+      }
+    }
+  } finally {
+    document.body.removeChild(menu);
+  }
+  // 量的按钮自带行 padding×2（16），再补：check 列 16 + grid gap 8 + menu
+  // padding×2 (8) + 边框 2 + 滚动条余量 16（overflow-y:auto，Windows 经典
+  // 滚动条出现时不把最宽项挤截断）。
+  return Math.ceil(max) + 16 + 8 + 8 + 2 + 16;
 }
 
 function isGroup(item: CustomSelectItem): item is CustomSelectGroup {
@@ -79,7 +127,6 @@ export function CustomSelect({
   const [open, setOpen] = useState(false);
   const [activeValue, setActiveValue] = useState(value);
   const [position, setPosition] = useState<MenuPosition | null>(null);
-
   const flatOptions = useMemo(() => flattenOptions(options), [options]);
   const selected = flatOptions.find((option) => option.value === value);
   const selectedLabel = selected?.label ?? placeholder ?? value;
@@ -88,9 +135,7 @@ export function CustomSelect({
     [flatOptions],
   );
   const flatOptionsRef = useRef(flatOptions);
-  const enabledOptionsRef = useRef(enabledOptions);
   flatOptionsRef.current = flatOptions;
-  enabledOptionsRef.current = enabledOptions;
   const optionIdByValue = useMemo(
     () => new Map(flatOptions.map((option, index) => [option.value, `${idBase}-option-${index}`])),
     [flatOptions, idBase],
@@ -102,19 +147,26 @@ export function CustomSelect({
     const rect = buttonRef.current.getBoundingClientRect();
     const gap = 4;
     const viewportPad = 12;
+    // 菜单最窄与触发器同宽（选中框与选项视觉对齐）；选项文字更长时按自然
+    // 内容宽度撑开，不再把文字截在触发器宽度里。主界面 type-pill 行的
+    // popover 同款思路：`width: max-content` 量宽，而非钉死在触发器上。
+    const naturalWidth = measureMenuNaturalWidth(flatOptionsRef.current);
+    const width = Math.max(rect.width, naturalWidth);
+    const left = Math.min(
+      Math.max(viewportPad, rect.left),
+      Math.max(viewportPad, window.innerWidth - width - viewportPad),
+    );
     const below = window.innerHeight - rect.bottom - viewportPad;
     const above = rect.top - viewportPad;
     const maxHeight = Math.max(160, Math.min(300, Math.max(below, above) - gap));
     const openAbove = below < 180 && above > below;
-    setPosition({
-      top: openAbove ? Math.max(viewportPad, rect.top - maxHeight - gap) : rect.bottom + gap,
-      left: Math.min(
-        Math.max(viewportPad, rect.left),
-        Math.max(viewportPad, window.innerWidth - rect.width - viewportPad),
-      ),
-      width: rect.width,
-      maxHeight,
-    });
+    // 向上展开用 `bottom` 锚定：菜单高度是内容高（≤ maxHeight），bottom 定
+    // 位让它贴住触发器；top + maxHeight 会按最大高度预留，短菜单就悬空了。
+    setPosition(
+      openAbove
+        ? { bottom: window.innerHeight - rect.top + gap, left, width, maxHeight }
+        : { top: rect.bottom + gap, left, width, maxHeight },
+    );
   }, []);
 
   useEffect(() => {
@@ -134,10 +186,10 @@ export function CustomSelect({
     }
     if (wasOpenRef.current && activeSourceValueRef.current === value) return;
     const selectedOption = flatOptionsRef.current.find((option) => option.value === value && !option.disabled);
-    setActiveValue(selectedOption?.value ?? enabledOptionsRef.current[0]?.value ?? '');
+    setActiveValue(selectedOption?.value ?? enabledOptions[0]?.value ?? '');
     wasOpenRef.current = true;
     activeSourceValueRef.current = value;
-  }, [open, value]);
+  }, [open, value, enabledOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -216,12 +268,13 @@ export function CustomSelect({
       aria-label={ariaLabel}
       style={
         portal && position
-          ? {
+          ? ({
               top: position.top,
+              bottom: position.bottom,
               left: position.left,
               width: position.width,
               maxHeight: position.maxHeight,
-            }
+            } as CSSProperties)
           : undefined
       }
     >
