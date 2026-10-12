@@ -12,12 +12,13 @@ import { findProvider } from './models.js';
 
 const MODEL_FETCH_TIMEOUT_MS = 15_000;
 
-// Mirrors renderCustomOpenAIImage (media/index.ts), which omits the
-// Authorization header and lets keyless local endpoints answer. Without this
-// the same provider would generate images without a key but refuse to list its
-// models, so the two entry points would disagree about whether it has
-// credentials at all.
-const KEYLESS_MODEL_FETCH_PROVIDERS = new Set(['custom-image']);
+// The `openai` slot also carries user-supplied OpenAI-compatible endpoints
+// (the former `custom-image` provider's job), and many of those — a local
+// gateway, a proxy in front of a keyed upstream — need no Authorization
+// header at all. Listing their models must not require a key the endpoint
+// does not want: "no key configured" is a configuration the user may hold
+// deliberately, not an error this endpoint should invent.
+const KEYLESS_MODEL_FETCH_PROVIDERS = new Set(['openai']);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -72,9 +73,12 @@ export async function fetchProviderModelOptions(
   }
   // `credentialsRequired: false` is the registry's explicit "this endpoint is
   // keyless"; everything else needs a key before we spend a request on it,
-  // except the keyless-generation family above: there the request goes out
+  // except the keyless-listing family above: there the request goes out
   // without an Authorization header and the upstream answers 401 by itself if
-  // it does want a key.
+  // it does want a key. Note that this exemption is about LISTING only —
+  // generation still requires a key (renderOpenAIImage's no-credential error),
+  // so an OpenAI-compatible endpoint that serves models but not manifests
+  // gets its models listed and a clear error on generation.
   if (
     provider.credentialsRequired !== false
     && !credentials.apiKey

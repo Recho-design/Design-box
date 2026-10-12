@@ -1,19 +1,30 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
+} from 'react';
 import type {
   PlaygroundGeneration,
   PlaygroundGenerateRequest,
   PlaygroundGenerationFile,
+  PlaygroundGenerationParams,
   PlaygroundUploadResponse,
   PlaygroundGenerationListResponse,
   PlaygroundTransferResponse,
 } from '@open-design/contracts';
-import { Button, Input } from '@open-design/components';
+import { gptImageQualityFor } from '@open-design/contracts';
+import { Button } from '@open-design/components';
 import type { MediaProviderCredentials, Project } from '../types';
 import { useI18n } from '../i18n';
 import { invalidateProjectFilesCache, projectFileUrl } from '../providers/registry';
 import { isMediaProviderPickerReady } from '../media/provider-readiness';
 import {
   IMAGE_MODELS,
+  MEDIA_ASPECTS,
   MEDIA_PROVIDERS,
   findProvider,
   mediaModelProviderId,
@@ -22,6 +33,8 @@ import type { MediaProviderId } from '../media/models';
 import { CustomSelect } from './CustomSelect';
 import type { CustomSelectItem } from './CustomSelect';
 import { Icon } from './Icon';
+import { GenerateToolbarParams } from './GenerateToolbarParams';
+import { GenerateCard, type CardItem, type OptimisticCard } from './GenerateCard';
 import styles from './GenerateView.module.css';
 
 interface Props {
@@ -36,24 +49,6 @@ interface Props {
    */
   mediaProviders?: Record<string, MediaProviderCredentials>;
 }
-
-interface OptimisticCard {
-  isOptimistic: true;
-  id: string;
-  targetProjectId: string | null;
-  surface: 'image';
-  model: string;
-  modelOverride: string | null;
-  prompt: string;
-  params: { aspect?: string; quality?: string; count?: number };
-  status: 'running' | 'failed';
-  files: PlaygroundGenerationFile[];
-  createdAt: number;
-}
-
-type CardItem = PlaygroundGeneration | OptimisticCard;
-
-const MEDIA_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
 
 /** 生图源候选：integrated 且目录里注册过 image 模型的 provider（目录顺序）。 */
 const IMAGE_SOURCE_PROVIDERS = MEDIA_PROVIDERS.filter(
@@ -95,6 +90,31 @@ function apiErrorMessage(payload: unknown, fallback: string): string {
   return typeof message === 'string' && message.trim() ? message : fallback;
 }
 
+/**
+ * 提交侧的质量词汇收口（openai 源）。与 daemon 侧 `gptImageQualityFor` 是同一条
+ * 规则的两侧实现（contracts 里那份的 doc 注释写明了为什么必须同步）。
+ *
+ * 工作台只发 `GPT_IMAGE_QUALITIES` 里的档位：`'auto'` 与缺省一律不发字段，让模型
+ * 用自己的默认档；表外的值（旧存量卡上的 `'standard'` 是 dall-e 时代的词汇）同样
+ * 按「用户没要求」处理 —— 原样转发上游只会回 400。
+ *
+ * 回填侧（`handleReuse`）刻意不做收口：卡片照原样显示当时那一发用了什么，收口只发生在
+ * 真正发请求的这一处，于是「切模型后旧值残留」也一并被挡住。
+ */
+function submitQualityFor(catalogModel: string, quality: string): string | undefined {
+  return gptImageQualityFor(catalogModel, quality);
+}
+
+/**
+ * 非 openai 源的 aspect 收口：只发该源真正认得的 5 档。
+ *
+ * `'auto'` 是 openai 工作台的档位（「让模型自己决定」），grok / nanobanana 都没有这个
+ * 概念，原样发过去就是一个上游 400。缺省时不发字段，由 daemon 落各自的默认比例。
+ */
+function submitAspectForNonOpenAI(aspect: string): string | undefined {
+  return (MEDIA_ASPECTS as readonly string[]).includes(aspect) ? aspect : undefined;
+}
+
 export function GenerateView({ initialProjectId, projects = [], mediaProviders }: Props) {
   const { t } = useI18n();
 
@@ -124,7 +144,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   // ── 生图源 / 模型 ──
   // null = 用户尚未手动选择，跟随自动默认（第一个 enabled 的 provider）。
   // mediaProviders 从 undefined 变为已加载时自动默认可重算一次；用户手动切换
-  // 后 userPickedSource 落定，不再被重置。
+  // 后 userPickedSource 落地，不再被重置。
   const [userPickedSource, setUserPickedSource] = useState<MediaProviderId | null>(null);
   const [selectedModel, setSelectedModel] = useState('');
 
@@ -132,8 +152,8 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     () =>
       IMAGE_SOURCE_PROVIDERS.map((p) => ({
         provider: p,
-        // custom-image 镜像 daemon renderer 的 keyless 语义：永远可选。
-        enabled: isMediaProviderPickerReady(p.id, mediaProviders) || p.id === 'custom-image',
+        // 已移除 custom-image 特判，完全基于 provider 准备度
+        enabled: isMediaProviderPickerReady(p.id, mediaProviders),
       })),
     [mediaProviders],
   );
@@ -141,7 +161,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     () =>
       sourceOptions.find((o) => o.enabled)?.provider.id
       ?? sourceOptions[0]?.provider.id
-      ?? 'custom-image',
+      ?? 'openai',
     [sourceOptions],
   );
   const selectedSource: MediaProviderId = userPickedSource ?? autoSourceId;
@@ -159,10 +179,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   const sourceSupportsModelFetch = findProvider(selectedSource)?.supportsModelFetch === true;
 
   // 按 provider 缓存拉取结果；切换回已拉取的源不重复请求（deps 里的
-  // fetchedModelIds 命中即短路）。不做 in-flight ref 拦截：dev 下 StrictMode
-  // 双调用 effect，第 1 次的闭包被 cleanup 标记 cancelled 后，ref 拦截会挡住
-  // 第 2 次重新发起，200 的响应就此被丢弃且不再有下次——依赖 deps 短路 +
-  // cancelled 旗标足够，双请求只在 dev 挂载瞬间发生一次。
+  // fetchedModelIds 命中即短路）。依赖 deps 短路 + cancelled 旗标。
   const [fetchedModelIds, setFetchedModelIds] = useState<Partial<Record<MediaProviderId, string[]>>>({});
   const [fetchingModelIds, setFetchingModelIds] = useState<Partial<Record<MediaProviderId, boolean>>>({});
 
@@ -180,9 +197,6 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
         // 静默回退：失败不缓存、不提示，下拉只保留目录模型；下次切回再试。
       })
       .finally(() => {
-        // cancelled 时不抹 loading：本次 fetch 已作废，抹掉会闪掉正在进行的
-        // 下一发（StrictMode 第 2 次 / 切源后的重发）的加载态。被作废源的
-        // loading 残留为 true 无害——该源的下一次拉取落定时自愈。
         if (!cancelled) {
           setFetchingModelIds((prev) => ({ ...prev, [selectedSource]: false }));
         }
@@ -190,15 +204,40 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     return () => { cancelled = true; };
   }, [selectedSource, sourceSupportsModelFetch, fetchedModelIds]);
 
-  // 生图源变化时清空模型选择回默认档；复用参数恢复（源+模型同批落位）跳过一次。
+  // 生图源变化时清空模型选择回默认档、并把参数复位到该源的默认档；复用参数恢复
+  // （源+模型同批落位，`handleReuse` 自己把参数摆好）跳过一次。
   const skipModelResetRef = useRef(false);
+
+  /**
+   * 参数复位：只留下目标源真正消费的参数。
+   *
+   * 单独成函数是因为它有两个调用方：用户手动切源（`handleSourceChange`），以及
+   * **源自己变了**——`mediaProviders` 从 undefined 变成已加载时 `autoSourceId` 会重算，
+   * 那一刻没有任何点击发生。只在手动路径复位的话，后一条路径会把上一个源的档位
+   * （例如 openai 的 `'auto'` 比例）原样带到新源上。
+   */
+  const resetParamsForSource = useCallback((source: MediaProviderId) => {
+    setAspect(source === 'openai' ? 'auto' : '1:1');
+    setResolution('auto');
+    setQuality('auto');
+    setModeration('auto');
+    setTransparent(false);
+  }, []);
+
+  // 切换生图源时重置不适用参数
+  const handleSourceChange = useCallback((newSource: MediaProviderId) => {
+    setUserPickedSource(newSource);
+    resetParamsForSource(newSource);
+  }, [resetParamsForSource]);
+
   useEffect(() => {
     if (skipModelResetRef.current) {
       skipModelResetRef.current = false;
       return;
     }
     setSelectedModel('');
-  }, [selectedSource]);
+    resetParamsForSource(selectedSource);
+  }, [selectedSource, resetParamsForSource]);
 
   const catalogModels = useMemo(
     () => IMAGE_MODELS.filter((m) => m.provider === selectedSource),
@@ -209,10 +248,6 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   const sourceModelsLoading = fetchingModelIds[selectedSource] === true;
 
   const modelItems: CustomSelectItem[] = useMemo(() => {
-    // 只显示用户配置源实际可拉到的模型（§2026-10-12 修订后续：目录内置
-    // id 一律不列——它们只是 daemon 目录的常量，不代表该源真的可调度）。
-    // 默认档 = provider 配置里存的模型名；无配置且未拉取到任何模型时，
-    // 默认档就是唯一选项（显示当前 provider 配置为空的事实）。
     const items: CustomSelectItem[] = [
       {
         value: '',
@@ -233,8 +268,11 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   /**
    * 提交语义（与 daemon 侧配套）：默认档 → 目录默认 id、无 override；所选名
    * 命中目录 → model = 目录 id；否则 model 兜底目录默认 id、override 带所选名。
+   *
+   * 算成 memo 而不是函数：`model`（目录 id）同时是工具栏的能力判据与尺寸预览的
+   * 输入 —— 两边必须是同一个值，否则 UI 显示的档位和真正发出去的那一发会分叉。
    */
-  const resolveDispatchModel = useCallback(() => {
+  const dispatch = useMemo(() => {
     const chosen = selectedModel.trim();
     if (!chosen) return { model: sourceDefaultModelId, modelOverride: null as string | null };
     const catalogHit = catalogModels.some((m) => m.id === chosen) ? chosen : null;
@@ -250,8 +288,12 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
 
   // Input bar state
   const [prompt, setPrompt] = useState('');
-  const [aspect, setAspect] = useState<string>('1:1');
-  const [quality, setQuality] = useState<string>('standard');
+  // openai 源默认 'auto'，其他源默认 '1:1'
+  const [aspect, setAspect] = useState<string>(selectedSource === 'openai' ? 'auto' : '1:1');
+  const [resolution, setResolution] = useState<string>('auto');
+  const [quality, setQuality] = useState<string>('auto');
+  const [moderation, setModeration] = useState<string>('auto');
+  const [transparent, setTransparent] = useState<boolean>(false);
   const [count, setCount] = useState<number>(1);
   const [referenceChips, setReferenceChips] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -320,8 +362,12 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     }
   };
 
-  // Paste / Drop image support
-  const handlePaste = (e: React.ClipboardEvent) => {
+  /**
+   * Paste / drop image support：整块工作台都是参考图投放区。
+   *
+   * 只在拿到图片时才 `preventDefault`，普通文本粘贴与文件拖放不受影响。
+   */
+  const handlePaste = (e: ReactClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
@@ -337,7 +383,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: ReactDragEvent) => {
     e.preventDefault();
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
@@ -359,7 +405,67 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     setIsSubmitting(true);
     const targetProjectId = selectedTarget === 'scratch' ? undefined : selectedTarget;
     const optimisticId = `opt-${Date.now()}`;
-    const { model: dispatchModel, modelOverride: dispatchOverride } = resolveDispatchModel();
+    const { model: dispatchModel, modelOverride: dispatchOverride } = dispatch;
+
+    let genParams: PlaygroundGenerationParams;
+    let reqBody: PlaygroundGenerateRequest;
+
+    if (selectedSource === 'openai') {
+      // wire 语义：'auto' 与 false 不发字段；具体值正常提交。质量走
+      // `submitQualityFor` 收口（旧卡的 'standard' 等表外词汇按"没要求"处理）。
+      const finalAspect = aspect !== 'auto' ? aspect : undefined;
+      // resolution 与 aspect 不同：**'auto' 也要发出去**。daemon 靠
+      // `undefined`（旧路径：agent / CLI 根本没有档位概念，照旧算具体尺寸）与
+      // 显式 `'auto'`（工作台选了自动档，size 字段完全不出现）区分两种语义，
+      // 这里替它省掉字段等于把用户的「自动」降级成旧行为。
+      const finalResolution = resolution;
+      const finalQuality = submitQualityFor(dispatchModel, quality);
+      const finalModeration = moderation !== 'auto' ? moderation : undefined;
+      const finalTransparent = transparent ? true : undefined;
+
+      genParams = {
+        aspect: finalAspect,
+        resolution: finalResolution,
+        quality: finalQuality,
+        moderation: finalModeration,
+        transparent: finalTransparent,
+        count,
+      };
+
+      reqBody = {
+        targetProjectId,
+        surface: 'image',
+        model: dispatchModel,
+        modelOverride: dispatchOverride ?? undefined,
+        prompt: trimmedPrompt,
+        ...(finalAspect ? { aspect: finalAspect } : {}),
+        resolution: finalResolution,
+        ...(finalQuality ? { quality: finalQuality } : {}),
+        ...(finalModeration ? { moderation: finalModeration } : {}),
+        ...(finalTransparent ? { transparent: finalTransparent } : {}),
+        count,
+        images: referenceChips.length > 0 ? referenceChips : undefined,
+      };
+    } else {
+      // 非 openai 源只发 aspect / count（不再发无效的 quality）；`'auto'` 不在该源的
+      // 词表里，收口成不发字段，由 daemon 落各自的默认比例。
+      const finalAspect = submitAspectForNonOpenAI(aspect);
+      genParams = {
+        aspect: finalAspect,
+        count,
+      };
+
+      reqBody = {
+        targetProjectId,
+        surface: 'image',
+        model: dispatchModel,
+        modelOverride: dispatchOverride ?? undefined,
+        prompt: trimmedPrompt,
+        ...(finalAspect ? { aspect: finalAspect } : {}),
+        count,
+        images: referenceChips.length > 0 ? referenceChips : undefined,
+      };
+    }
 
     const optCard: OptimisticCard = {
       isOptimistic: true,
@@ -369,7 +475,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
       model: dispatchModel,
       modelOverride: dispatchOverride,
       prompt: trimmedPrompt,
-      params: { aspect, quality, count },
+      params: genParams,
       status: 'running',
       files: Array.from({ length: count }, () => ({ name: '' })),
       createdAt: Date.now(),
@@ -378,18 +484,6 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     setOptimisticCards((prev) => [optCard, ...prev]);
 
     try {
-      const reqBody: PlaygroundGenerateRequest = {
-        targetProjectId,
-        surface: 'image',
-        model: dispatchModel,
-        modelOverride: dispatchOverride ?? undefined,
-        prompt: trimmedPrompt,
-        aspect,
-        quality,
-        count,
-        images: referenceChips.length > 0 ? referenceChips : undefined,
-      };
-
       const res = await fetch('/api/media/playground/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -423,40 +517,54 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   };
 
   // Card action: Reuse prompt & parameters
-  const handleReuse = (card: CardItem) => {
+  const handleReuse = useCallback((card: CardItem) => {
     setPrompt(card.prompt);
     // 从目录 id 反查 provider 恢复生图源；模型恢复为 override ?? 目录 id。
     const reuseSource = mediaModelProviderId(card.model);
+    const targetSource = (reuseSource && reuseSource !== selectedSource) ? reuseSource : selectedSource;
     if (reuseSource && reuseSource !== selectedSource) {
       skipModelResetRef.current = true;
       setUserPickedSource(reuseSource);
     }
     setSelectedModel(card.modelOverride || card.model);
-    if (card.params?.aspect) setAspect(card.params.aspect);
-    if (card.params?.quality) setQuality(card.params.quality);
+
+    if (targetSource === 'openai') {
+      setAspect(card.params?.aspect ?? 'auto');
+      setResolution(card.params?.resolution ?? 'auto');
+      setQuality(card.params?.quality ?? 'auto');
+      setModeration(card.params?.moderation ?? 'auto');
+      setTransparent(card.params?.transparent ?? false);
+    } else {
+      setAspect(card.params?.aspect ?? '1:1');
+      setResolution('auto');
+      setQuality('auto');
+      setModeration('auto');
+      setTransparent(false);
+    }
+
     if (card.params?.count) setCount(card.params.count);
     promptTextareaRef.current?.focus();
-  };
+  }, [selectedSource]);
 
   // Card action: Turn generated file into reference chip
-  const handleAsReference = (card: CardItem, fileName: string) => {
+  const handleAsReference = useCallback((card: CardItem, fileName: string) => {
     if (!fileName) return;
     if (card.targetProjectId !== (selectedTarget === 'scratch' ? null : selectedTarget)) {
       alert(t('generate.crossTargetRefNotice'));
     }
     setReferenceChips((prev) => (prev.includes(fileName) ? prev : [...prev, fileName]));
-  };
+  }, [selectedTarget, t]);
 
   // Resolve media URL for a slot
-  const getFileUrl = (card: CardItem, file: PlaygroundGenerationFile, slotIndex: number): string => {
-    if (card.targetProjectId === null) {
-      return `/api/media/playground/files/${encodeURIComponent(card.id)}/${slotIndex}`;
+  const getFileUrl = useCallback((card: CardItem, file: PlaygroundGenerationFile, slotIndex: number): string => {
+    if (file.name && card.targetProjectId) {
+      return projectFileUrl(card.targetProjectId, file.name, null);
     }
-    return projectFileUrl(card.targetProjectId, file.name, null);
-  };
+    return `/api/media/playground/files/${encodeURIComponent(card.id)}/${slotIndex}`;
+  }, []);
 
   // Card action: Download image
-  const handleDownload = (card: CardItem, file: PlaygroundGenerationFile, slotIndex: number) => {
+  const handleDownload = useCallback((card: CardItem, file: PlaygroundGenerationFile, slotIndex: number) => {
     const url = getFileUrl(card, file, slotIndex);
     const a = document.createElement('a');
     a.href = url;
@@ -464,10 +572,10 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  };
+  }, [getFileUrl]);
 
   // Card action: Delete generation
-  const handleDelete = async (card: CardItem) => {
+  const handleDelete = useCallback(async (card: CardItem) => {
     if ('isOptimistic' in card) {
       setOptimisticCards((prev) => prev.filter((c) => c.id !== card.id));
       return;
@@ -477,29 +585,26 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     try {
       const res = await fetch(`/api/media/playground/generations/${encodeURIComponent(card.id)}`, { method: 'DELETE' });
       if (!res.ok) {
-        const errJson = await res.json().catch(() => null);
         if (res.status === 409) {
           alert(t('generate.deleteRunningError'));
           return;
         }
-        throw new Error(apiErrorMessage(errJson, 'Delete failed'));
+        throw new Error(apiErrorMessage(await res.json().catch(() => null), `HTTP ${res.status}`));
       }
       setGenerations((prev) => prev.filter((g) => g.id !== card.id));
     } catch (err: any) {
       alert(err.message || 'Delete failed');
     }
-  };
+  }, [t]);
 
-  // Card action: Open transfer modal
-  const handleOpenTransfer = (card: PlaygroundGeneration) => {
-    setTransferTargetGenId(card.id);
-    if (eligibleProjects.length > 0 && eligibleProjects[0]) {
-      setTransferDestinationPid(eligibleProjects[0].id);
-    }
-  };
+  // Scratch -> Project transfer
+  const handleOpenTransfer = useCallback((gen: PlaygroundGeneration) => {
+    setTransferTargetGenId(gen.id);
+    const firstProject = eligibleProjects[0]?.id ?? '';
+    setTransferDestinationPid(firstProject);
+  }, [eligibleProjects]);
 
-  // Execute transfer scratch -> project
-  const handleExecuteTransfer = async () => {
+  const handleConfirmTransfer = async () => {
     if (!transferTargetGenId || !transferDestinationPid || transferring) return;
     setTransferring(true);
     try {
@@ -513,19 +618,8 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
         throw new Error(apiErrorMessage(errJson, t('generate.transferFailed')));
       }
       const data: PlaygroundTransferResponse = await res.json();
+      setGenerations((prev) => prev.map((g) => (g.id === transferTargetGenId ? data.generation : g)));
       invalidateProjectFilesCache(transferDestinationPid);
-
-      setGenerations((prev) =>
-        prev.map((g) => {
-          if (g.id !== transferTargetGenId) return g;
-          const currentTransfers = g.params?.transfers ?? [];
-          const exists = currentTransfers.some((tr) => tr.projectId === transferDestinationPid);
-          const nextTransfers = exists
-            ? currentTransfers
-            : [...currentTransfers, { projectId: transferDestinationPid, files: data.transferredFiles }];
-          return { ...g, params: { ...g.params, transfers: nextTransfers } };
-        }),
-      );
       setTransferTargetGenId(null);
     } catch (err: any) {
       alert(err.message || t('generate.transferFailed'));
@@ -534,20 +628,24 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     }
   };
 
-  // Combine optimistic cards and server generations
-  const allCards: CardItem[] = [...optimisticCards, ...generations];
+  // Combine optimistic cards and settled generations for rendering
+  const allCards: CardItem[] = useMemo(
+    () => [...optimisticCards, ...generations],
+    [optimisticCards, generations],
+  );
 
-  // Top-bar target dropdown options
-  const targetItems: CustomSelectItem[] = useMemo(
-    () => [
+  const targetItems: CustomSelectItem[] = useMemo(() => {
+    const items: CustomSelectItem[] = [
       { value: 'scratch', label: t('generate.targetScratch') },
-      ...eligibleProjects.map((p) => ({
+    ];
+    for (const p of eligibleProjects) {
+      items.push({
         value: p.id,
         label: t('generate.targetProject', { name: p.name || p.id }),
-      })),
-    ],
-    [eligibleProjects, t],
-  );
+      });
+    }
+    return items;
+  }, [eligibleProjects, t]);
 
   return (
     <div className={styles.generateView} data-testid="generate-view" onPaste={handlePaste} onDrop={handleDrop}>
@@ -564,15 +662,14 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             ariaLabel={t('generate.target')}
           />
         </div>
-
         <div className={styles.topBarMeta}>
           <span className={styles.historyCount}>{t('generate.historyCount', { count: allCards.length })}</span>
         </div>
       </header>
 
-      {/* Card Stream */}
+      {/* Main card list */}
       <main className={styles.cardStream}>
-        {loadingHistory ? (
+        {loadingHistory && allCards.length === 0 ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIconBadge}><Icon name="sparkles" size={24} /></div>
             <div className={styles.emptyDesc}>{t('common.loading')}</div>
@@ -586,111 +683,25 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             </div>
           </div>
         ) : (
-          allCards.map((card) => {
-            const isOpt = 'isOptimistic' in card;
-            const isRunning = card.status === 'running';
-            const isFailed = card.status === 'failed';
-            const files = card.files || [];
-            const isScratch = card.targetProjectId === null;
-            const isSingle = files.length === 1;
-            const aspectStyle = card.params?.aspect ? { aspectRatio: card.params.aspect.replace(':', ' / ') } : undefined;
-            // 徽标优先显示实际模型名（override），否则目录 id。
-            const modelBadge = card.modelOverride || card.model;
-
-            return (
-              <article key={card.id} className={styles.card} data-testid={`generate-card-${card.id}`}>
-                {/* Header */}
-                <div className={styles.cardHeader}>
-                  <div className={styles.cardPromptBox}>
-                    <p className={styles.cardPrompt}>{card.prompt}</p>
-                  </div>
-                  <div className={styles.cardMeta}>
-                    {modelBadge && <span className={styles.badge} title={modelBadge}>{modelBadge}</span>}
-                    {card.params?.aspect && <span className={styles.badge}><Icon name="crop" size={10} /><span>{card.params.aspect}</span></span>}
-                    {card.params?.quality && <span className={styles.badge}><span>{card.params.quality}</span></span>}
-                    {isRunning && <span className={`${styles.badge} ${styles.badgeRunning}`}><span className={styles.pulseDot} /><span>{t('generate.generating')}</span></span>}
-                    {isFailed && <span className={`${styles.badge} ${styles.badgeFailed}`}><Icon name="alert-triangle" size={10} /><span>{t('generate.failedSlot')}</span></span>}
-                  </div>
-                </div>
-
-                {/* Media gallery grid */}
-                <div className={isSingle ? `${styles.cardGrid} ${styles.cardGridSingle}` : styles.cardGrid}>
-                  {files.map((file, slotIdx) => {
-                    if (isRunning) {
-                      return (
-                        <div key={slotIdx} className={styles.slotWrapper} style={aspectStyle}>
-                          <div className={styles.slotRunning}>
-                            <div className={styles.runningAperture}><div className={styles.runningRings} /><Icon name="sparkles" size={20} className={styles.runningIcon} /></div>
-                            <div className={styles.runningMeta}><span className={styles.runningTitle}>{t('generate.generating')}</span><div className={styles.runningPulseBar} /></div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (file.error) {
-                      return (
-                        <div key={slotIdx} className={styles.slotWrapper} style={aspectStyle}>
-                          <div className={styles.slotFailed}><Icon name="alert-triangle" size={24} /><span>{file.error}</span></div>
-                        </div>
-                      );
-                    }
-
-                    const url = getFileUrl(card, file, slotIdx);
-                    return (
-                      <div key={slotIdx} className={styles.slotWrapper} style={aspectStyle}>
-                        <img src={url} alt={card.prompt} className={styles.slotImg} onClick={() => setPreviewSrc(url)} loading="lazy" />
-                        <button type="button" className={styles.slotPreviewBtn} onClick={() => setPreviewSrc(url)} aria-label={t('generate.preview')} title={t('generate.preview')}>
-                          <Icon name="eye" size={13} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Card actions */}
-                <div className={styles.cardActions}>
-                  <div className={styles.actionGroup}>
-                    <Button variant="secondary" size="sm" onClick={() => handleReuse(card)} title={t('generate.reuse')}>
-                      <Icon name="refresh" size={12} /><span>{t('generate.reuse')}</span>
-                    </Button>
-
-                    {files.map((file, slotIdx) => {
-                      if (!file.name || file.error) return null;
-                      return (
-                        <React.Fragment key={slotIdx}>
-                          <Button variant="secondary" size="sm" onClick={() => handleAsReference(card, file.name)} title={t('generate.useAsReference')}>
-                            <Icon name="image" size={12} />
-                            <span>{files.length > 1 ? `${t('generate.useAsReference')} #${slotIdx + 1}` : t('generate.useAsReference')}</span>
-                          </Button>
-                          <Button variant="secondary" size="sm" onClick={() => handleDownload(card, file, slotIdx)} title={t('generate.download')}>
-                            <Icon name="download" size={12} />
-                            <span>{files.length > 1 ? `${t('generate.download')} #${slotIdx + 1}` : t('generate.download')}</span>
-                          </Button>
-                        </React.Fragment>
-                      );
-                    })}
-
-                    {isScratch && !isOpt && !isRunning && !isFailed && (
-                      <Button variant="secondary" size="sm" onClick={() => handleOpenTransfer(card as PlaygroundGeneration)} title={t('generate.transfer')}>
-                        <Icon name="folder-transfer" size={12} /><span>{t('generate.transfer')}</span>
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className={styles.actionGroup}>
-                    <Button variant="secondary" size="sm" className={styles.btnDanger} onClick={() => handleDelete(card)} disabled={isRunning} title={t('generate.delete')}>
-                      <Icon name="close" size={12} /><span>{t('generate.delete')}</span>
-                    </Button>
-                  </div>
-                </div>
-              </article>
-            );
-          })
+          allCards.map((card) => (
+            <GenerateCard
+              key={card.id}
+              card={card}
+              onPreview={setPreviewSrc}
+              onReuse={handleReuse}
+              onAsReference={handleAsReference}
+              onDownload={handleDownload}
+              onOpenTransfer={handleOpenTransfer}
+              onDelete={handleDelete}
+              getFileUrl={getFileUrl}
+            />
+          ))
         )}
 
         {nextBefore && (
           <Button variant="secondary" size="sm" className={styles.loadMore} onClick={handleLoadMore} disabled={loadingMore}>
-            <Icon name="chevron-down" size={13} /><span>{loadingMore ? t('common.loading') : t('generate.loadMore')}</span>
+            <Icon name="chevron-down" size={13} />
+            <span>{loadingMore ? t('common.loading') : t('generate.loadMore')}</span>
           </Button>
         )}
       </main>
@@ -702,8 +713,14 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             <div className={styles.referenceChips}>
               {referenceChips.map((chip, idx) => (
                 <div key={idx} className={styles.refChip} title={chip}>
-                  <Icon name="image" size={12} /><span className={styles.refChipName}>{chip}</span>
-                  <button type="button" className={styles.refChipRemove} onClick={() => setReferenceChips((prev) => prev.filter((_, i) => i !== idx))} aria-label={t('generate.removeReference')}>
+                  <Icon name="image" size={12} />
+                  <span className={styles.refChipName}>{chip}</span>
+                  <button
+                    type="button"
+                    className={styles.refChipRemove}
+                    onClick={() => setReferenceChips((prev) => prev.filter((_, i) => i !== idx))}
+                    aria-label={t('generate.removeReference')}
+                  >
                     <Icon name="close" size={10} />
                   </button>
                 </div>
@@ -734,98 +751,35 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
           </div>
 
           <div className={styles.composerToolbar}>
-            <div className={styles.paramGroup}>
-              <input
-                type="file"
-                ref={fileInputRef}
-                className={styles.fileInputHidden}
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleUploadFile(file);
-                  e.target.value = '';
-                }}
-              />
-              <Button
-                variant="secondary"
-                size="sm"
-                className={styles.attachBtn}
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingImage}
-                title={t('generate.addReference')}
-                aria-label={t('generate.addReference')}
-              >
-                <Icon name="attach" size={13} />
-              </Button>
-
-              <span className={styles.toolbarDivider} />
-
-              <div className={styles.paramItem}>
-                <span className={styles.paramLabel}>{t('generate.sourceLabel')}</span>
-                <CustomSelect
-                  className={styles.sourceSelect}
-                  value={selectedSource}
-                  options={sourceItems}
-                  onChange={(v) => setUserPickedSource(v as MediaProviderId)}
-                  ariaLabel={t('generate.sourceLabel')}
-                />
-              </div>
-
-              <div className={`${styles.paramItem} ${styles.paramItemModel}`}>
-                <span className={styles.paramLabel}>{t('generate.modelLabel')}</span>
-                <CustomSelect
-                  value={selectedModel}
-                  options={modelItems}
-                  onChange={setSelectedModel}
-                  ariaLabel={t('generate.modelLabel')}
-                />
-              </div>
-
-              <div className={styles.paramItem}>
-                <span className={styles.paramLabel}>{t('generate.aspect')}</span>
-                <CustomSelect
-                  className={styles.aspectSelect}
-                  value={aspect}
-                  options={MEDIA_ASPECTS.map((asp) => ({ value: asp, label: asp }))}
-                  onChange={setAspect}
-                  ariaLabel={t('generate.aspect')}
-                />
-              </div>
-
-              <div className={styles.paramItem}>
-                <span className={styles.paramLabel}>{t('generate.quality')}</span>
-                <CustomSelect
-                  className={styles.qualitySelect}
-                  value={quality}
-                  options={[
-                    { value: 'standard', label: t('generate.qualityDefault') },
-                    { value: 'high', label: 'High' },
-                  ]}
-                  onChange={setQuality}
-                  ariaLabel={t('generate.quality')}
-                />
-              </div>
-
-              <div className={styles.paramItem}>
-                <label htmlFor="gen-count" className={styles.paramLabel}>{t('generate.count')}</label>
-                <Input
-                  id="gen-count"
-                  type="number"
-                  min={1}
-                  max={10}
-                  className={`${styles.paramInput} ${styles.paramInputCount}`}
-                  value={count}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) setCount(Math.max(1, Math.min(10, val)));
-                  }}
-                />
-              </div>
-            </div>
+            <GenerateToolbarParams
+              fileInputRef={fileInputRef}
+              uploadingImage={uploadingImage}
+              onFileSelect={(file) => void handleUploadFile(file)}
+              selectedSource={selectedSource}
+              sourceItems={sourceItems}
+              onSourceChange={handleSourceChange}
+              selectedModel={selectedModel}
+              modelItems={modelItems}
+              onModelChange={setSelectedModel}
+              catalogModel={dispatch.model}
+              aspect={aspect}
+              onAspectChange={setAspect}
+              resolution={resolution}
+              onResolutionChange={setResolution}
+              quality={quality}
+              onQualityChange={setQuality}
+              moderation={moderation}
+              onModerationChange={setModeration}
+              transparent={transparent}
+              onTransparentChange={setTransparent}
+              count={count}
+              onCountChange={setCount}
+            />
 
             <div className={styles.submitGroup}>
               <span className={styles.shortcutKbd} title="Command / Ctrl + Enter">
-                <kbd className={styles.kbdKey}>⌘</kbd><kbd className={styles.kbdKey}>↵</kbd>
+                <kbd className={styles.kbdKey}>⌘</kbd>
+                <kbd className={styles.kbdKey}>↵</kbd>
               </span>
               <Button
                 variant="primary"
@@ -834,7 +788,8 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
                 onClick={() => void handleGenerate()}
                 data-testid="generate-submit-button"
               >
-                <Icon name="sparkles" size={14} /><span>{isSubmitting ? t('generate.generating') : t('generate.generate')}</span>
+                <Icon name="sparkles" size={14} />
+                <span>{isSubmitting ? t('generate.generating') : t('generate.generate')}</span>
               </Button>
             </div>
           </div>
@@ -851,7 +806,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             onClick={() => setPreviewSrc(null)}
             aria-label={t('common.close')}
           >
-            <Icon name="close" size={20} />
+            <Icon name="close" size={18} />
           </Button>
           <div className={styles.lightboxStage} onClick={(e) => e.stopPropagation()}>
             <img src={previewSrc} alt="Preview" className={styles.lightboxImg} />
@@ -859,10 +814,13 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
         </div>
       )}
 
-      {/* Transfer Scratch -> Project Modal */}
+      {/* Scratch -> Project Transfer Modal */}
       {transferTargetGenId && (
-        <div className={styles.transferDialogBackdrop} onClick={() => !transferring && setTransferTargetGenId(null)}>
-          <div className={styles.transferDialog} onClick={(e) => e.stopPropagation()}>
+        <div
+          className={styles.transferDialogBackdrop}
+          onClick={() => { if (!transferring) setTransferTargetGenId(null); }}
+        >
+          <div className={styles.transferDialog} role="dialog" aria-modal="true">
             <div className={styles.transferTitle}>{t('generate.transfer')}</div>
             <div className={styles.transferField}>
               <span className={styles.transferLabel}>{t('generate.transferSelectProject')}</span>
@@ -870,20 +828,15 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
                 value={transferDestinationPid}
                 options={eligibleProjects.map((p) => ({ value: p.id, label: p.name || p.id }))}
                 onChange={setTransferDestinationPid}
-                ariaLabel={t('generate.transferSelectProject')}
                 disabled={transferring}
+                ariaLabel={t('generate.transferSelectProject')}
               />
             </div>
             <div className={styles.transferActions}>
               <Button variant="secondary" size="sm" onClick={() => setTransferTargetGenId(null)} disabled={transferring}>
                 {t('common.cancel')}
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => void handleExecuteTransfer()}
-                disabled={transferring || !transferDestinationPid}
-              >
+              <Button variant="primary" size="sm" onClick={() => void handleConfirmTransfer()} disabled={transferring || !transferDestinationPid}>
                 {transferring ? t('common.loading') : t('generate.transfer')}
               </Button>
             </div>

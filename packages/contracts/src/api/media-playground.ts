@@ -33,6 +33,12 @@ export interface PlaygroundGenerationFile {
 export interface PlaygroundGenerationParams {
   aspect?: string;
   quality?: string;
+  /** 分辨率档：'auto' | '1K' | '2K' | '4K'。与 aspect 都具体时才计算具体 size。 */
+  resolution?: string;
+  /** 内容审核档：'auto' | 'low'（仅 gpt-image 族）。 */
+  moderation?: string;
+  /** 透明背景：true → API body.background = 'transparent'（仅 gpt-image 族）。 */
+  transparent?: boolean;
   count?: number;
   /** 已执行的转存记录：projectId + 实际落地名（幂等依据，UI 渲染转存态）。 */
   transfers?: Array<{ projectId: string; files: string[] }>;
@@ -46,7 +52,7 @@ export interface PlaygroundGeneration {
   surface: PlaygroundSurface;
   /** image 目录模型 id（目录 id，不是 wire 模型名）。 */
   model: string;
-  /** 实际 wire 模型名（优先于 provider 配置与目录别名；未配置时 custom-image 无默认模型，生成会明确失败）。 */
+  /** 实际 wire 模型名（优先于 provider 配置与目录别名）。 */
   modelOverride?: string | null;
   prompt: string;
   params: PlaygroundGenerationParams;
@@ -61,12 +67,18 @@ export interface PlaygroundGenerateRequest {
   /** 缺省 = scratch。 */
   targetProjectId?: string;
   surface: PlaygroundSurface;
-  /** image 目录模型 id（见 GET /api/media/models），如 `custom-image`、`gpt-image-2`。 */
+  /** image 目录模型 id（见 GET /api/media/models），如 `gpt-image-2`、`dall-e-3`。 */
   model: string;
   modelOverride?: string;
   prompt: string;
   aspect?: string;
   quality?: string;
+  /** 分辨率档：'auto' | '1K' | '2K' | '4K'。与 aspect 都具体时才计算具体 size。 */
+  resolution?: string;
+  /** 内容审核档：'auto' | 'low'（仅 gpt-image 族）。 */
+  moderation?: string;
+  /** 透明背景：true → API body.background = 'transparent'（仅 gpt-image 族）。 */
+  transparent?: boolean;
   count?: number;
   /** 目标基目录相对路径（scratch：`uploads/x.png` 或产物 basename）。 */
   images?: string[];

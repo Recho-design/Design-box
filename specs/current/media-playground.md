@@ -41,6 +41,32 @@ v2 = **全局「生成」视图（Media Playground）**取代弹窗，支持临�
 > quality）仍按目录 id 走。源切换 UI（生图源下拉 + model-options 自动拉取）
 > 落在 GenerateView（web 侧）。
 
+> **2026-10-12 修订二（GPT 参数补全 + custom-image 移除）**：
+>
+> - `PlaygroundGenerateRequest` / `PlaygroundGenerationParams` 新增可选字段
+>   `resolution`（'auto'|'1K'|'2K'|'4K'）、`moderation`（'auto'|'low'）、
+>   `transparent`（boolean）。参数模型（比例 8 档表、质量词表、`gptImageSizeFor`
+>   尺寸计算、模型能力分档）共享在
+>   `packages/contracts/src/api/media-gpt-image.ts`，web 与 daemon 同源消费。
+> - **wire 语义**：openai 源下 aspect 与 resolution **都具体**才发具体 `size`；
+>   任一 'auto' → 不发 size（模型自定）。`resolution: undefined`（agent 旧路径 /
+>   CLI 不带 `--resolution`）与显式 `'auto'`（工作台）在 daemon
+>   `buildOpenAIImageBody` 里是两条路：前者逐字节保持旧行为（固定 size 映射 +
+>   quality 缺省 `high`），后者不发 size 不补 quality。
+> - 质量词表收口双侧双保险（web `submitQualityFor` / daemon `gptImageQualityFor`）：
+>   表外值（旧卡 `'standard'`）与低版本族上的 `xhigh`/`max` 一律不发字段。
+> - **openai 渲染器合并了原 custom-image 的参考图路径**（有参考图 →
+>   `/v1/images/edits` + JSON `images:[{image_url}]`，该 JSON 形态是官方
+>   OpenAPI 规格支持的，依据见 `media/index.ts` 内注释）。openai 源从此支持参考图。
+> - **custom-image provider 整体移除**（与 openai 源重复——openai provider 本就
+>   支持自定义 baseUrl/model/key；原用户迁移姿势 = 在 OpenAI 提供商配置里填
+>   baseUrl + model，工作台模型下拉选 wire 名）。keyless 模型拉取语义随之迁到
+>   openai 槽位（`model-fetch.ts`）。聊天 GenerateSurface 的 `GENERATE_MODEL_ID`
+>   从 `'custom-image'` 改为 `'gpt-image-2'`，比例生效靠恒发 `resolution: '1K'`
+>   （面板无分辨率控件，钉最低成本档）。
+> - 能力分档（尺寸档位 / xhigh·max / gpt 判定）**统一按目录 id**（PR #1309 约定），
+>   唯一例外：`gptImageSizeFor` 的分档判据看请求真正要发的模型名（effectiveModel）。
+
 未来接缝（本次不建，但结构预留）：
 - **视频**：`media_playground_generations.surface` 列已存在但 **v1 不加
   CHECK 约束**，就是为 surface 扩展免迁移；DTO 的 `surface` 同理。

@@ -351,7 +351,7 @@ function QualityField({
       >
         {GENERATE_QUALITIES.map((quality) => (
           <option key={quality} value={quality}>
-            {quality === 'standard' ? t('generate.qualityDefault') : quality}
+            {quality === 'auto' ? t('generate.qualityAuto') : t('generate.qualityHigh')}
           </option>
         ))}
       </select>

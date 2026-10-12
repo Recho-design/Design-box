@@ -86,7 +86,6 @@ const ENV_KEYS: Record<string, string[]> = {
   // it for the official SDK don't have to re-paste into Settings.
   grok: ['OD_GROK_API_KEY', 'XAI_API_KEY'],
   nanobanana: ['OD_NANOBANANA_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'],
-  'custom-image': ['OD_CUSTOM_IMAGE_API_KEY', 'CUSTOM_IMAGE_API_KEY'],
 };
 
 // Resolve an `OD_*_DIR` env override using the same semantics as

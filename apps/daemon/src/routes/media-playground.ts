@@ -295,6 +295,11 @@ export function registerMediaPlaygroundRoutes(
       prompt: input.prompt,
       aspect: typeof input.body.aspect === 'string' ? input.body.aspect : undefined,
       quality: typeof input.body.quality === 'string' ? input.body.quality : undefined,
+      // 三个新档位一律「缺省即不发」：daemon 侧按 undefined 处理成"用户没要求"，
+      // 于是 openai 渲染器不会替用户挑档（档位差价由用户承担）。
+      resolution: typeof input.body.resolution === 'string' ? input.body.resolution : undefined,
+      moderation: typeof input.body.moderation === 'string' ? input.body.moderation : undefined,
+      transparent: input.body.transparent === true ? true : undefined,
       images: input.images,
       requestInit: dispatcher.requestInit,
       onProviderRequestSettled: (summary: any) => {
@@ -627,7 +632,7 @@ function validateGenerateRequest(body: Partial<PlaygroundGenerateRequest>): Requ
   }
   // model 已放开到任意 image 目录 id（2026-10-12 修订 D6）：管道
   // （generateMedia 分发器）本就按目录 id 分发 provider，所以这里只做
-  // 「是 image surface 注册模型」的校验；custom-image 仍是合法取值之一。
+  // 「是 image surface 注册模型」的校验。
   // 实际 wire 模型名由 modelOverride 自由指定（在各 image renderer 里
   // 优先于 provider 配置与别名）。
   const modelDef = typeof body.model === 'string' ? findMediaModel(body.model) : null;
@@ -667,6 +672,11 @@ function generateParams(
   const params: PlaygroundGenerationParams = { count };
   if (typeof body.aspect === 'string' && body.aspect) params.aspect = body.aspect;
   if (typeof body.quality === 'string' && body.quality) params.quality = body.quality;
+  if (typeof body.resolution === 'string' && body.resolution) params.resolution = body.resolution;
+  if (typeof body.moderation === 'string' && body.moderation) params.moderation = body.moderation;
+  // 只记 true：`transparent: false` 与缺省是同一件事，记下来只会让"复用"回填出
+  // 一个用户从没选过的开关。
+  if (body.transparent === true) params.transparent = true;
   return params;
 }
 

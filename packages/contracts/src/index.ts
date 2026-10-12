@@ -38,6 +38,7 @@ export * from './api/library.js';
 export * from './api/live-artifacts.js';
 export * from './api/media.js';
 export * from './api/media-playground.js';
+export * from './api/media-gpt-image.js';
 export * from './api/mcp.js';
 export * from './api/memory.js';
 export * from './api/next-step-marker.js';

@@ -16,25 +16,35 @@ import type {
 /** 比例档位。与工作台同一组取值(设计稿给的就是这五档)。 */
 export const GENERATE_ASPECTS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
 
-/** 质量档位。`standard` 是默认档,`high` 只在用户显式挑时出现。 */
-export const GENERATE_QUALITIES = ['standard', 'high'] as const;
+/** 质量档位。`auto` 是默认档，`high` 只在用户显式挑时出现。 */
+export const GENERATE_QUALITIES = ['auto', 'high'] as const;
 
 /*
- * 两个默认档单独立成常量,不写 `GENERATE_ASPECTS[0]`:`noUncheckedIndexedAccess`
- * 会把下标读出来的类型补上 `undefined`,而 draft 上这两个字段是 `string`。
+ * 两个默认档单独立成常量，不写 `GENERATE_ASPECTS[0]`：`noUncheckedIndexedAccess`
+ * 会把下标读出来的类型补上 `undefined`，而 draft 上这两个字段是 `string`。
  */
 export const GENERATE_DEFAULT_ASPECT = '1:1';
-export const GENERATE_DEFAULT_QUALITY = 'standard';
+export const GENERATE_DEFAULT_QUALITY = 'auto';
+
+/**
+ * 分辨率档。聊天面板**没有**这个控件，但它必须钉死。
+ *
+ * daemon 侧 `gptImageSizeFor(model, aspect, resolution)` 的 wire 语义是「两档都具体
+ * 才算得出 size」：只发 aspect 不发 resolution 的话 size 根本不出现，比例也就无从生效。
+ * 钉 1K 而不是 2K/4K：它是成本最低的一档，量级（1024 级）也最接近这块面板在补档之前
+ * 实际拿到的输出尺寸。
+ */
+export const GENERATE_DEFAULT_RESOLUTION = '1K';
 
 /** 张数的上下限。与工作台一致 —— daemon 的 `clampMediaGenerateCount` 是同一档。 */
 export const GENERATE_COUNT_MIN = 1;
 export const GENERATE_COUNT_MAX = 10;
 
 /**
- * v1 只认这一个目录 id(`PlaygroundGenerateRequest.model` 是**目录 id**,
- * 不是 wire 模型名)。真正的模型名走 `modelOverride`。
+ * 目录默认模型 id（`PlaygroundGenerateRequest.model` 是目录 id，
+ * 不是 wire 模型名）。真实的模型名走 `modelOverride`。
  */
-export const GENERATE_MODEL_ID = 'custom-image';
+export const GENERATE_MODEL_ID = 'gpt-image-2';
 
 /** 用户正在填的那份表单。 */
 export interface GenerateDraft {
@@ -42,6 +52,8 @@ export interface GenerateDraft {
   /** wire 模型名;留空 = 用 daemon 侧配置的默认。 */
   modelOverride: string;
   aspect: string;
+  /** 分辨率档;面板没有控件,恒为 {@link GENERATE_DEFAULT_RESOLUTION}。 */
+  resolution: string;
   quality: string;
   count: number;
   /** 目标基目录下的相对路径(项目内相对路径)。 */
@@ -54,6 +66,7 @@ export interface GenerateSessionCard {
   prompt: string;
   modelOverride: string | null;
   aspect: string;
+  resolution: string;
   quality: string;
   count: number;
   status: 'running' | 'done' | 'failed';
@@ -68,6 +81,7 @@ export function createGenerateDraft(): GenerateDraft {
     prompt: '',
     modelOverride: '',
     aspect: GENERATE_DEFAULT_ASPECT,
+    resolution: GENERATE_DEFAULT_RESOLUTION,
     quality: GENERATE_DEFAULT_QUALITY,
     count: 1,
     references: [],
@@ -103,6 +117,10 @@ export function canSubmitGenerate(draft: GenerateDraft): boolean {
  * 三条「空就不发」的字段一起写在这里:`modelOverride` 留空等于不覆盖、参考图为空
  * 等于不带图、`targetProjectId` 恒为当前项目。散在组件里写就会三处各判一次,
  * 早晚分叉。
+ *
+ * `aspect` / `resolution` 是**必须成对出现**的一对:daemon 只在两档都具体时才算
+ * size(见 `gptImageSizeFor`)。面板没有分辨率控件,所以这里替用户钉住默认档 ——
+ * 否则用户选了比例也拿不到对应的尺寸。
  */
 export function buildGenerateRequest(
   projectId: string,
@@ -117,6 +135,7 @@ export function buildGenerateRequest(
     ...(modelOverride ? { modelOverride } : {}),
     prompt: draft.prompt.trim(),
     aspect: draft.aspect,
+    resolution: draft.resolution || GENERATE_DEFAULT_RESOLUTION,
     quality: draft.quality,
     count: clampGenerateCount(draft.count),
     ...(references.length > 0 ? { images: references } : {}),
@@ -136,6 +155,7 @@ export function runningCard(
     prompt,
     modelOverride: modelOverride || null,
     aspect: draft.aspect,
+    resolution: draft.resolution || GENERATE_DEFAULT_RESOLUTION,
     quality: draft.quality,
     count,
     status: 'running',
@@ -144,14 +164,23 @@ export function runningCard(
   };
 }
 
-/** 落定的那张卡。daemon 的响应**永远是完整一行**(全失败也 200),所以直接换掉乐观卡。 */
+/** 旧卡 quality 'standard' 兼容映射为 'auto'。 */
+function normalizeQuality(raw: string | undefined): string {
+  if (!raw) return '';
+  return raw === 'standard' ? 'auto' : raw;
+}
+
+/** 落定的那张卡。daemon 的响应**永远是完整一行**(全失败也 200)，所以直接换掉乐观卡。 */
 export function settledCard(generation: PlaygroundGeneration): GenerateSessionCard {
   return {
     id: generation.id,
     prompt: generation.prompt,
     modelOverride: generation.modelOverride ?? null,
     aspect: generation.params?.aspect ?? '',
-    quality: generation.params?.quality ?? '',
+    // 缺省回填成实际发出去的那一档:面板本来就没有分辨率控件,卡片上留空只会让
+    // 「重试」看起来像换了一套参数。
+    resolution: generation.params?.resolution ?? GENERATE_DEFAULT_RESOLUTION,
+    quality: normalizeQuality(generation.params?.quality),
     count: generation.params?.count ?? generation.files.length,
     status: generation.status,
     files: generation.files ?? [],
@@ -171,7 +200,8 @@ export function draftFromCard(
     prompt: card.prompt,
     modelOverride: card.modelOverride ?? '',
     aspect: card.aspect || GENERATE_DEFAULT_ASPECT,
-    quality: card.quality || GENERATE_DEFAULT_QUALITY,
+    resolution: card.resolution || GENERATE_DEFAULT_RESOLUTION,
+    quality: normalizeQuality(card.quality) || GENERATE_DEFAULT_QUALITY,
     count: clampGenerateCount(card.count),
     references: [...references],
   };

@@ -17,16 +17,18 @@
 // Today we ship real integrations for:
 //   * provider 'openai'      → OpenAI Images API (gpt-image-* / dall-e-*),
 //                              with auto-detection for Azure OpenAI
-//                              deployments based on the configured base URL
+//                              deployments based on the configured base URL.
+//                              The same slot also carries user-supplied
+//                              OpenAI-compatible endpoints (custom base URL /
+//                              model / key), including their /images/edits
+//                              endpoint when reference images are attached —
+//                              the former 'custom-image' provider is gone.
 //   * provider 'grok'        → xAI Imagine API: synchronous
 //                              /v1/images/generations for grok-imagine-image
 //                              and async /v1/videos/generations + GET poll
 //                              for grok-imagine-video (t2v + i2v)
 //   * provider 'nanobanana'  → Google Generative Language generateContent
 //                              (Nano Banana image models)
-//   * provider 'custom-image'→ user-supplied OpenAI-compatible
-//                              /v1/images/generations + /v1/images/edits
-//                              endpoints
 //   * provider 'hyperframes' → local HTML→MP4 renderer (no network)
 //
 // The fallback stub handlers are gated behind OD_MEDIA_ALLOW_STUBS=1; in
@@ -45,7 +47,12 @@ import { pathToFileURL } from 'node:url';
 import { Agent as UndiciAgent } from 'undici';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import { load as loadHtml } from 'cheerio';
-import { SETTINGS_MEDIA_PROVIDERS_PATH } from '@open-design/contracts';
+import {
+  SETTINGS_MEDIA_PROVIDERS_PATH,
+  gptImageQualityFor,
+  gptImageSizeFor,
+  isGptImageModel,
+} from '@open-design/contracts';
 import {
   findRealTagOffset,
   HTML_TAG_PATTERNS,
@@ -116,9 +123,10 @@ type MediaContext = {
   /**
    * 调用方直接指定的模型名,优先级高于一切已配置项。
    *
-   * 直接生图工作台(项目面板 → `/media/generate`)复用同一个 `custom-image`
-   * provider 槽位指向用户配置的任意 OpenAI 兼容端点,所以模型名不能只存在
-   * provider 配置里,而是随请求进来。渲染器发 `body.model` 时它排第一。
+   * 直接生图工作台(项目面板 → `/media/playground/generate`)用它把用户真正选的
+   * wire 模型名带进来，而 openai provider 槽位本身就承载任意 OpenAI 兼容端点
+   * (自定义 baseUrl / model / key)，所以模型名不能只存在 provider 配置里,而是
+   * 随请求进来。渲染器发 `body.model` 时它排第一。
    */
   modelOverride: string | undefined;
   modelDef: MediaModel;
@@ -128,12 +136,19 @@ type MediaContext = {
   /**
    * Published quality tier the caller asked for, passed through verbatim and
    * left undefined when they asked for nothing. Read by the OpenAI-compatible
-   * renderers; the OpenAI branch keeps deriving its own `body.quality` from
-   * the model id, which is a different vocabulary ('hd' / 'standard').
+   * renderers; the OpenAI branch forwards it as `body.quality` for the
+   * gpt-image family and maps it to dall-e's own 'hd' / 'standard' vocabulary.
    */
   quality: string | undefined;
   /** Published output resolution the caller asked for. */
   resolution: string | undefined;
+  /**
+   * 内容审核档：只有 `'low'` 会让请求体出现 `moderation`,其余(含 `'auto'`、
+   * 缺省)一律不发 —— 默认档由 provider 决定。
+   */
+  moderation: string | undefined;
+  /** 透明背景：`true` 才发 `background: 'transparent'`,缺省不发。 */
+  transparent: boolean | undefined;
   length: number | undefined;
   compositionDir: string | null;
   imageRef: ImageRef | null;
@@ -165,7 +180,6 @@ const NANOBANANA_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 // https://ai.google.dev/gemini-api/docs/models
 const NANOBANANA_DEFAULT_MODEL = 'gemini-3.1-flash-image-preview';
 const NANOBANANA_DEFAULT_IMAGE_SIZE = '1K';
-const CUSTOM_IMAGE_MODEL_ID = 'custom-image';
 const DEFAULT_OUTPUT_BY_SURFACE = {
   image: 'image.png',
   video: 'video.mp4',
@@ -318,6 +332,14 @@ export async function generateMedia(args: {
   projectRoot: string; projectsRoot: string; projectId: string; surface: MediaSurface; model: string;
   prompt?: string; output?: string; aspect?: string; quality?: string; resolution?: string;
   /**
+   * 内容审核档（仅 gpt-image 族）：`'low'` 才发到上游，其余/缺省不发。
+   * 可选且缺省 undefined —— 旧调用方（agent 的 `/api/media/generate`）完全
+   * 不知道这个字段，行为不受影响。
+   */
+  moderation?: string;
+  /** 透明背景（仅 gpt-image 族）：`true` 才发 `background: 'transparent'`。 */
+  transparent?: boolean;
+  /**
    * 显式输出目录：提供时【目录派生】以它为准——跳过 ensureProject，
    * projectsRoot 不再参与路径，projectId 退化为纯错误上下文（不参与路径，
    * 与其同传不构成冲突）。
@@ -367,6 +389,8 @@ export async function generateMedia(args: {
     aspect,
     quality,
     resolution,
+    moderation,
+    transparent,
     modelOverride,
     length,
     compositionDir,
@@ -471,6 +495,9 @@ export async function generateMedia(args: {
     // decision away from the provider's own default.
     quality: typeof quality === 'string' && quality.trim() ? quality.trim() : undefined,
     resolution: typeof resolution === 'string' && resolution.trim() ? resolution.trim() : undefined,
+    moderation: typeof moderation === 'string' && moderation.trim() ? moderation.trim() : undefined,
+    // `=== true` 而不是真值判断：请求体里 `transparent: false` 与缺省同义。
+    transparent: transparent === true ? true : undefined,
     length: clampedLength,
     // Project-relative path to the directory the agent scaffolded with
     // hyperframes.json / meta.json / index.html. Only consumed by the
@@ -487,10 +514,6 @@ export async function generateMedia(args: {
   };
 
   const credentials = await resolveProviderConfig(projectRoot, def.provider);
-  const customImageCredentials =
-    surface === 'image' && def.provider === 'openai'
-      ? await resolveProviderConfig(projectRoot, 'custom-image')
-      : null;
 
   let bytes: Buffer;
   let providerNote: string;
@@ -507,23 +530,8 @@ export async function generateMedia(args: {
   // True only when the dispatcher intentionally returned a stub because
   // no real renderer is wired up for this (provider, surface) pair.
   let intentionalStub = false;
-  const customImageOverride = customImageOverridesOpenAIModel(
-    ctx,
-    customImageCredentials,
-  );
   try {
-    if (
-      def.provider === 'openai'
-      && surface === 'image'
-      && customImageOverride
-    ) {
-      providerId = 'custom-image';
-      const result = await renderCustomOpenAIImage(ctx, customImageCredentials!);
-      bytes = result.bytes;
-      providerNote = result.providerNote;
-      suggestedExt = result.suggestedExt;
-    
-    } else if (def.provider === 'openai' && surface === 'image') {
+    if (def.provider === 'openai' && surface === 'image') {
       const result = await renderOpenAIImage(ctx, credentials);
       bytes = result.bytes;
       providerNote = result.providerNote;
@@ -540,11 +548,6 @@ export async function generateMedia(args: {
       suggestedExt = result.suggestedExt;
     } else if (def.provider === 'nanobanana' && surface === 'image') {
       const result = await renderNanoBananaImage(ctx, credentials);
-      bytes = result.bytes;
-      providerNote = result.providerNote;
-      suggestedExt = result.suggestedExt;
-    } else if (def.provider === 'custom-image' && surface === 'image') {
-      const result = await renderCustomOpenAIImage(ctx, credentials);
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
@@ -731,40 +734,34 @@ function withMediaRequestInit(
 const OPENAI_IMAGE_NO_CREDENTIAL_MESSAGE =
   `no OpenAI credential — configure an API key in ${SETTINGS_MEDIA_PROVIDERS_PATH} or set OPENAI_API_KEY.`;
 
+/**
+ * OpenAI Images（gpt-image 族与 dall-e 族）渲染器。
+ *
+ * 两条分支在这里收口：
+ *  * 有参考图 → `/images/edits`（body.images 是 image_url 条目）；否则
+ *    `/images/generations`。gpt-image 族在 edits 上不接受 `response_format`
+ *    （上游回 HTTP 400 Unknown parameter），dall-e 族照旧要 `b64_json`。
+ *  * 能力分支看**目录 id**（用户把 `dall-e-3` 别名到自家代理部署、或在工作台
+ *    里覆盖成别的 wire 名时，该拿到的仍是 dall-e 那套模板 —— PR #1309 的约定），
+ *    而真正发出去的模型名是 modelOverride > 别名 > 目录 id。
+ *
+ * 不变量：调用方传的档位决定请求体里的 size / quality / moderation /
+ * background。缺席就是缺席 —— 档位差价由用户承担，宿主替他选档等于替他做计费
+ * 决定，所以新路径上没有任何"兜底默认值"。唯一的例外是**没有档位概念的旧路径**
+ * （`ctx.resolution === undefined`），它按改动前的行为补齐 size 与 quality，见
+ * {@link buildOpenAIImageBody}。
+ */
 async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
   if (!credentials.apiKey) {
     throw new Error(OPENAI_IMAGE_NO_CREDENTIAL_MESSAGE);
   }
   const rawBase = credentials.baseUrl || 'https://api.openai.com/v1';
   const azure = detectAzureEndpoint(rawBase);
-  const url = buildOpenAIImageUrl(rawBase, azure);
-
-  const body: Record<string, unknown> = {
-    prompt: ctx.prompt || 'A high-quality reference image.',
-    n: 1,
-    size: openaiSizeFor(ctx.model, ctx.aspect),
-  };
-  // For non-Azure calls, include `model` in the body. Azure infers it
-  // from the deployment in the path so omitting it keeps payloads
-  // compatible across both flavors. The wire-name (post-alias) goes
-  // on the body so the user's alias from issue #1277 reaches the API.
-  // A caller-supplied modelOverride (Playground source switch) wins
-  // over both the alias and the provider config.
-  if (!azure) {
-    body.model = ctx.modelOverride || ctx.wireModel;
-  }
-  // Capability branches key off the CATALOG id (not the alias/override) so a
-  // user who aliased `dall-e-3` to a custom Azure / proxy deployment — or
-  // switched the Playground to it with a modelOverride — still gets the
-  // DALL-E-specific quality + response_format flags (lefarcen + codex P2 on
-  // PR #1309). The override only rewrites the wire name, never the template.
-  if (ctx.model.startsWith('dall-e-')) {
-    body.response_format = 'b64_json';
-    body.quality = ctx.model === 'dall-e-3' ? 'hd' : 'standard';
-  } else {
-    // gpt-image-* accepts quality 'high' | 'medium' | 'low'.
-    body.quality = 'high';
-  }
+  const effectiveModel = ctx.modelOverride || ctx.wireModel;
+  const body = buildOpenAIImageBody(ctx, effectiveModel, azure);
+  const url = ctx.imageRefs.length > 0
+    ? buildOpenAIImageEditUrl(rawBase, azure)
+    : buildOpenAIImageUrl(rawBase, azure);
 
   const headers: Record<string, string> = {
     'authorization': `Bearer ${credentials.apiKey}`,
@@ -778,6 +775,7 @@ async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig)
     headers['api-key'] = credentials.apiKey;
   }
 
+  const tag = azure ? 'azure-openai' : 'openai';
   const resp = await fetch(url, withMediaRequestInit(ctx, {
     method: 'POST',
     headers,
@@ -786,122 +784,117 @@ async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig)
       ?? openAIImageDispatcher as unknown as NonNullable<RequestInit['dispatcher']>,
     signal: AbortSignal.timeout(Math.max(OPENAI_IMAGE_HEADERS_TIMEOUT_MS, OPENAI_IMAGE_BODY_TIMEOUT_MS)),
   }));
-  const text = await resp.text();
-  if (!resp.ok) {
-    const tag = azure ? 'azure-openai' : 'openai';
-    throw new Error(`${tag} ${resp.status}: ${truncate(text, 240)}`);
-  }
-  let data: any;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`openai non-JSON response: ${truncate(text, 200)}`);
-  }
-  const entry = data && Array.isArray(data.data) ? data.data[0] : null;
-  if (!entry) throw new Error('openai response had no data[0]');
-  let bytes;
-  if (entry.b64_json) {
-    bytes = Buffer.from(entry.b64_json, 'base64');
-  } else if (entry.url) {
-    const imgResp = await fetch(entry.url, withMediaRequestInit(ctx));
-    if (!imgResp.ok) throw new Error(`openai image fetch ${imgResp.status}`);
-    const arr = await imgResp.arrayBuffer();
-    bytes = Buffer.from(arr);
-  } else {
-    throw new Error('openai response had neither b64_json nor url');
-  }
+  const data = await parseOpenAICompatibleJson(resp, tag);
+  const bytes = await bytesFromOpenAICompatibleData(data, tag, ctx.requestInit);
 
-  const tag = azure ? 'azure-openai' : 'openai';
   return {
     bytes,
-    providerNote: `${tag}/${ctx.modelOverride || ctx.wireModel} · ${ctx.aspect} · ${bytes.length} bytes`,
-    suggestedExt: '.png',
-  };
-}
-
-async function renderCustomOpenAIImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
-  const baseUrl = (credentials.baseUrl || '').trim();
-  if (!baseUrl) {
-    throw new Error(
-      `Custom Image API base URL required — configure an OpenAI-compatible /v1/images/generations or /v1/images/edits endpoint in ${SETTINGS_MEDIA_PROVIDERS_PATH}`,
-    );
-  }
-  // 模型取值优先级:请求里的 override(直接生图工作台用端点自己的模型名)>
-  // provider 配置 > 目录别名。`custom-image` 只是目录占位 id,不是 wire 名,
-  // 绝不能发给上游。
-  const wireModel = (
-    ctx.modelOverride
-    || credentials.model
-    || (ctx.wireModel !== CUSTOM_IMAGE_MODEL_ID ? ctx.wireModel : '')
-  ).trim();
-  if (!wireModel) {
-    throw new Error(
-      `Custom Image API model required — configure the provider model in ${SETTINGS_MEDIA_PROVIDERS_PATH}`,
-    );
-  }
-
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-  };
-  if (credentials.apiKey) {
-    headers.authorization = `Bearer ${credentials.apiKey}`;
-  }
-  const body: Record<string, unknown> = {
-    prompt: ctx.prompt || 'A high-quality reference image.',
-    model: wireModel,
-    n: 1,
-    size: openaiSizeFor('gpt-image-1', ctx.aspect),
-  };
-  // 质量档位原样透传;调用方没要求就不发——档位价差由用户承担,默认档交给
-  // provider 自己决定。
-  if (ctx.quality) {
-    body.quality = ctx.quality;
-  }
-  // 所有已解析的参考图都按 OpenAI 兼容的 image_url 条目发出去(工作台会带多张),
-  // 同时决定走 /edits 端点。
-  const referenceImages = ctx.imageRefs.map((ref) => ({ image_url: ref.dataUrl }));
-  let url = buildOpenAIImageUrl(baseUrl, false);
-  if (referenceImages.length > 0) {
-    // gpt-image-* does NOT accept response_format on /v1/images/edits
-    // (HTTP 400 "Unknown parameter: 'response_format'"). dall-e-2
-    // accepts it; the base b64 path is what callers expect either way,
-    // so we only set response_format for non-gpt-image models.
-    if (!wireModel.startsWith('gpt-image-')) {
-      body.response_format = 'b64_json';
-    }
-    body.images = referenceImages;
-    url = buildOpenAIImageEditUrl(baseUrl);
-  }
-
-  const resp = await fetchImageGenerationWithResponseRetry(
-    () => fetch(url, withMediaRequestInit(ctx, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    })),
-    (summary) => ctx.onProviderRequestSettled?.({
-      providerId: 'custom-image',
-      ...summary,
-    }),
-  );
-  const data = await parseOpenAICompatibleJson(resp, 'custom image');
-  const bytes = await bytesFromOpenAICompatibleData(data, 'custom image', ctx.requestInit);
-  return {
-    bytes,
-    providerNote: `custom-image/${wireModel} · ${body.size} · ${bytes.length} bytes`,
+    providerNote: openAIImageProviderNote(tag, effectiveModel, ctx.aspect, body, bytes.length),
     suggestedExt: sniffImageExt(bytes),
   };
 }
 
-function customImageOverridesOpenAIModel(
+/**
+ * 组装发往 Images API 的请求体。
+ *
+ * 两个调用方的 `resolution` 语义不同，这里必须分开对待：
+ *
+ *  * `ctx.resolution === undefined` —— **旧路径**：调用方根本没有「档位」这个概念
+ *    （agent 的 `/api/media/generate`、`od media generate`、`od media playground
+ *    generate` 不带 `--resolution`）。行为逐字节保持改动前的样子：gpt-image 族用
+ *    {@link openaiSizeFor} 算出具体尺寸，质量缺省 `high`。
+ *  * `ctx.resolution === 'auto'` —— **工作台新 UI**：用户显式选了「自动档」，要的是
+ *    「让模型自己决定输出尺寸」。`size` 字段根本不出现，`quality` 也不替他补默认档
+ *    （档位差价由用户承担，宿主替他选档等于替他做计费决定）。具体档位（1K/2K/4K）
+ *    同样只在 aspect 也具体时才通过 `gptImageSizeFor` 算出 size。
+ *
+ * dall-e 族两条路都一样：它们的尺寸枚举只有三档、且都不接受 `'auto'`，所以永远给
+ * 具体值，与 resolution 无关。
+ */
+function buildOpenAIImageBody(
   ctx: MediaContext,
-  credentials: ProviderConfig | null,
-): credentials is ProviderConfig {
-  const baseUrl = credentials?.baseUrl?.trim();
-  const model = credentials?.model?.trim();
-  if (!baseUrl || !model) return false;
-  return model === ctx.model || model === ctx.wireModel;
+  effectiveModel: string,
+  azure: boolean,
+): Record<string, unknown> {
+  const gptImage = isGptImageModel(ctx.model);
+  /** 调用方没提供档位概念（旧路径）——见上面的两个调用方说明。 */
+  const legacySizing = ctx.resolution === undefined;
+  const body: Record<string, unknown> = {
+    prompt: ctx.prompt || 'A high-quality reference image.',
+    n: 1,
+  };
+  // For non-Azure calls, include `model` in the body. Azure infers it
+  // from the deployment in the path so omitting it keeps payloads
+  // compatible across both flavors. The wire-name (post-alias, post-
+  // override) goes on the body so the user's alias from issue #1277
+  // reaches the API.
+  if (!azure) body.model = effectiveModel;
+  const size = gptImage && !legacySizing
+    ? gptImageSizeFor(effectiveModel, ctx.aspect, ctx.resolution)
+    : openaiSizeFor(ctx.model, ctx.aspect);
+  if (size) body.size = size;
+
+  if (ctx.model.startsWith('dall-e-')) {
+    // dall-e 的尺寸/质量是另一套词汇：三档尺寸 + hd/standard,且它们不支持
+    // `'auto'`,所以这里永远给具体值。
+    body.response_format = 'b64_json';
+    if (ctx.model === 'dall-e-3') {
+      body.quality = ctx.quality === 'high' ? 'hd' : 'standard';
+    }
+  } else if (gptImage) {
+    // 旧路径缺省 `high`（改动前这里恒发 `high`）；新路径缺省/`'auto'` 一律不发
+    // quality：缺席表示「用模型自己的默认档」。两条路都过一遍词表收口。
+    const requested = legacySizing
+      ? (ctx.quality && ctx.quality !== 'auto' ? ctx.quality : 'high')
+      : ctx.quality;
+    const quality = gptImageQualityFor(ctx.model, requested);
+    if (quality) body.quality = quality;
+    if (ctx.moderation === 'low') body.moderation = 'low';
+    if (ctx.transparent === true) body.background = 'transparent';
+  }
+
+  // 所有已解析的参考图都按 OpenAI 兼容的 image_url 条目发出去（工作台可带多张）；
+  // 由调用方据此切到 /images/edits 端点。gpt-image 族在 edits 上不接受
+  // response_format，所以上面那条 dall-e 分支之外不再补它。
+  //
+  // 这个请求体形态（`{ images: [{ image_url }] }` + `application/json`）**是官方
+  // 支持的**，不是只在中转端点上成立的私有约定：`POST /v1/images/edits` 有两种
+  // 合法请求格式 —— `multipart/form-data`（`image` 文件字段）与 `application/json`
+  // （`EditImageBodyJsonParam`，用 `images` 数组引用图片，`image_url` 接受
+  // 「fully qualified URL or base64-encoded data URL」，正是这里的 data URL）。
+  // 依据：OpenAI 官方 OpenAPI 规格 openai/openai-openapi 的 `POST /images/edits`
+  // 两种 media type，以及 developers.openai.com 的 Create image edit 参考页
+  // （JSON body 参数表把 `images` 列为 `array of object {file_id, image_url}`）。
+  // 所以这里不需要为了官方端点改走 multipart。
+  if (ctx.imageRefs.length > 0) {
+    body.images = ctx.imageRefs.map((ref) => ({ image_url: ref.dataUrl }));
+  }
+  return body;
 }
+
+/**
+ * providerNote 里带上真正发出去的档位。
+ *
+ * 排查「工作台选的参数到底有没有传到上游」时，这是唯一不用抓包的证据：stub 与
+ * 真实 provider 的失败都从这一行读原因。
+ */
+function openAIImageProviderNote(
+  tag: string,
+  model: string,
+  aspect: string | undefined,
+  body: Record<string, unknown>,
+  byteLength: number,
+): string {
+  const parts: string[] = [
+    aspect ?? 'aspect:auto',
+    typeof body.size === 'string' ? body.size : 'size:auto',
+  ];
+  if (typeof body.quality === 'string') parts.push(`quality:${body.quality}`);
+  if (body.moderation === 'low') parts.push('moderation:low');
+  if (body.background === 'transparent') parts.push('background:transparent');
+  return `${tag}/${model} · ${parts.join(' · ')} · ${byteLength} bytes`;
+}
+
 
 async function parseOpenAICompatibleJson(resp: Response, providerTag: string): Promise<any> {
   const text = await resp.text();
@@ -1004,7 +997,13 @@ function buildOpenAIImageUrl(baseUrl: string, isAzure: boolean): string {
   return parsed.toString();
 }
 
-function buildOpenAIImageEditUrl(baseUrl: string): string {
+/**
+ * 与 {@link buildOpenAIImageUrl} 同一件事，只是落在 `/images/edits` 上。
+ *
+ * Azure 的 edits 端点同样要求 `api-version`，所以带图的那一发必须走同一个
+ * 补参逻辑：漏掉它就是一个必然 400。
+ */
+function buildOpenAIImageEditUrl(baseUrl: string, isAzure = false): string {
   let parsed;
   try {
     parsed = new URL(baseUrl);
@@ -1013,9 +1012,20 @@ function buildOpenAIImageEditUrl(baseUrl: string): string {
     return normalizeOpenAICompatiblePath(stripped, 'edits');
   }
   parsed.pathname = normalizeOpenAICompatiblePath(parsed.pathname, 'edits');
+  if (isAzure && !parsed.searchParams.has('api-version')) {
+    parsed.searchParams.set('api-version', AZURE_DEFAULT_API_VERSION);
+  }
   return parsed.toString();
 }
 
+/**
+ * 「没有档位概念」时的尺寸收口：dall-e 族，以及 gpt-image 族的旧路径。
+ *
+ * 新路径（工作台显式给了 resolution）已经改走 contracts 的 `gptImageSizeFor`
+ * （比例 + 分辨率两档才能算出具体 size）；这里服务的是另外两类调用方：dall-e 的
+ * 尺寸枚举只有三档、都不能让模型自己定，而旧路径（agent / CLI 不带 `--resolution`）
+ * 必须逐字节保持改动前的行为。
+ */
 function openaiSizeFor(model: string, aspect?: string): string {
   // gpt-image-1.5 / gpt-image-2 accept arbitrary sizes up to 4096; we
   // pick concrete ones tuned to common aspects so the API never

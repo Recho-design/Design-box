@@ -354,9 +354,31 @@
    （"默认"/"High"）。模型名最长，宽度落在 paramItem 上吃弹性空间（150px 起），
    od-select 外壳默认 width:100% 自动填满扣除 label 后的剩余宽度。 */
 .composerToolbar .sourceSelect { width: 128px; }
-.composerToolbar .aspectSelect { width: 68px; }
+.composerToolbar .aspectSelect { width: 72px; }
 .composerToolbar .qualitySelect { width: 88px; }
+.composerToolbar .resolutionSelect { width: 78px; }
+.composerToolbar .moderationSelect { width: 76px; }
+.composerToolbar .transparentToggle {
+  height: 28px;
+  font-size: 11px;
+  padding: 0 10px;
+}
 .paramItemModel { flex: 1 1 150px; min-width: 150px; }
+.paramHidden { display: none !important; }
+.sizePreviewBadge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-soft);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+  white-space: nowrap;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
 
 /* 同旧 .paramSelect 覆盖的理由：共享皮肤 .od-select-trigger 的 36px min-height
    与 7px 纵向 padding 会把工具行撑高一档；在工具栏作用域内压到 28px 高、11px

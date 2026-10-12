@@ -14,8 +14,8 @@
  * lists and the numeric length tables. Any model added here must be added
  * there too.
  *
- * The catalogue is the six providers the daemon actually ships a client
- * for (openai / grok / hyperframes / nanobanana / custom-image / stub). The audio surface (music / speech / sfx) is gone: `MEDIA_SURFACES`
+ * The catalogue is the five providers the daemon actually ships a client
+ * for (openai / grok / hyperframes / nanobanana / stub). The audio surface (music / speech / sfx) is gone: `MEDIA_SURFACES`
  * in `@open-design/contracts` is image + video only, `ProjectMetadata` no
  * longer carries the `audio*` fields, and the daemon has no audio
  * dispatcher to honour them.
@@ -33,7 +33,6 @@ export type MediaProviderId =
   | 'grok'
   | 'hyperframes'
   | 'nanobanana'
-  | 'custom-image'
   | 'stub';
 
 export interface MediaProvider {
@@ -107,16 +106,6 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
     docsUrl: 'https://ai.google.dev/gemini-api/docs/api-key',
     supportsCustomModel: true,
-  },
-  {
-    id: 'custom-image',
-    label: 'Custom Image API',
-    hint: 'OpenAI-compatible images/generations + images/edits (local or cloud)',
-    integrated: true,
-    docsUrl: 'https://platform.openai.com/docs/api-reference/images',
-    supportsCustomModel: true,
-    customModelPlaceholder: 'my-image-model',
-    supportsModelFetch: true,
   },
   {
     id: 'stub',
@@ -212,15 +201,6 @@ export const IMAGE_MODELS: MediaModel[] = [
     hint: 'Nano Banana · text-to-image',
     provider: 'nanobanana',
     caps: ['t2i'],
-  },
-
-  // Custom OpenAI-compatible image generation + edit endpoints.
-  {
-    id: 'custom-image',
-    label: 'custom-image',
-    hint: 'Custom · OpenAI-compatible endpoint',
-    provider: 'custom-image',
-    caps: ['t2i', 'i2i'],
   },
 ];
 

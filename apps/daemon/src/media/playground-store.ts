@@ -342,6 +342,10 @@ function normalizeParams(value: unknown): PlaygroundGenerationParams {
   const params: PlaygroundGenerationParams = {};
   if (typeof source.aspect === 'string') params.aspect = source.aspect;
   if (typeof source.quality === 'string') params.quality = source.quality;
+  if (typeof source.resolution === 'string') params.resolution = source.resolution;
+  if (typeof source.moderation === 'string') params.moderation = source.moderation;
+  // 与写入侧对称：只有 `true` 落回响应，`false`/字符串都不认。
+  if (source.transparent === true) params.transparent = true;
   if (typeof source.count === 'number') params.count = source.count;
   const transfers = normalizeTransfers(source.transfers);
   if (transfers.length > 0) params.transfers = transfers;

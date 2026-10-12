@@ -107,6 +107,8 @@ const MEDIA_PLAYGROUND_STRING_FLAGS = new Set([
   'prompt-file',
   'aspect',
   'quality',
+  'resolution',
+  'moderation',
   'count',
   'image',
   'target',
@@ -116,7 +118,7 @@ const MEDIA_PLAYGROUND_STRING_FLAGS = new Set([
   'out',
   'daemon-url',
 ]);
-const MEDIA_PLAYGROUND_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+const MEDIA_PLAYGROUND_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'transparent']);
 
 // 同上：子命令白名单在 runMediaPlayground 的**第一个 await 之前**就被读，而那个
 // 函数是模块求值期被调用的。留在文件中部会是一个 `Cannot access ... before
@@ -1518,7 +1520,7 @@ async function runMediaGenerate(rawArgs) {
     image: images[0],
     images,
   };
-  // Custom Image API only: the wire model the endpoint serves, named per
+  // The wire model the configured OpenAI-compatible endpoint serves, named per
   // request. The daemon lets it win over the provider's configured model, so
   // the same Settings → Media entry the workbench uses also works from the CLI.
   if (flags['model-override'] != null) body.modelOverride = flags['model-override'];
@@ -1739,6 +1741,12 @@ async function runPlaygroundGenerate(flags, rawArgs) {
     ...(flags['model-override'] ? { modelOverride: flags['model-override'] } : {}),
     ...(flags.aspect ? { aspect: flags.aspect } : {}),
     ...(flags.quality ? { quality: flags.quality } : {}),
+    ...(flags.resolution ? { resolution: flags.resolution } : {}),
+    ...(flags.moderation ? { moderation: flags.moderation } : {}),
+    // `--transparent` 在 boolean 集里，裸用是 `true`；但 `--transparent=false`
+    // 走 parseFlags 的 `--k=v` 分支，存下来的是**字符串** `'false'` —— 真值判断
+    // 会把它当"要透明"。只认真正的真值。
+    ...(flags.transparent === true || flags.transparent === 'true' ? { transparent: true } : {}),
     ...(flags.count != null ? { count: Number(flags.count) } : {}),
     ...(images.length > 0 ? { images } : {}),
   };
@@ -2229,14 +2237,20 @@ Common options:
                             failed carries its own error while its siblings are
                             still reported. With --output, names are derived as
                             <stem>-<n>.<ext>; without it, from the auto-name.
-  --model-override <model>  Custom Image API (\`--model custom-image\`) only: the
-                            model name the configured endpoint serves, sent with
-                            this request. Wins over the default model set in
+  --model-override <model>  The model name the configured OpenAI-compatible
+                            endpoint serves, sent with this request. Use it
+                            when the endpoint's model is not the catalog id you
+                            passed (for example an Azure deployment name, or a
+                            model the endpoint serves that the catalog does not
+                            list). Wins over the default model set in
                             Settings → Media, so an endpoint whose model is not
                             filled in there still renders.
   --resolution <res>        Published output resolution (e.g. 1K, 2K). Must name
-                            a resolution the model publishes for --aspect. Omit
-                            to use the model's default profile.
+                            a resolution the model publishes for --aspect. Pass
+                            'auto' to send no size at all and let the model
+                            decide its own output size; omitting the flag keeps
+                            the legacy geometry, where the size is derived from
+                            --aspect alone.
   --length <seconds>        Video length.
   --composition-dir <path>  hyperframes-html only — project-relative path
                             to the dir containing hyperframes.json /
@@ -2290,6 +2304,7 @@ function printMediaPlaygroundHelp() {
   console.log(`Usage:
   od media playground generate [--project <id>] --model <image-model-id>
       [--model-override <name>] [--count n] [--aspect 16:9] [--quality high]
+      [--resolution 2K] [--moderation low] [--transparent]
       [--image <ref> ...] --prompt-file <path|-> | --prompt "<text>"
   od media playground upload <file>... [--project <id>]
   od media playground list [--json] [--limit n] [--target scratch|<pid>]
@@ -2304,11 +2319,35 @@ Target:
 
 generate:
   --model            Any image model id from the catalog (GET /api/media/models),
-                     e.g. --model gpt-image-2 or --model custom-image. The
-                     optional --model-override carries the real wire model name
-                     and wins over the provider config and catalog defaults;
-                     an endpoint with no configured model fails the run and
-                     says so instead of sending a placeholder.
+                     e.g. --model gpt-image-2 or --model dall-e-3. The optional
+                     --model-override carries the real wire model name (an Azure
+                     deployment, a name your OpenAI-compatible endpoint serves)
+                     and wins over the provider config and catalog defaults; an
+                     endpoint with no configured model fails the run and says so
+                     instead of sending a placeholder.
+  --aspect 1:1|3:2|2:3|16:9|9:16|4:3|3:4|21:9
+                     gpt-image family geometry. The size is only pinned when
+                     --resolution is concrete too (see below).
+  --resolution <1K|2K|4K|auto>
+                     Resolution tier. 'auto' sends no size at all, so the model
+                     picks its own — tiers are priced differently, so this is a
+                     billing choice. **Omitting the flag is not the same as
+                     'auto'**: it means "this caller has no tier concept" (the
+                     agent / od media generate path), which keeps the legacy
+                     geometry — a concrete size derived from --aspect alone.
+                     gpt-image-1 and gpt-image-1-mini only have 1K; a 2K/4K
+                     request against them collapses to the 1K tier instead of
+                     failing.
+  --quality <low|medium|high|xhigh|max>
+                     gpt-image family only; 'auto' (or omitting it) sends no
+                     quality so the model's default tier applies. Out-of-table
+                     values are dropped rather than forwarded. Omit --resolution
+                     as well and the legacy default ('high') applies instead.
+                     dall-e-3 maps --quality high to its own 'hd' and everything
+                     else to 'standard'.
+  --moderation low   gpt-image family only; omit for the provider's own default.
+  --transparent      gpt-image family only; asks for a transparent background
+                     (body.background = "transparent").
   --count <1-10>     Clamped. One request renders N files and answers once;
                      a failed slot carries its own error, its siblings are
                      still reported. Artifacts are <generationId>-<n>.<ext>.

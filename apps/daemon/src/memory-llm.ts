@@ -184,7 +184,7 @@ const PROVIDER_DEFAULTS = {
 // Today that is only the `openai` slot, which `providerFromOpenAiMediaConfig`
 // below already covers directly — the dedicated vendored fallbacks
 // (MiniMax / AIHubMix / SenseAudio) were removed with those media providers.
-// The remaining media providers (grok / nanobanana / custom-image)
+// The remaining media providers (grok / nanobanana)
 // speak no OpenAI chat-completions wire we can reuse, so they get no
 // fallback and must not be mistaken for a text-capable credential.
 
