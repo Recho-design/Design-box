@@ -106,6 +106,7 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     defaultBaseUrl: 'https://generativelanguage.googleapis.com',
     docsUrl: 'https://ai.google.dev/gemini-api/docs/api-key',
     supportsCustomModel: true,
+    supportsModelFetch: true,
   },
   {
     id: 'stub',

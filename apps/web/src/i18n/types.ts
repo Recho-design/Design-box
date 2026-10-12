@@ -3642,6 +3642,8 @@ export interface Dict {
   'generate.removeReference': string;
   'generate.uploadFailed': string;
   'generate.promptRequired': string;
+  'generate.expandPrompt': string;
+  'generate.collapsePrompt': string;
   'generate.generate': string;
   'generate.generating': string;
   'generate.preview': string;
@@ -3664,12 +3666,8 @@ export interface Dict {
   'generate.sourceLabel': string;
   /** Suffix appended to a disabled provider option whose credentials are missing. */
   'generate.sourceUnconfigured': string;
-  /** Model dropdown default entry (follows provider's configured default). */
-  'generate.modelDefault': string;
   /** Disabled option shown in the model dropdown while provider models are fetching. */
   'generate.modelsLoading': string;
-  /** Default-model option when the provider has no configured model (models come from fetch only). */
-  'generate.modelDefaultUnset': string;
   'generate.countBadge': string;
   'generate.surfaceTitle': string;
   'generate.surfaceClose': string;

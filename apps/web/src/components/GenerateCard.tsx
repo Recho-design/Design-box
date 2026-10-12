@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   PlaygroundGeneration,
   PlaygroundGenerationFile,
@@ -72,6 +72,37 @@ export function GenerateCard({
 
   const modelBadge = card.modelOverride || card.model;
 
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(() => {
+    return (card.prompt?.length ?? 0) > 120 || (card.prompt?.includes('\n') ?? false);
+  });
+  const promptRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [card.id, card.prompt]);
+
+  useEffect(() => {
+    const el = promptRef.current;
+    if (!el) return;
+
+    const checkOverflow = () => {
+      if (!el) return;
+      if (!isExpanded) {
+        setCanExpand(el.scrollHeight > el.clientHeight + 1);
+      }
+    };
+
+    checkOverflow();
+
+    const observer = new ResizeObserver(() => {
+      checkOverflow();
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [card.prompt, isExpanded]);
+
   return (
     <article
       className={styles.card}
@@ -79,9 +110,6 @@ export function GenerateCard({
     >
       {/* 头部元信息 */}
       <div className={styles.cardHeader}>
-        <div className={styles.cardPromptBox}>
-          <p className={styles.cardPrompt}>{card.prompt}</p>
-        </div>
         <div className={styles.cardMeta}>
           {modelBadge && (
             <span className={styles.badge} title={modelBadge}>
@@ -143,6 +171,26 @@ export function GenerateCard({
               <Icon name="alert-triangle" size={10} />
               <span>{t('generate.failedSlot')}</span>
             </span>
+          )}
+        </div>
+
+        <div className={styles.cardPromptBox}>
+          <p
+            ref={promptRef}
+            className={`${styles.cardPrompt} ${!isExpanded ? styles.cardPromptClamped : styles.cardPromptExpanded}`}
+          >
+            {card.prompt}
+          </p>
+          {canExpand && (
+            <button
+              type="button"
+              className={styles.promptToggleBtn}
+              onClick={() => setIsExpanded((prev) => !prev)}
+              aria-expanded={isExpanded}
+            >
+              <span>{isExpanded ? t('generate.collapsePrompt') : t('generate.expandPrompt')}</span>
+              <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={11} />
+            </button>
           )}
         </div>
       </div>

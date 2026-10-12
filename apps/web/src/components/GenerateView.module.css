@@ -96,19 +96,80 @@
 }
 
 .cardHeader {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 16px; flex-wrap: wrap;
-}
-
-.cardPromptBox { flex: 1 1 280px; min-width: 0; }
-.cardPrompt {
-  margin: 0; font-size: 14px; font-weight: 500; line-height: 1.5;
-  color: var(--text-strong); overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
 }
 
 .cardMeta {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
-  gap: 6px; flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+}
+
+.cardPromptBox {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.cardPrompt {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  width: 100%;
+}
+
+.cardPromptClamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardPromptExpanded {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.promptToggleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  user-select: none;
+  transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+
+.promptToggleBtn:hover {
+  color: var(--text-strong);
+  border-color: var(--border-selected);
+  background: var(--bg-hover, var(--bg-subtle));
+}
+
+.promptToggleBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .badge {
@@ -292,7 +353,8 @@
 .refChipRemove:focus-visible { outline: 2px solid var(--accent); }
 
 .promptRow {
-  padding: 12px 14px 4px 14px;
+  position: relative;
+  padding: 12px 14px 6px 14px;
   cursor: text;
 }
 
@@ -304,7 +366,7 @@
   background: transparent;
   border: none;
   outline: none;
-  padding: 0;
+  padding: 0 36px 0 0;
   margin: 0;
   box-shadow: none;
   font-family: inherit;
@@ -323,6 +385,48 @@
   box-shadow: none;
 }
 
+.promptAttachBtn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  cursor: pointer;
+  z-index: 2;
+  transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+
+.promptAttachBtn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.promptAttachBtn:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: var(--bg-hover, var(--bg-subtle));
+  border-color: var(--border-selected);
+}
+
+.promptAttachBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.promptAttachBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .composerToolbar {
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
   gap: 8px 12px; padding: 8px 12px; border-top: 1px solid var(--border-soft);
@@ -330,39 +434,72 @@
 }
 
 .paramGroup { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.paramSection { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .fileInputHidden { display: none; }
-.toolbarDivider { width: 1px; height: 16px; background: var(--border-soft); margin: 0 2px; }
+.toolbarDivider { width: 1px; height: 16px; background: var(--border-soft); margin: 0 4px; flex-shrink: 0; }
 
 .paramItem { display: flex; align-items: center; gap: 6px; }
 .paramLabel { font-size: 11px; font-weight: 500; color: var(--text-soft); white-space: nowrap; user-select: none; }
 
-/* 同 .targetSelector .targetSelect：高度收窄时同步收 padding，line-height 对齐
-   内容盒（28 - 2px 边框 = 26px），文字垂直居中不被截断；透明底消除灰带 */
-.composerToolbar .paramInput {
-  width: 140px;
+/* 统一参数区所有控件规格（下拉框、数字输入框、切换按钮）：
+   严格 28px 高度，11px 字号，相同圆角与边框 */
+.composerToolbar :global(.od-select-trigger) {
   height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  box-sizing: border-box;
+  padding: 0 6px 0 8px;
+  gap: 4px;
   font-size: 11px;
-  padding: 0 8px;
   line-height: 26px;
   background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
-.paramInputCount { width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
 
-/* ── 参数区控件按内部文字量定宽 ──
-   宽度落在 od-select 外壳上（全局 .od-select 是 width:100%，不定宽会互相挤压）：
-   生图源 128px（"xAI Grok Imagine" 级标签）、比例 68px（"16:9"）、质量 88px
-   （"默认"/"High"）。模型名最长，宽度落在 paramItem 上吃弹性空间（150px 起），
-   od-select 外壳默认 width:100% 自动填满扣除 label 后的剩余宽度。 */
+/* 数字输入框（生成张数）：宽度紧凑（44px），高度严格 28px 与下拉框一致，文字居中，消除原生微调箭头 */
+.composerToolbar .paramInputCount {
+  width: 44px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  box-sizing: border-box;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 26px;
+  padding: 0 4px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 100ms var(--ease-out), box-shadow 100ms var(--ease-out);
+}
+
+.composerToolbar .paramInputCount::-webkit-outer-spin-button,
+.composerToolbar .paramInputCount::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.composerToolbar .paramInputCount[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.composerToolbar .paramInputCount:focus {
+  border-color: var(--selected);
+  box-shadow: 0 0 0 2px var(--selected-soft);
+}
+
+/* 参数区控件按内部文字量定宽 */
 .composerToolbar .sourceSelect { width: 128px; }
 .composerToolbar .aspectSelect { width: 72px; }
 .composerToolbar .qualitySelect { width: 88px; }
 .composerToolbar .resolutionSelect { width: 78px; }
 .composerToolbar .moderationSelect { width: 76px; }
-.composerToolbar .transparentToggle {
-  height: 28px;
-  font-size: 11px;
-  padding: 0 10px;
-}
+
 .paramItemModel { flex: 1 1 150px; min-width: 150px; }
 .paramHidden { display: none !important; }
 .sizePreviewBadge {
@@ -380,27 +517,56 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 同旧 .paramSelect 覆盖的理由：共享皮肤 .od-select-trigger 的 36px min-height
-   与 7px 纵向 padding 会把工具行撑高一档；在工具栏作用域内压到 28px 高、11px
-   字号、白底去灰填充（与 console 白卡一致），边框/圆角/焦点仍走共享皮肤。
-   值文字超宽由 od-select-value 自带 ellipsis 截断。 */
-.composerToolbar :global(.od-select-trigger) {
+/* 透明背景切换开关：与下拉框同高 28px，状态指示明确 */
+.composerToolbar .transparentToggle {
+  height: 28px;
   min-height: 28px;
-  padding: 0 6px 0 8px;
-  gap: 4px;
+  max-height: 28px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
   font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
   background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: all 140ms var(--ease-out);
 }
 
-/* 「添加参考图」图标钮：28×28 与参数区控件同高，居中放图标。
-   后代选择器抬高特异性，避免与共享 Button .sm 档（height:auto、11px 内距）
-   的单类规则比加载顺序 */
-.composerToolbar .attachBtn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  justify-content: center;
-  flex-shrink: 0;
+.composerToolbar .transparentToggle:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+  background: var(--bg-subtle);
+}
+
+.composerToolbar .transparentToggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.transparentToggleActive {
+  color: var(--accent) !important;
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border)) !important;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg)) !important;
+  font-weight: 600 !important;
+}
+
+.transparentDot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circular);
+  background: var(--text-soft);
+  transition: background-color 140ms var(--ease-out), transform 140ms var(--ease-out);
+}
+
+.transparentToggleActive .transparentDot {
+  background: var(--accent);
+  transform: scale(1.15);
 }
 
 .submitGroup { display: flex; align-items: center; gap: 10px; margin-inline-start: auto; }

@@ -52,6 +52,8 @@ import {
   gptImageQualityFor,
   gptImageSizeFor,
   isGptImageModel,
+  nanoBananaAspectRatioFor,
+  nanoBananaImageSizeFor,
 } from '@open-design/contracts';
 import {
   findRealTagOffset,
@@ -179,7 +181,6 @@ const NANOBANANA_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 // Verify the current Nano Banana / Gemini image model name against:
 // https://ai.google.dev/gemini-api/docs/models
 const NANOBANANA_DEFAULT_MODEL = 'gemini-3.1-flash-image-preview';
-const NANOBANANA_DEFAULT_IMAGE_SIZE = '1K';
 const DEFAULT_OUTPUT_BY_SURFACE = {
   image: 'image.png',
   video: 'video.mp4',
@@ -1125,6 +1126,20 @@ async function renderGrokImage(ctx: MediaContext, credentials: ProviderConfig): 
   };
 }
 
+/**
+ * Nano Banana (Gemini image 模型族) 的生图渲染器。
+ *
+ * 比例与分辨率都经 contracts 的收口函数翻成上游 wire 值，**undefined 的语义是
+ * "请求体里不要出现这个字段"**，不是"用某个默认档顶上"：
+ *   * `aspectRatio` 缺席 → 模型自选画幅；
+ *   * `imageSize` 缺席 → 用 Google 文档写明的默认 1K。
+ * 这是刻意的：档位差价由用户承担，宿主不替他挑档。旧调用方（agent / CLI 生图
+ * 没有 resolution 概念，比例也只发 5 档老词表）行为不变 —— 老词表的值都在新表
+ * 内，收口原样通过；缺省的比例仍旧只是"不发 aspectRatio"，而不是被改写成 1:1。
+ *
+ * `imageConfig` 本身也要按需组装：两个值都缺席时整个字段不发，因为不支持该配置
+ * 的模型（老 gemini 族、部分自建网关）收到一个空配置对象会直接报错。
+ */
 async function renderNanoBananaImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
   const apiKey = credentials.apiKey;
   if (!apiKey) {
@@ -1143,6 +1158,13 @@ async function renderNanoBananaImage(ctx: MediaContext, credentials: ProviderCon
     || ctx.wireModel
     || NANOBANANA_DEFAULT_MODEL
   ).trim();
+  const aspectRatio = nanoBananaAspectRatioFor(ctx.aspect);
+  const imageSize = nanoBananaImageSizeFor(ctx.resolution);
+  // 只有确实要发的键才出现：`{ aspectRatio: undefined }` 会被 JSON.stringify 丢掉，
+  // 但显式组装能让"空 imageConfig 不发"这条规则一眼可读，也是上游报错的那条边界。
+  const imageConfig: Record<string, string> = {};
+  if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
+  if (imageSize) imageConfig.imageSize = imageSize;
   const body = {
     contents: [{
       parts: [{
@@ -1151,10 +1173,7 @@ async function renderNanoBananaImage(ctx: MediaContext, credentials: ProviderCon
     }],
     generationConfig: {
       responseModalities: ['IMAGE'],
-      imageConfig: {
-        aspectRatio: nanoBananaAspectFor(ctx.aspect),
-        imageSize: NANOBANANA_DEFAULT_IMAGE_SIZE,
-      },
+      ...(Object.keys(imageConfig).length > 0 ? { imageConfig } : {}),
     },
   };
 
@@ -1182,7 +1201,7 @@ async function renderNanoBananaImage(ctx: MediaContext, credentials: ProviderCon
   const bytes = inlineImageBytesFromGenerateContent(data);
   return {
     bytes,
-    providerNote: `nano-banana/${wireModel} · ${nanoBananaAspectFor(ctx.aspect)} · ${NANOBANANA_DEFAULT_IMAGE_SIZE} · ${bytes.length} bytes`,
+    providerNote: `nano-banana/${wireModel} · ${aspectRatio ?? 'aspect:auto'} · ${imageSize ?? 'size:auto'} · ${bytes.length} bytes`,
     suggestedExt: sniffImageExt(bytes),
   };
 }
@@ -1206,19 +1225,6 @@ function usesOfficialGoogleApiKeyHeader(baseUrl: string): boolean {
   } catch {
     return false;
   }
-}
-
-function nanoBananaAspectFor(aspect?: string): string {
-  if (
-    aspect === '1:1'
-    || aspect === '16:9'
-    || aspect === '9:16'
-    || aspect === '4:3'
-    || aspect === '3:4'
-  ) {
-    return aspect;
-  }
-  return '1:1';
 }
 
 function inlineImageBytesFromGenerateContent(data: any): Buffer {

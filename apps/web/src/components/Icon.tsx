@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react';
+import type { CSSProperties, SVGProps } from 'react';
 
 import { REMIX_ICON_PATHS } from './remix-icon-paths';
 
@@ -264,9 +264,15 @@ const REMIX_ICON: Partial<Record<IconName, string>> = {
  * fallback for names Remix doesn't cover. Use sparingly inside buttons that
  * already have accessible labels — set `aria-hidden` by default.
  */
-export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
+export function Icon({ name, size = 14, strokeWidth = 1.6, style, ...rest }: Props) {
   const remixGlyph = REMIX_ICON[name];
   const remixPath = remixGlyph ? REMIX_ICON_PATHS[remixGlyph] : undefined;
+  const iconStyle: CSSProperties = {
+    width: typeof size === 'number' ? `${size}px` : size,
+    height: typeof size === 'number' ? `${size}px` : size,
+    flexShrink: 0,
+    ...style,
+  };
   if (remixPath) {
     const { className, ...restProps } = rest;
     return (
@@ -278,6 +284,7 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
         aria-hidden
         focusable="false"
         className={`od-icon${name === 'spinner' ? ' icon-spin' : ''}${className ? ` ${className}` : ''}`}
+        style={iconStyle}
         {...restProps}
       >
         <path d={remixPath} />
@@ -296,6 +303,7 @@ export function Icon({ name, size = 14, strokeWidth = 1.6, ...rest }: Props) {
     strokeLinejoin: 'round' as const,
     'aria-hidden': true,
     focusable: 'false' as const,
+    style: iconStyle,
     // Every glyph carries `od-icon`, the hook ~35 selectors across
     // entry-layout / design-files / plus-menu / recent-projects style against.
     // Moving off the icon FONT to inline SVG (packaged `od://` can't load

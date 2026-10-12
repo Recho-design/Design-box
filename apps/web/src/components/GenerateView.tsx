@@ -16,7 +16,11 @@ import type {
   PlaygroundGenerationListResponse,
   PlaygroundTransferResponse,
 } from '@open-design/contracts';
-import { gptImageQualityFor } from '@open-design/contracts';
+import {
+  gptImageQualityFor,
+  nanoBananaAspectRatioFor,
+  nanoBananaImageSizeFor,
+} from '@open-design/contracts';
 import { Button } from '@open-design/components';
 import type { MediaProviderCredentials, Project } from '../types';
 import { useI18n } from '../i18n';
@@ -106,13 +110,18 @@ function submitQualityFor(catalogModel: string, quality: string): string | undef
 }
 
 /**
- * 非 openai 源的 aspect 收口：只发该源真正认得的 5 档。
+ * 非 openai / nanobanana 源（如 grok）的 aspect 收口：只发该源真正认得的 5 档。
  *
- * `'auto'` 是 openai 工作台的档位（「让模型自己决定」），grok / nanobanana 都没有这个
- * 概念，原样发过去就是一个上游 400。缺省时不发字段，由 daemon 落各自的默认比例。
+ * `'auto'` 是工作台的档位（「让模型自己决定」），grok 并没有这个概念，
+ * 原样发过去就是一个上游 400。缺省时不发字段，由 daemon 落各自的默认比例。
  */
 function submitAspectForNonOpenAI(aspect: string): string | undefined {
   return (MEDIA_ASPECTS as readonly string[]).includes(aspect) ? aspect : undefined;
+}
+
+/** 不同生图源的初始/重置比例：openai 与 nanobanana 默认为 'auto'，其余源为 '1:1'。 */
+function defaultAspectForSource(source: MediaProviderId): string {
+  return source === 'openai' || source === 'nanobanana' ? 'auto' : '1:1';
 }
 
 export function GenerateView({ initialProjectId, projects = [], mediaProviders }: Props) {
@@ -146,7 +155,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   // mediaProviders 从 undefined 变为已加载时自动默认可重算一次；用户手动切换
   // 后 userPickedSource 落地，不再被重置。
   const [userPickedSource, setUserPickedSource] = useState<MediaProviderId | null>(null);
-  const [selectedModel, setSelectedModel] = useState('');
+  const [userPickedModel, setUserPickedModel] = useState<string | null>(null);
 
   const sourceOptions = useMemo(
     () =>
@@ -217,7 +226,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
    * （例如 openai 的 `'auto'` 比例）原样带到新源上。
    */
   const resetParamsForSource = useCallback((source: MediaProviderId) => {
-    setAspect(source === 'openai' ? 'auto' : '1:1');
+    setAspect(defaultAspectForSource(source));
     setResolution('auto');
     setQuality('auto');
     setModeration('auto');
@@ -235,7 +244,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
       skipModelResetRef.current = false;
       return;
     }
-    setSelectedModel('');
+    setUserPickedModel(null);
     resetParamsForSource(selectedSource);
   }, [selectedSource, resetParamsForSource]);
 
@@ -247,23 +256,48 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   const configuredSourceModel = mediaProviders?.[selectedSource]?.model?.trim();
   const sourceModelsLoading = fetchingModelIds[selectedSource] === true;
 
-  const modelItems: CustomSelectItem[] = useMemo(() => {
-    const items: CustomSelectItem[] = [
-      {
-        value: '',
-        label: configuredSourceModel
-          ? `${t('generate.modelDefault')} · ${configuredSourceModel}`
-          : t('generate.modelDefaultUnset'),
-      },
-    ];
-    for (const id of fetchedModelIds[selectedSource] ?? []) {
-      items.push({ value: id, label: id });
+  const autoModelId = useMemo(() => {
+    if (configuredSourceModel) return configuredSourceModel;
+    const fetched = fetchedModelIds[selectedSource];
+    if (fetched && fetched.length > 0) {
+      return fetched.includes(sourceDefaultModelId) ? sourceDefaultModelId : fetched[0]!;
     }
+    return sourceDefaultModelId;
+  }, [configuredSourceModel, fetchedModelIds, selectedSource, sourceDefaultModelId]);
+
+  const selectedModel = userPickedModel ?? autoModelId;
+
+  /**
+   * 模型下拉列表：
+   * - 下拉展示具体模型（拉取模型非空优先，若拉取中/失败/不支持，回退到目录预置模型）；
+   * - 若 provider 配置了自定义默认模型且不在基底中，单独置于首位去重展示；
+   * - 目录命中时显示目录友好 label（如 nanobanana 显示 'nano-banana-2'），拉取真实 id 显示 id；
+   * - 不再包含任何 value 为 '' 的伪条目（'' 语义消失）。
+   */
+  const modelItems: CustomSelectItem[] = useMemo(() => {
+    const fetched = fetchedModelIds[selectedSource];
+    const baseIds = fetched && fetched.length > 0
+      ? fetched
+      : catalogModels.map((m) => m.id);
+
+    const ids = [...baseIds];
+    if (configuredSourceModel && !ids.includes(configuredSourceModel)) {
+      ids.unshift(configuredSourceModel);
+    }
+
+    const items: CustomSelectItem[] = ids.map((id) => {
+      const hit = catalogModels.find((m) => m.id === id);
+      return {
+        value: id,
+        label: hit ? hit.label : id,
+      };
+    });
+
     if (sourceModelsLoading) {
       items.push({ value: '__models-loading__', label: t('generate.modelsLoading'), disabled: true });
     }
     return items;
-  }, [configuredSourceModel, fetchedModelIds, selectedSource, sourceModelsLoading, t]);
+  }, [catalogModels, configuredSourceModel, fetchedModelIds, selectedSource, sourceModelsLoading, t]);
 
   /**
    * 提交语义（与 daemon 侧配套）：默认档 → 目录默认 id、无 override；所选名
@@ -288,8 +322,8 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
 
   // Input bar state
   const [prompt, setPrompt] = useState('');
-  // openai 源默认 'auto'，其他源默认 '1:1'
-  const [aspect, setAspect] = useState<string>(selectedSource === 'openai' ? 'auto' : '1:1');
+  // openai 与 nanobanana 默认 'auto'，其他源默认 '1:1'
+  const [aspect, setAspect] = useState<string>(defaultAspectForSource(selectedSource));
   const [resolution, setResolution] = useState<string>('auto');
   const [quality, setQuality] = useState<string>('auto');
   const [moderation, setModeration] = useState<string>('auto');
@@ -446,6 +480,21 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
         count,
         images: referenceChips.length > 0 ? referenceChips : undefined,
       };
+    } else if (selectedSource === 'nanobanana') {
+      const finalAspect = nanoBananaAspectRatioFor(aspect);   // auto/表外 → undefined（不发字段）
+      const finalResolution = nanoBananaImageSizeFor(resolution);
+      genParams = { aspect: finalAspect, resolution: finalResolution, count };
+      reqBody = {
+        targetProjectId,
+        surface: 'image',
+        model: dispatchModel,
+        modelOverride: dispatchOverride ?? undefined,
+        prompt: trimmedPrompt,
+        ...(finalAspect ? { aspect: finalAspect } : {}),
+        ...(finalResolution ? { resolution: finalResolution } : {}),
+        count,
+        images: referenceChips.length > 0 ? referenceChips : undefined,
+      };
     } else {
       // 非 openai 源只发 aspect / count（不再发无效的 quality）；`'auto'` 不在该源的
       // 词表里，收口成不发字段，由 daemon 落各自的默认比例。
@@ -526,7 +575,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
       skipModelResetRef.current = true;
       setUserPickedSource(reuseSource);
     }
-    setSelectedModel(card.modelOverride || card.model);
+    setUserPickedModel(card.modelOverride || card.model);
 
     if (targetSource === 'openai') {
       setAspect(card.params?.aspect ?? 'auto');
@@ -535,8 +584,10 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
       setModeration(card.params?.moderation ?? 'auto');
       setTransparent(card.params?.transparent ?? false);
     } else {
-      setAspect(card.params?.aspect ?? '1:1');
-      setResolution('auto');
+      // openai 走上面的分支，这里 targetSource 必非 openai，defaultAspectForSource
+      // 在此恰好给出「nano → auto、其余 → 1:1」的缺省档。
+      setAspect(card.params?.aspect ?? defaultAspectForSource(targetSource));
+      setResolution(card.params?.resolution ?? 'auto');
       setQuality('auto');
       setModeration('auto');
       setTransparent(false);
@@ -748,19 +799,43 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
                 }
               }}
             />
+
+            {/* 隐藏的文件输入 */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              className={styles.fileInputHidden}
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleUploadFile(file);
+                e.target.value = '';
+              }}
+            />
+            {/* 漂浮于输入框内的附件按钮 */}
+            <button
+              type="button"
+              className={styles.promptAttachBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                fileInputRef.current?.click();
+              }}
+              disabled={uploadingImage}
+              title={t('generate.addReference')}
+              aria-label={t('generate.addReference')}
+            >
+              <Icon name="attach" size={15} />
+            </button>
           </div>
 
           <div className={styles.composerToolbar}>
             <GenerateToolbarParams
-              fileInputRef={fileInputRef}
-              uploadingImage={uploadingImage}
-              onFileSelect={(file) => void handleUploadFile(file)}
               selectedSource={selectedSource}
               sourceItems={sourceItems}
               onSourceChange={handleSourceChange}
               selectedModel={selectedModel}
               modelItems={modelItems}
-              onModelChange={setSelectedModel}
+              onModelChange={setUserPickedModel}
               catalogModel={dispatch.model}
               aspect={aspect}
               onAspectChange={setAspect}
