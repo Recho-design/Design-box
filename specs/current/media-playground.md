@@ -29,14 +29,15 @@ v2 = **全局「生成」视图（Media Playground）**取代弹窗，支持临�
 | D3 | v1 弹窗处置 | 删除 `ImageWorkbench`，入口统一到 Playground |
 | D4 | 项目内进入的落盘默认 | 默认当前项目；全局进入默认 scratch，可手动切换目标 |
 | D5 | 渠道 | 复用媒体生成提供商管道（`generateMedia` 分发器），不另写生成实现 |
-| D6 | 模型语义 | v1 沿用：`model` 固定 `'custom-image'`，模型名由 `modelOverride` 自由指定（接缝见下） |
+| D6 | 模型语义 | `model` = image 目录 id，**可省略**（缺省/空串由 daemon 解析默认，见 §7）；模型名由 `modelOverride` 自由指定（接缝见下；两轮修订见注记） |
 
 > **2026-10-12 修订（D6 放开）**：`model` 已放开为任意 **image 目录 id**
-> （`findMediaModel` + `modelsForSurface('image')` 校验，`custom-image` 自然
-> 继续合法），错误文案改为 `model must be an image model id from
-> /api/media/models`。`modelOverride` 的语义（「Caller-supplied provider
+> （`findMediaModel` + `modelsForSurface('image')` 校验），错误文案改为
+> `model must be an image model id from /api/media/models`（并附可用 id
+> 列表，见 §5.3）；缺省/空串不再是错误——由 daemon 解析默认（见 §7）。
+> `modelOverride` 的语义（「Caller-supplied provider
 > model name; wins over provider config + alias」）在全部 image renderer
-> （openai 非 Azure 分支 / grok / nanobanana / custom-image）统一为最高优先；
+> （openai 非 Azure 分支 / grok / nanobanana）统一为最高优先；
 > 能力分支（尺寸、dall-e-3 的 response_format/quality、gpt-image 的
 > quality）仍按目录 id 走。源切换 UI（生图源下拉 + model-options 自动拉取）
 > 落在 GenerateView（web 侧）。
@@ -195,7 +196,7 @@ CREATE TABLE IF NOT EXISTS media_playground_generations (
   id TEXT PRIMARY KEY,
   target_project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,  -- NULL = scratch
   surface TEXT NOT NULL,                    -- v1 恒 'image'，无 CHECK（D6 接缝）
-  model TEXT NOT NULL,                      -- v1 恒 'custom-image'
+  model TEXT NOT NULL,                      -- image 目录 id（请求缺省时落解析出的默认）
   model_override TEXT,
   prompt TEXT NOT NULL DEFAULT '',
   params_json TEXT NOT NULL DEFAULT '{}',   -- aspect/quality/count/transfers[]
@@ -241,7 +242,7 @@ CREATE INDEX idx_playground_cursor
 
 | 方法/路径 | 语义 |
 |---|---|
-| `POST /generate` | 生成。body：`{targetProjectId?, surface:'image', model:'custom-image', modelOverride?, prompt, aspect?, quality?, count?, images?: string[]}`。同步响应（批次语义，count 钳 1–10）。`images` 为目标基目录相对路径（scratch：`uploads/x.png` 或产物 basename；项目：实际项目根相对路径）。响应 = 完整 generation 行（含 per-slot 失败）。 |
+| `POST /generate` | 生成。body：`{targetProjectId?, surface:'image', model?, modelOverride?, prompt, aspect?, quality?, count?, images?: string[]}`。**`model` 可选**：缺省/空串时 daemon 解析默认——`offeredModelsForSurface('image')` 目录序中首个 **`configured === true`** 的 provider 的模型（env key / 存储 key / 借用凭据；**baseUrl-only 不算可用**，见 §7）；无任何已配置 provider → 400 并附可用模型 id 列表；显式非法 id 的 400 消息同样附该列表。同步响应（批次语义，count 钳 1–10）。`images` 为目标基目录相对路径（scratch：`uploads/x.png` 或产物 basename；项目：实际项目根相对路径）。响应 = 完整 generation 行（含 per-slot 失败）+ `outputDir`（目标基目录绝对路径，见 §7）。 |
 | `POST /uploads` | 参考图上传（multipart）。**可选 `targetProjectId`（C3 修订）**：缺省落 scratch `uploads/`；传项目 id 则落**该项目的实际项目根**（`resolveProjectDir`，导入型为 baseDir）——参考图永远落在「生成时会解析的目录」，两个目标下上传即可用。`sanitizeName` + 唯一化命名（`uniqueUploadFileName` 规则）；大小上限 **16MB**（对齐参考图读取上限）；魔数校验**未知格式拒绝**（不得走 `sniffImageExt` 的默认 `.png` 分支，C4）。返回 `{name}` = 目标基目录相对路径，可直接放 `images`。 |
 | `GET /generations?limit=50&before=&target=` | 倒序卡片历史；`target=scratch` 或项目 id 过滤。响应含 `nextBefore`。 |
 | `GET /files/:id/:slot` | 只读返回 **scratch 产物**字节（S6 修订）：① 行必须 `target_project_id IS NULL`；② `slot` 为非负整数且 < `files_json` 长度、该槽无 `error`；③ 拼出的绝对路径做 containment 复核；④ 响应头 `Content-Type: mime`、`Cache-Control: private, max-age=31536000, immutable`（文件名含唯一 genId，内容不可变）、inline `Content-Disposition`。项目产物走既有项目文件服务（`projectFileUrl`）。 |
@@ -273,14 +274,15 @@ CREATE INDEX idx_playground_cursor
 ### 5.5 CLI 双轨（UI/CLI 双轨契约）
 
 ```bash
-od media playground generate [--project <id>] --model custom-image \
-    --model-override <name> [--count n] [--aspect 16:9] [--quality high] \
-    [--image <ref> ...] --prompt-file <path|->   # 无 --project 即 scratch
+od media playground generate [--project <id>] [--model <image-model-id>] \
+    [--model-override <name>] [--count n] [--aspect 16:9] [--quality high] \
+    [--image <ref> ...] --prompt-file <path|->   # 无 --project 即 scratch；无 --model 即 daemon 默认
 od media playground upload <file>... [--project <id>]  # → 输出目标相对引用名（S11/C3）
 od media playground list [--json] [--limit n] [--target scratch|<pid>]
 od media playground download <generationId> [--slot n] [--out <path>]  # C6
 od media playground transfer <generationId> --project <id>
 od media playground delete <generationId>
+od media models [--json] [--daemon-url <url>]  # image 模型 id+provider / providers / aspects
 ```
 
 - `upload` 补齐双轨（S11）：CLI 把本地文件送进目标目录，输出 `{name}`
@@ -289,7 +291,12 @@ od media playground delete <generationId>
   项目根读字节；`--out` 缺省落当前目录（用产物 basename），`--json` 输出
   `{path}`——UI 的预览/下载能力 CLI 同形可达。
 - `runMedia` 的子命令扩展点在 `cli.ts` 的 `media` 分发处（现认
-  `generate|wait|scaffold`），新增 `playground` 一级子命令。
+  `generate|wait|scaffold|models`），新增 `playground` 一级子命令。
+- `models` 补齐双轨：`od media models` 只读列目录（image 模型 id + provider、
+  providers、aspects；`--json` 打原始 `GET /api/media/models` 载荷）——给代理
+  一条「我到底能写哪个 id」的回答路径，但**不是必经之路**：
+  `playground generate` 省略 `--model` 也能出图（默认解析见 §7）。失败沿用
+  media 惯例（连不上 exit 3，daemon 拒绝 exit 4）。
 - `--json` 行形状与 HTTP 响应一致；`transfer`/`delete` 失败退出码沿用
   既有惯例（2/3/4 + 嵌套 `{error:{code,message,nextStep}}`）。
 
@@ -356,9 +363,10 @@ sendDisabled 时隐藏）。点击**不再 navigate 到 `/generate`**，而是�
 - **模型建议列表来自 `/api/media/models`**（daemon 目录），不用 web 侧
   `IMAGE_MODELS` 副本继续漂移（O3）；输入仍自由（`modelOverride` 语义）。
   **列表仅作可编辑示例**（C 建议 4）：datalist 形态、placeholder 说明
-  「示例值，实际模型名以你的端点为准」——不暗示这些 id 由 custom-image
-  端点支持（请求固定 `model:'custom-image'`，填的是上游 `modelOverride`）。
-- **2026-10-12 修订**：上一段的「请求固定 `model:'custom-image'`」约束已
+  「示例值，实际模型名以你的端点为准」——不暗示这些 id 由端点直接支持：
+  目录 id 由 `model` 承载，这里的自由文本填的是上游 wire 名
+  （`modelOverride`）。
+- **2026-10-12 修订**：上面这条原本写死 `model:'custom-image'` 的约束已
   随 D6 放开失效——`model` 现在接受任意 image 目录 id（见 §2 D6 修订
   注记），源切换下拉落在 GenerateView，`modelOverride` 在所有 image
   renderer 中优先于 provider 配置。
@@ -367,7 +375,7 @@ sendDisabled 时隐藏）。点击**不再 navigate 到 `/generate`**，而是�
   调度），选项 = 默认档（provider 配置的模型名；未配置显示
   `generate.modelDefaultUnset`）+ `/model-options` 拉回的 id。提交语义
   不变：默认档仍派发目录默认 id（`resolveDispatchModel` 的 fallback），
-  所选名作为 `modelOverride` 传 daemon。custom-image 等无
+  所选名作为 `modelOverride` 传 daemon。注册表里未标
   `supportsModelFetch` 的源只有默认档一档（其模型名本就来自用户配置）。
 - 图片预览复用既有 Lightbox/预览模式；样式走 `GenerateView.module.css`
   （组件旁，不进 `styles/` 全局，O4），遵守动画哲学（enter 200ms
@@ -395,7 +403,7 @@ sendDisabled 时隐藏）。点击**不再 navigate 到 `/generate`**，而是�
   （如拉取模型按钮用 `Button`），不新增 raw class 按钮；既有旧按钮的
   迁移另立任务，不顺手混入。
 - **拉取模型**：`supportsModelFetch` 的提供商（openai/grok/imagerouter/
-  openrouter/aihubmix/custom-image）在 model 字段旁有"拉取模型"按钮，
+  openrouter/aihubmix）在 model 字段旁有"拉取模型"按钮，
   走 `GET /api/media/providers/:id/model-options`（路径刻意不带 `/models`
   后缀：更早注册的 aihubmix 公开目录路由
   `/api/media/providers/aihubmix/models` 会遮蔽同形路径；daemon 侧读已保存
@@ -407,8 +415,7 @@ sendDisabled 时隐藏）。点击**不再 navigate 到 `/generate`**，而是�
 - **已知限制（裁定不修）**：拉取读的是 daemon 已保存配置——屏上 key
   改动若未过 400ms 防抖落盘就点拉取，仍用旧 key（旧 key 有效则静默
   成功，无效则报错后重点即可）。修它需动自动保存与拉取的时序，
-  风险大于收益。custom-image 例外语义：无 key 也放行（镜像
-  `renderCustomOpenAIImage` 的 keyless 行为，由上游自行 401）。
+  风险大于收益。
 
 ## 7. 数据契约（packages/contracts）
 
@@ -430,19 +437,34 @@ export type PlaygroundGeneration = {
   id: string;
   targetProjectId: string | null;   // null = scratch
   surface: PlaygroundSurface;
-  model: string;                    // v1 恒 'custom-image'
-  modelOverride?: string | null;    // 实际模型名（v1 必有：无 override 报错）
+  model: string;                    // image 目录 id（请求缺省时落解析出的默认）
+  modelOverride?: string | null;    // 实际 wire 模型名；缺省 = provider 别名 > 目录 id
   prompt: string;
   params: PlaygroundGenerationParams;
   status: 'running' | 'done' | 'failed';
   files: PlaygroundGenerationFile[];
+  /**
+   * 目标基目录的**绝对路径**（`files[].name` 拼在它下面即磁盘上的真实文件）。
+   * 仅 generate 响应携带——列表/转存/删除响应不填；web 不消费，给外部
+   * CLI/MCP 代理定位产物字节用（见 §5.3）。
+   */
+  outputDir?: string;
   error?: string | null;
   createdAt: number;
 };
 export type PlaygroundGenerateRequest = {
   targetProjectId?: string;         // 缺省 = scratch
   surface: PlaygroundSurface;
-  model: string;                    // v1 只接受 'custom-image'
+  /**
+   * **可选**——缺省/空串时 daemon 解析默认：`offeredModelsForSurface('image')`
+   * 目录序中首个 **`configured === true`** 的 provider 的模型（env key /
+   * 存储 key / 借用凭据）；**baseUrl-only 不算可用**——openai/grok/nanobanana
+   * 三个 image renderer 无 key 必抛错，把这种配置当默认只会产出失败卡片，还会
+   * 按目录序遮蔽后面真正配了 key 的 provider；
+   * 无任何已配置 provider → 400 并附可用模型 id 列表；显式非法 id 的 400
+   * 消息同样附该列表（外部代理不必先读目录即可出图）。
+   */
+  model?: string;
   modelOverride?: string;
   prompt: string;
   aspect?: string; quality?: string; count?: number;
@@ -460,11 +482,27 @@ export type PlaygroundTransferResponse = {
 export type PlaygroundDeleteResponse = { ok: true };
 ```
 
+外部编码代理（MCP `generate_image` / `list_media_models` 工具）接入见
+`docs/external-media-orchestration.md` 的 External Coding Agents 节。
+
 ## 8. 错误与边界
 
 - 批次部分失败：per-slot `error` 徽标 + 成功槽位正常渲染（沿用批次语义）。
-- `modelOverride` 空白串按无 override；custom-image 无默认模型且无
-  override → 明确报错（不落占位 id）。
+- `model` 缺省/空串 → daemon 解析默认（目录序首个 `configured === true` 的
+  provider 的模型；baseUrl-only 不算可用，见 §7）；
+  无任何已配置 provider → 400 并附可用模型 id 列表；显式非法 id 的 400 消息
+  同样附该列表（§5.3）。
+- `modelOverride` 空白串按无 override；三个 image renderer 的 wire 名都有
+  落点（provider 配置模型 / 别名 / 目录 id，nanobanana 另有内置默认），
+  「明确报错」只发生在缺省解析时**一个 provider 都没配**（上一条）。
+- **wire 模型名规则（2026-10-13 补）**：请求级 `modelOverride` 最优先；
+  否则当请求的目录 id 是该 provider 的**目录默认模型**（`modelDef.default`，
+  openai = `gpt-image-2`、grok = `grok-imagine-image`）且 Settings → Media
+  里配了默认模型时，**配置的模型名**作 wire 名发出（自建网关/中转常只服务
+  用户配置的那一个名字）；显式选到的非默认目录模型（`dall-e-3` 等）是明确
+  选择，原样发送，不做静默改道。id 与端点真实模型不符时上游回 422，
+  `mediaFailureNextStep` 把 `invalid_model_error` / `model not found` 归为
+  `switch-model`（此前落 `contact-support`），代理据此换模型自愈。
 - `count` 钳 1–10（复用 `clampMediaGenerateCount`）。
 - 同源守卫全端点（§5.3）；uploads 净化 + 16MB 限额 + 未知魔数拒绝（§5.3）；
   `files/:id/:slot` 四条防护（§5.3）。

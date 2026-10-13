@@ -193,6 +193,7 @@ export const IMAGE_MODELS: MediaModel[] = [
     hint: 'xAI · 2K text-to-image',
     provider: 'grok',
     caps: ['t2i'],
+    default: true,
   },
 
   // Nano Banana — Google-compatible generateContent image path.

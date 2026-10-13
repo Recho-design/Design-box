@@ -183,6 +183,13 @@ const BARE_STATUS_RE =
 const MISSING_CREDENTIAL_RE = /\bno\s+(?:[\w.-]+\s+){0,3}(?:api key|credential)\b/i;
 /** Every long-poll adapter gives up with this exact phrase. */
 const RENDER_TIMED_OUT_RE = /\bdid not finish in time\b/i;
+/**
+ * Gateway/OpenAI "the model id is not served here": `model not found: "x"`,
+ * `model_not_found`, `invalid_model_error`. The only failure a caller can fix
+ * by naming a different model, so it is the one message shape that maps to
+ * `switch-model` rather than `contact-support`.
+ */
+const INVALID_MODEL_RE = /\b(?:invalid_model_error|model[_ ]not[_ ]found)\b/i;
 
 function nextStepForStatus(
   status: number,
@@ -209,7 +216,7 @@ function statusFromMessage(message: string): number | undefined {
  *
  * Precedence is deliberate and narrows outward from proof to guess: a code the
  * producer published, then a real HTTP status, then the two message shapes
- * that provably carry a status, then a two-entry message allowlist, then the
+ * that provably carry a status, then a three-entry message allowlist, then the
  * producer's own retry verdict. Anything left is `contact-support` — "we could
  * not name it" is an honest answer and its copy still offers a retry, whereas
  * guessing `revise-request` would blame the user for our outage.
@@ -236,6 +243,7 @@ export function mediaFailureNextStep(signal: MediaFailureSignal): MediaFailureNe
     }
     if (MISSING_CREDENTIAL_RE.test(message)) return 'open-settings';
     if (RENDER_TIMED_OUT_RE.test(message)) return 'retry-later';
+    if (INVALID_MODEL_RE.test(message)) return 'switch-model';
   }
 
   if (signal.retryable === true) return 'retry-later';

@@ -736,6 +736,25 @@ const OPENAI_IMAGE_NO_CREDENTIAL_MESSAGE =
   `no OpenAI credential — configure an API key in ${SETTINGS_MEDIA_PROVIDERS_PATH} or set OPENAI_API_KEY.`;
 
 /**
+ * openai / grok 生图的 wire 模型名（条件翻译，2026-10-13）：
+ *  * 请求级 `modelOverride` 最优先（工作台源切换 / 显式 wire 名）；
+ *  * 请求的目录 id 是该 provider 的**目录默认模型**（`modelDef.default`，openai
+ *    = `gpt-image-2`、grok = `grok-imagine-image`）且 Settings → Media 里配了
+ *    默认模型 → **配置的模型名**作 wire 名——自建网关/中转常常只服务用户配置的
+ *    那一个模型名，而工作台源切换与外部代理只会传目录 id，不翻译就等于每次都用
+ *    网关不认识的 id 去打上游；
+ *  * 显式选到的**非**默认目录模型（dall-e-3 等）是明确选择，原样发送——id 与
+ *    端点真实模型不符时由上游回 422，`mediaFailureNextStep` 归为 `switch-model`
+ *    让代理换模型自愈，而不是让宿主静默改道；
+ *  * provider 配置模型位次高于别名（`wireModel`），与 renderNanoBananaImage 的
+ *    链一致（那里目录只有一张图，所以是无条件链 + 内置默认）。
+ */
+function effectiveImageWireModel(ctx: MediaContext, credentials: ProviderConfig): string {
+  return ctx.modelOverride
+    || (ctx.modelDef.default === true && credentials.model ? credentials.model : ctx.wireModel);
+}
+
+/**
  * OpenAI Images（gpt-image 族与 dall-e 族）渲染器。
  *
  * 两条分支在这里收口：
@@ -744,7 +763,8 @@ const OPENAI_IMAGE_NO_CREDENTIAL_MESSAGE =
  *    （上游回 HTTP 400 Unknown parameter），dall-e 族照旧要 `b64_json`。
  *  * 能力分支看**目录 id**（用户把 `dall-e-3` 别名到自家代理部署、或在工作台
  *    里覆盖成别的 wire 名时，该拿到的仍是 dall-e 那套模板 —— PR #1309 的约定），
- *    而真正发出去的模型名是 modelOverride > 别名 > 目录 id。
+ *    而真正发出去的模型名是 modelOverride > （目录默认模型时的 provider 配置模型）>
+ *    别名 > 目录 id，见下面 {@link renderOpenAIImage} 里的条件翻译。
  *
  * 不变量：调用方传的档位决定请求体里的 size / quality / moderation /
  * background。缺席就是缺席 —— 档位差价由用户承担，宿主替他选档等于替他做计费
@@ -758,7 +778,7 @@ async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig)
   }
   const rawBase = credentials.baseUrl || 'https://api.openai.com/v1';
   const azure = detectAzureEndpoint(rawBase);
-  const effectiveModel = ctx.modelOverride || ctx.wireModel;
+  const effectiveModel = effectiveImageWireModel(ctx, credentials);
   const body = buildOpenAIImageBody(ctx, effectiveModel, azure);
   const url = ctx.imageRefs.length > 0
     ? buildOpenAIImageEditUrl(rawBase, azure)
@@ -1074,11 +1094,12 @@ async function renderGrokImage(ctx: MediaContext, credentials: ProviderConfig): 
   const baseUrl = (credentials.baseUrl || 'https://api.x.ai/v1').replace(/\/$/, '');
 
   const aspectRatio = grokAspectFor(ctx.aspect);
+  const effectiveModel = effectiveImageWireModel(ctx, credentials);
   const body = {
-    // Caller-supplied override (Playground source switch) wins over the
-    // alias-resolved wire name; capability branches are unaffected because
-    // the grok renderer has none.
-    model: ctx.modelOverride || ctx.wireModel,
+    // Caller-supplied override (Playground source switch) wins over both the
+    // provider config's model and the alias-resolved wire name; capability
+    // branches are unaffected because the grok renderer has none.
+    model: effectiveModel,
     prompt: ctx.prompt || 'A high-quality reference image.',
     n: 1,
     aspect_ratio: aspectRatio,
@@ -1121,7 +1142,7 @@ async function renderGrokImage(ctx: MediaContext, credentials: ProviderConfig): 
   // trusts the extension.
   return {
     bytes,
-    providerNote: `grok/${ctx.modelOverride || ctx.wireModel} · ${aspectRatio} · ${bytes.length} bytes`,
+    providerNote: `grok/${effectiveModel} · ${aspectRatio} · ${bytes.length} bytes`,
     suggestedExt: sniffImageExt(bytes),
   };
 }
