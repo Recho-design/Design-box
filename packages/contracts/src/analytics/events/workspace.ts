@@ -67,9 +67,6 @@ export interface AccountMenuClickProps extends TrackingWorkspaceDimensions {
     | 'github_help'
     | 'feature_request'
     | 'github'
-    | 'discord'
-    | 'twitter'
-    | 'email'
     | 'logout';
   is_free_active?: boolean;
 }

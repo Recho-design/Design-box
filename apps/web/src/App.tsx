@@ -5,9 +5,6 @@ import { Button } from '@open-design/components';
 import { reportAgentDetectDiagnostics } from './analytics/agent-detect';
 import { useAnalytics } from './analytics/provider';
 import {
-  trackExperienceSurveyDismissed,
-  trackExperienceSurveySent,
-  trackExperienceSurveyShown,
   trackFileUploadResult,
   trackProjectCreateResult,
 } from './analytics/events';
@@ -61,7 +58,6 @@ import {
 } from './components/ProjectView';
 import { ProjectCreationPendingView } from './components/ProjectCreationPendingView';
 import { projectsForWorkspaceChrome } from './runtime/workspace-chrome-projects';
-import { ExperienceSurvey } from './components/ExperienceSurvey';
 import { TooltipLayer } from './components/TooltipLayer';
 import { UpdateDialog } from './components/UpdateDialog';
 import { UpdaterPopup } from './components/UpdaterPopup';
@@ -5257,15 +5253,6 @@ function AppInner() {
       )}
       <TooltipLayer />
       <UpdateDialog />
-      {/* Mounted at shell level, outside the route views, so a survey armed by
-          an export inside a project stays on screen when the user navigates
-          back to home. */}
-      <ExperienceSurvey
-        metricsConsent={config.telemetry?.metrics === true}
-        onExposure={() => trackExperienceSurveyShown(analytics.track)}
-        onDismiss={() => trackExperienceSurveyDismissed(analytics.track)}
-        onSubmit={(answers) => trackExperienceSurveySent(analytics.track, answers)}
-      />
       <AnimatePresence>
       {settingsOpen ? (
         renderSettingsSurface('modal')
