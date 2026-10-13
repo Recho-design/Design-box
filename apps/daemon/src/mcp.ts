@@ -119,6 +119,7 @@ const SAFE_MCP_DAEMON_RETRY_CALLS = new Set([
   'get_run',
   'list_agents',
   'list_files',
+  'list_media_models',
   'list_plugins',
   'list_projects',
   'list_resources',
@@ -826,6 +827,75 @@ export const TOOL_DEFS = [
       additionalProperties: false,
     },
     annotations: { ...READ_ANNOTATIONS, title: 'List OpenDesign agents' },
+  },
+  // Media generation. Both tools talk to the playground route
+  // (POST /api/media/playground/generate), which is scratch-first: it
+  // needs no project, no run, and no conversation, so an external
+  // coding agent can produce an image and get the bytes back in one
+  // synchronous call. Provider credentials stay in OpenDesign
+  // (Settings → Media) — the agent never sees a key. generate_image is
+  // listed in PROJECT_OR_RUN_TOOLS only so its optional `project`
+  // argument resolves by name on a workspace-bound daemon; the route
+  // itself is not workspace-scoped.
+  {
+    name: 'list_media_models',
+    description:
+      "List image models available through OpenDesign's configured media providers, plus aspect ratio options. Call this before generate_image when you need to pick a model; generate_image also works with no model (daemon default).",
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+    annotations: { ...READ_ANNOTATIONS, title: 'List OpenDesign image models' },
+  },
+  {
+    name: 'generate_image',
+    description:
+      'Generate images with the media providers configured in OpenDesign Settings → Media. Synchronous and may take 10-60s (longer for several images or 4K) — wait for it; there is nothing to poll. Omit model to use the daemon default. Results land in the OpenDesign scratch directory, or in the given project when project is passed. Returns the generation record: files (names relative to outputDir), outputDir (absolute), and, for scratch results, a per-slot downloadUrl — fetch those bytes with curl/GET, or copy from <outputDir>/<name>. Returns isError:true when every slot failed; check files[].error for per-slot failures.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description:
+            'What to generate, in natural language. Name the subject, style, composition, and any text the image should contain.',
+        },
+        model: {
+          type: 'string',
+          description:
+            'Image model id from list_media_models (for example gpt-image-2 or dall-e-3). Optional; omit it to use the daemon default, which is the first configured provider in catalog order.',
+        },
+        project: {
+          type: 'string',
+          description: 'OpenDesign project id or name; omit for scratch.',
+        },
+        aspect: {
+          type: 'string',
+          description:
+            "Aspect ratio of the output, e.g. '1:1', '16:9', '9:16', '4:3', '3:4'. The gpt-image family also accepts 'auto' (let the model choose) plus 3:2, 2:3 and 21:9. Optional; omitting it leaves the provider's own default.",
+        },
+        quality: {
+          type: 'string',
+          description:
+            "Quality tier, where the model prices tiers separately: 'auto' | 'low' | 'medium' | 'high' (gpt-image-2 also 'xhigh' | 'max'; dall-e-3 maps high to 'hd'). Optional — tiers are billed differently, so omitting it lets the model's default apply.",
+        },
+        resolution: {
+          type: 'string',
+          description:
+            "'auto' | '1K' | '2K' | '4K'. 'auto' sends no size at all and lets the model pick; omitting the field is not the same as 'auto' — it keeps the legacy size derived from aspect alone. Optional.",
+        },
+        count: {
+          type: 'number',
+          minimum: 1,
+          maximum: 10,
+          description:
+            'How many images to render in this one request, 1-10, default 1. A slot that fails carries its own error while its siblings still return.',
+        },
+      },
+      required: ['prompt'],
+      additionalProperties: false,
+    },
+    annotations: { ...WRITE_ANNOTATIONS, title: 'Generate an image with OpenDesign' },
   },
 ];
 
@@ -2114,6 +2184,12 @@ const PROJECT_OR_RUN_TOOLS = new Set([
   'delete_project',
   'create_project',
   'create_artifact',
+  // generate_image is here for its optional `project` argument, not for the
+  // generation itself: without workspace headers a name-shaped project cannot
+  // be resolved on a signed-in daemon (the NO-SCOPE catalog is empty, so
+  // resolveProjectId throws "no projects"), while a project UUID still works —
+  // a self-contradictory contract. The playground route ignores the headers.
+  'generate_image',
   'start_run',
   'get_run',
   'cancel_run',
@@ -2320,6 +2396,10 @@ async function handleMcpToolCall(
           ),
         );
       }
+      case 'list_media_models':
+        return await listMediaModels(baseUrl);
+      case 'generate_image':
+        return await generateImage(baseUrl, args, headers);
       default:
         return errorResult(`unknown tool: ${name}`);
     }
@@ -2534,6 +2614,116 @@ async function listAgents(baseUrl: string, includeUnavailable: boolean): Promise
     return out;
   });
   return { agents };
+}
+
+// Image-catalogue discovery for external coding agents. The daemon's own
+// catalogue (/api/media/models) stays the single source of truth for ids;
+// this is a projection of it down to the three things a caller needs to
+// call generate_image: the model ids, who serves them, and the aspect
+// options. `label` is surfaced as `name` because an agent picking a model
+// reasons about the human name ("nano-banana-2"), not the wire id.
+async function listMediaModels(baseUrl: string): Promise<McpToolCallResult> {
+  const raw = await getJson<{
+    providers?: JsonObject[];
+    image?: JsonObject[];
+    aspects?: unknown[];
+  }>(`${baseUrl}/api/media/models`);
+  return ok({
+    image: (raw?.image ?? []).map((model) => ({
+      id: model?.id,
+      provider: model?.provider,
+      ...(typeof model?.label === 'string' && model.label ? { name: model.label } : {}),
+    })),
+    providers: (raw?.providers ?? [])
+      .map((provider) => provider?.id)
+      .filter((id): id is string => typeof id === 'string'),
+    aspects: raw?.aspects ?? [],
+  });
+}
+
+// Synchronous image generation for an agent that has no OpenDesign run.
+// The playground route needs no run, no conversation, and no project, so
+// this is one request in and one generation row out — including the
+// per-slot failures, which come back as data rather than as a tool error.
+async function generateImage(
+  baseUrl: string,
+  args: McpArgs,
+  headers?: Record<string, string>,
+): Promise<McpToolCallResult> {
+  requireString(args.prompt, 'prompt');
+  // Scratch by default. When the caller names a project we resolve it the
+  // same way every other project-addressing tool does (id, name substring,
+  // or the active project) — the route takes an id, not a name.
+  let targetProjectId: string | undefined;
+  if (typeof args.project === 'string' && args.project.length > 0) {
+    targetProjectId = (await resolveProjectArg(baseUrl, args.project, headers)).id;
+  }
+  let count: number | undefined;
+  if (args.count !== undefined) {
+    // The schema already says number/1..10, but a client is free to ignore
+    // it, so this stays a real check — and a strict one, matching the
+    // schema: a numeric string or a boolean is not a number. The old
+    // Number() coercion accepted "3" and true, which contradicted
+    // `type: 'number'` and quietly changed what the caller asked for.
+    if (
+      typeof args.count !== 'number'
+      || !Number.isFinite(args.count)
+      || args.count < 1
+      || args.count > 10
+    ) {
+      throw new Error('count must be a number between 1 and 10');
+    }
+    count = Math.trunc(args.count);
+  }
+
+  const body: JsonObject = { surface: 'image', prompt: args.prompt };
+  if (typeof args.model === 'string' && args.model.trim()) body.model = args.model.trim();
+  if (targetProjectId) body.targetProjectId = targetProjectId;
+  for (const field of ['aspect', 'quality', 'resolution'] as const) {
+    const value = args[field];
+    if (typeof value === 'string' && value.trim()) body[field] = value.trim();
+  }
+  if (count !== undefined) body.count = count;
+
+  const generation = await postJson<JsonObject>(
+    `${baseUrl}/api/media/playground/generate`,
+    body,
+    headers,
+  );
+  const generationId = generation?.id;
+  const scratchResult = generation?.targetProjectId == null;
+  const files = Array.isArray(generation?.files)
+    ? generation.files.map((entry, index) => {
+        const file = (entry ?? {}) as JsonObject;
+        return {
+          ...file,
+          // Scratch bytes are reachable over HTTP; project results are not
+          // (that endpoint serves scratch only, so one artifact never has
+          // two permission paths) — those are read back with get_file.
+          ...(scratchResult && !file.error
+            ? {
+                downloadUrl:
+                  `${baseUrl}/api/media/playground/files/${generationId}/${index}`,
+              }
+            : {}),
+        };
+      })
+    : [];
+  const result = ok({
+    ...generation,
+    files,
+    hint: 'Files are relative names under outputDir (an absolute path on this '
+      + 'machine): <outputDir>/<name> is the file on disk. For scratch results, '
+      + 'fetch each downloadUrl with curl/GET to read the bytes; for a project '
+      + 'target, read the files with get_file instead.',
+  });
+  // Every slot failed means this call produced nothing, so the tool result is
+  // an error: an external agent that only reads `isError` must not read
+  // "nothing rendered" as success. A partially failed batch keeps
+  // `status: 'done'` with isError absent — per-slot `files[].error` is the
+  // documented shape for that, and the successful siblings are real output.
+  if (generation?.status === 'failed') result.isError = true;
+  return result;
 }
 
 // Derive a valid project id ([A-Za-z0-9._-], <=128) from a display name,

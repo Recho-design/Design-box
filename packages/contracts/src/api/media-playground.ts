@@ -8,7 +8,8 @@
  * 命名与语义的一个要点：**所有路径都是「目标基目录下的相对路径」**。scratch
  * 目标下它是根级 basename（`<genId>-1.png`）或 `uploads/x.png`；项目目标下它
  * 是实际项目根（导入型项目为 `metadata.baseDir`）下的相对路径。客户端不需要、
- * 也无法区分这两者之外的差别。
+ * 也无法区分这两者之外的差别。唯一的例外是 generate 响应上的 `outputDir`：
+ * 它是那个基目录本身的绝对路径，只给机器消费面（CLI / MCP）定位字节用。
  */
 
 /**
@@ -58,6 +59,15 @@ export interface PlaygroundGeneration {
   params: PlaygroundGenerationParams;
   status: 'running' | 'done' | 'failed';
   files: PlaygroundGenerationFile[];
+  /**
+   * 目标基目录的**绝对路径**——机器消费面（CLI / MCP 外部代理）据此定位产物
+   * 字节：相对 `files[].name` 拼在它下面就是磁盘上的真实文件。
+   *
+   * 仅 generate 响应携带；列表 / 转存 / 删除响应不填（那些调用方拿到的相对
+   * 路径已经够用，而绝对路径只在"刚刚生成完、要把字节搬走"这一刻才有意义）。
+   * web 不消费它。
+   */
+  outputDir?: string;
   error?: string | null;
   createdAt: number;
 }
@@ -67,8 +77,14 @@ export interface PlaygroundGenerateRequest {
   /** 缺省 = scratch。 */
   targetProjectId?: string;
   surface: PlaygroundSurface;
-  /** image 目录模型 id（见 GET /api/media/models），如 `gpt-image-2`、`dall-e-3`。 */
-  model: string;
+  /**
+   * 目录模型 id（见 GET /api/media/models），如 `gpt-image-2`、`dall-e-3`。
+   *
+   * **缺省 = daemon 解析默认**：`offeredModelsForSurface('image')` 目录序中首个
+   * provider 已配置的模型。空串视同缺省。外部 CLI / MCP 代理因此不必先知道目录
+   * id 就能出图。
+   */
+  model?: string;
   modelOverride?: string;
   prompt: string;
   aspect?: string;

@@ -120,6 +120,11 @@ const MEDIA_PLAYGROUND_STRING_FLAGS = new Set([
 ]);
 const MEDIA_PLAYGROUND_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'transparent']);
 
+// `od media models` 的白名单。同上：这条命令在模块求值期就会跑到
+// runMediaModels，Set 留在文件中部会撞 TDZ。
+const MEDIA_MODELS_STRING_FLAGS = new Set(['daemon-url']);
+const MEDIA_MODELS_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+
 // 同上：子命令白名单在 runMediaPlayground 的**第一个 await 之前**就被读，而那个
 // 函数是模块求值期被调用的。留在文件中部会是一个 `Cannot access ... before
 // initialization`（只有 `--help` 那条路径碰巧读不到它）。
@@ -1390,7 +1395,7 @@ async function runMedia(args) {
     printMediaHelp();
     return;
   }
-  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold' && sub !== 'playground') {
+  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold' && sub !== 'playground' && sub !== 'models') {
     console.error(`unknown subcommand: od media ${sub}`);
     printMediaHelp();
     process.exit(1);
@@ -1401,6 +1406,7 @@ async function runMedia(args) {
   if (sub === 'playground') return runMediaPlayground(subArgs);
   if (sub === 'wait') return runMediaWait(subArgs);
   if (sub === 'scaffold') return runMediaScaffold(subArgs);
+  if (sub === 'models') return runMediaModels(subArgs);
   return runMediaGenerate(subArgs);
 }
 
@@ -1458,6 +1464,51 @@ async function runMediaScaffold(rawArgs) {
     process.exit(4);
   }
   process.stdout.write(`${JSON.stringify(await resp.json())}\n`);
+}
+
+// `od media models`：媒体目录（模型 / provider / 比例档）的只读一面。
+//
+// 外部编码代理（Claude Code / Cursor / …）在决定 `--model` 时需要的就这三样，
+// 而它们本来只存在于 web 的选择器里。`od media playground generate` 的 --model
+// 如今可省略，所以这条命令不是必经之路——但"我到底能用哪些模型、要写哪个 id"
+// 必须有一条不问 daemon 内部结构的回答路径。所有请求都只读，失败按 media 惯例：
+// 连不上 exit 3，daemon 拒绝 exit 4（playgroundRequest 一并把这两件事做掉）。
+async function runMediaModels(rawArgs) {
+  let flags;
+  try {
+    flags = parseFlags(rawArgs, {
+      string: MEDIA_MODELS_STRING_FLAGS,
+      boolean: MEDIA_MODELS_BOOLEAN_FLAGS,
+    });
+  } catch (err) {
+    console.error(err.message);
+    printMediaHelp();
+    process.exit(2);
+  }
+  if (flags.help || flags.h) {
+    printMediaHelp();
+    return;
+  }
+
+  const daemonUrl = await cliDaemonUrl(flags);
+  const resp = await playgroundRequest(daemonUrl, '/api/media/models');
+  const catalog = await resp.json();
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(catalog)}\n`);
+    return;
+  }
+
+  // 人类可读面刻意只印代理要用的东西：先 image 模型（目录序），再 provider，
+  // 最后比例档。label 只在它不等于 id 时补一列（多数条目两者相同，重复印一遍
+  // 只会把这张表读糊）。
+  for (const model of catalog?.image ?? []) {
+    const label = typeof model?.label === 'string' && model.label && model.label !== model.id
+      ? `  ${model.label}`
+      : '';
+    console.log(`${model.id}  (${model.provider})${label}`);
+  }
+  console.log(`providers: ${(catalog?.providers ?? []).map((p) => p?.id).filter(Boolean).join(', ')}`);
+  console.log(`aspects: ${(catalog?.aspects ?? []).join(', ')}`);
 }
 
 async function runMediaGenerate(rawArgs) {
@@ -1723,10 +1774,6 @@ async function playgroundRequest(daemonUrl, requestPath, init = {}) {
 
 async function runPlaygroundGenerate(flags, rawArgs) {
   const daemonUrl = await cliDaemonUrl(flags);
-  if (!flags.model) {
-    console.error('--model required. Accepts any image model id from the catalog (see `od media playground` help or GET /api/media/models)');
-    process.exit(2);
-  }
   const prompt = await readPromptFromFlags(flags);
   if (typeof prompt !== 'string' || !prompt.trim()) {
     console.error('--prompt or --prompt-file <path|-> required');
@@ -1735,7 +1782,10 @@ async function runPlaygroundGenerate(flags, rawArgs) {
   const images = repeatableFlagValues(rawArgs, 'image');
   const body = {
     surface: 'image',
-    model: flags.model,
+    // --model 省略时**不带 model 字段**（而不是带空串）：daemon 侧才看得到配置
+    // 与目录序，由它解析默认模型；空串在这里和省略同义，但那要 daemon 多认一种
+    // 形状，不如让请求体自己说清楚。
+    ...(flags.model ? { model: flags.model } : {}),
     prompt,
     ...(flags.project ? { targetProjectId: flags.project } : {}),
     ...(flags['model-override'] ? { modelOverride: flags['model-override'] } : {}),
@@ -2198,6 +2248,7 @@ async function cliDaemonBaseUrl(flags) {
 
 function printMediaHelp() {
   console.log(`Usage: od media scaffold --composition-dir .hyperframes-cache/<id> [opts]
+       od media models [--json] [--daemon-url <url>]
        od media generate --surface <image|video> --model <id> [opts]
        od media playground <generate|upload|list|download|transfer|delete> [opts]
        "$OD_NODE_BIN" "$OD_BIN" media generate --surface <image|video> --model <id> [opts]
@@ -2206,6 +2257,13 @@ Playground:
   Playground 是全局生图工作台（临时 scratch 或某个项目）的命令行一面，
   与本地 UI 同一批端点、同一份历史。子命令帮助见
   \`od media playground --help\`。
+
+Models:
+  Lists what the configured media providers can run: every image model id in
+  catalog order, then the provider ids, then the aspect-ratio options. --json
+  prints the raw GET /api/media/models payload. Read-only; nothing is generated.
+  Use it to pick an id for --model — \`od media playground generate\` works
+  without one as well (see that help for what "no --model" means).
 
 Scaffold:
   Creates hyperframes.json, meta.json, and index.html without running
@@ -2302,7 +2360,7 @@ files folder so the FileViewer can preview it immediately.`);
  */
 function printMediaPlaygroundHelp() {
   console.log(`Usage:
-  od media playground generate [--project <id>] --model <image-model-id>
+  od media playground generate [--project <id>] [--model <image-model-id>]
       [--model-override <name>] [--count n] [--aspect 16:9] [--quality high]
       [--resolution 2K] [--moderation low] [--transparent]
       [--image <ref> ...] --prompt-file <path|-> | --prompt "<text>"
@@ -2318,8 +2376,16 @@ Target:
                   project uses its own folder, so Design Files sees it).
 
 generate:
-  --model            Any image model id from the catalog (GET /api/media/models),
-                     e.g. --model gpt-image-2 or --model dall-e-3. The optional
+  --model            Optional. Any image model id from the catalog
+                     (GET /api/media/models, or \`od media models\`), e.g.
+                     --model gpt-image-2 or --model dall-e-3. **Omit it to use
+                     the daemon default**: the first model in catalog order whose
+                     provider is configured (a stored/env key or a borrowed
+                     sign-in — a base URL alone does not count). Omission is what an
+                     external agent wants — it needs no catalog knowledge. A
+                     model that is not an image catalog id is rejected with the
+                     list of valid ids; with nothing configured at all the
+                     daemon answers 400 and says so (exit 4). The optional
                      --model-override carries the real wire model name (an Azure
                      deployment, a name your OpenAI-compatible endpoint serves)
                      and wins over the provider config and catalog defaults; an
@@ -2354,7 +2420,9 @@ generate:
   --image <ref>      Reference image, repeatable. A target-relative path: the
                      name printed by 'playground upload' ('uploads/x.png' for
                      scratch, 'x.png' for a project), or an artifact file name.
-  Output: one JSON line — the full generation row ({id,status,files:[...],…}).
+  Output: one JSON line — the full generation row ({id,status,files:[...],…}),
+  including outputDir, the absolute path of the base directory the files are
+  relative to (join the two to find the bytes on disk).
   Exit 4 when every slot failed (the row is still printed).
 
 upload:

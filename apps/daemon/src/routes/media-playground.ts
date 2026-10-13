@@ -14,8 +14,9 @@ import type {
 } from '@open-design/contracts';
 
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
+import { resolveDefaultImageModelId } from '../media/default-image-model.js';
 import { errorText, generateMediaBatch } from '../media/generate-media-batch.js';
-import { findMediaModel, modelsForSurface } from '../media/models.js';
+import { findMediaModel, modelsForSurface, offeredModelsForSurface } from '../media/models.js';
 import {
   captureMediaGenerationResult,
   resolveMediaAnalyticsContext,
@@ -202,7 +203,22 @@ export function registerMediaPlaygroundRoutes(
     const resolution = resolveTarget(body.targetProjectId, 400);
     if (!resolution.ok) return sendFailure(res, resolution);
 
-    const model = body.model as string;
+    // validateGenerateRequest 已保证走到这里的 model 是「非空字符串或缺省」。
+    const requestedModel = typeof body.model === 'string' ? body.model.trim() : '';
+    const model = requestedModel || (await resolveDefaultImageModelId(PROJECT_ROOT));
+    // model 缺省是给外部代理（CLI / MCP）用的：它们没有目录概念。而"一个 provider
+    // 都没配"是用户侧的配置问题，值得一句能照着做的错误，而不是让某个默认模型在
+    // provider 调用里炸成一张失败卡片。
+    if (!model) {
+      return void sendApiError(
+        res,
+        400,
+        'BAD_REQUEST',
+        'no media provider is configured; configure one in Settings → Media '
+          + '(or PUT /api/media/config) first. Available image model ids: '
+          + offeredModelsForSurface('image').map((m) => m.id).join(', '),
+      );
+    }
     // 显式按默认媒体策略放行：Playground 没有 Run 级策略可读，但不该**沉默**
     // 绕过它——这里是一次有意的判定，默认策略收紧时会在这一步拦住。
     const denial = mediaPolicyDenial(defaultMediaExecutionPolicy(), { surface: 'image', model });
@@ -250,7 +266,9 @@ export function registerMediaPlaygroundRoutes(
 
     // 响应永远是**完整的一行**（含 per-slot 失败）：卡片流拿它刷新，而不是拿
     // 一个错误信封。全部槽位失败也照样 200 —— 那一行的 status 就是 `failed`。
-    res.status(200).json(toPlaygroundGeneration(record));
+    // `outputDir` 只有这一处加：机器消费面（CLI / MCP）靠它把 <outputDir>/<name>
+    // 拼成真实文件路径，而列表 / 转存响应里的相对路径已经够 web 用。
+    res.status(200).json({ ...toPlaygroundGeneration(record), outputDir: resolution.target.dir });
     await captureBatchAnalytics({
       req,
       batch,
@@ -635,15 +653,29 @@ function validateGenerateRequest(body: Partial<PlaygroundGenerateRequest>): Requ
   // 「是 image surface 注册模型」的校验。
   // 实际 wire 模型名由 modelOverride 自由指定（在各 image renderer 里
   // 优先于 provider 配置与别名）。
-  const modelDef = typeof body.model === 'string' ? findMediaModel(body.model) : null;
-  const isImageModel = modelDef !== null
-    && modelsForSurface('image').some((m) => m.id === modelDef.id);
-  if (!isImageModel) {
-    return {
-      status: 400,
-      code: 'BAD_REQUEST',
-      message: 'model must be an image model id from /api/media/models',
-    };
+  //
+  // 缺省 / 空串**不是错误**：那表示"让 daemon 挑"（外部代理不知道目录 id 时的
+  // 常态），默认模型在 handleGenerate 里解析——那里才知道配置与目录序。
+  //
+  // 但非字符串（null / 数字 / 对象）是**调用错误**，不是缺省：静默当成缺省会让
+  // `{"model": 123}` 这样的请求悄悄出一张默认模型的图，而代理以为自己指定的模型
+  // 生效了。契约里只有「字符串 id」和「省略/空串」两种形状。
+  const modelIdList = offeredModelsForSurface('image').map((m) => m.id).join(', ');
+  // 两种「model 给错了」共用同一个失败：形状错（非字符串）或 id 不在 image 目录。
+  // 消息附上可用的 id 列表——外部代理拿到的 400 要能直接照着改，而不是再去读一次
+  // 目录（那是它最容易走错的一步）。
+  const badModel: RequestFailure = {
+    status: 400,
+    code: 'BAD_REQUEST',
+    message: 'model must be an image model id from /api/media/models: ' + modelIdList,
+  };
+  if (body.model !== undefined && typeof body.model !== 'string') return badModel;
+  const requestedModel = typeof body.model === 'string' ? body.model.trim() : '';
+  if (requestedModel) {
+    const modelDef = findMediaModel(requestedModel);
+    const isImageModel = modelDef !== null
+      && modelsForSurface('image').some((m) => m.id === modelDef.id);
+    if (!isImageModel) return badModel;
   }
   if (typeof body.prompt !== 'string' || !body.prompt.trim()) {
     return { status: 400, code: 'BAD_REQUEST', message: 'prompt is required' };
