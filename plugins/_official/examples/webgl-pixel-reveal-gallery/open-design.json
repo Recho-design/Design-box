@@ -26,7 +26,7 @@
   "license": "MIT",
   "author": {
     "name": "OpenDesign",
-    "url": "https://github.com/nexu-io"
+    "url": "https://github.com/Recho-design"
   },
   "credits": [
     {
@@ -39,7 +39,7 @@
       "name": "Original (AI-generated)"
     }
   ],
-  "homepage": "https://github.com/nexu-io/open-design/tree/main/plugins/_official/examples/webgl-pixel-reveal-gallery",
+  "homepage": "https://github.com/Recho-design/Design-box/tree/main/plugins/_official/examples/webgl-pixel-reveal-gallery",
   "tags": [
     "example",
     "first-party",

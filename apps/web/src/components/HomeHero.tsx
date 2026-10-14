@@ -42,13 +42,6 @@ import {
   previewFallbackIcon,
   resolveFileTypeIcon,
 } from './FileTypeIcon';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackContextLinkResult,
-  trackFigmaHelpModalSurfaceView,
-  trackHomeChatComposerClick,
-  trackProjectReferenceModalSurfaceView,
-} from '../analytics/events';
 import {
   chipsForGroup,
   HOME_APPLY_TEMPLATE_EVENT,
@@ -430,8 +423,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   ref,
 ) {
   const { locale, t } = useI18n();
-  const analytics = useAnalytics();
-  // Docked = the composer without Home's page around it. Read in the render
+    // Docked = the composer without Home's page around it. Read in the render
   // below to drop the furniture (headline, type row, example grid) rather than
   // to change how the composer itself behaves.
   const isDock = variant === 'dock';
@@ -887,11 +879,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   // unfinished stage silently. A chip pick during the loading window can
   // move the stage to 'card' before we know the user is not new, so 'chip'
   // alone is not enough to close off.
-  useEffect(() => {
-    if (firstRunGuide !== false) return;
-    if (readHomeGuideStage() !== 'done') writeHomeGuideStage('done');
-  }, [firstRunGuide]);
-
+  
   const activePromptExamples = useMemo(
     () => activeChipId && activeExamplePlugins.length === 0
       ? homeHeroChipPromptExamples(activeChipId, locale)
@@ -929,14 +917,8 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     '--home-hero-prompt-max-height': `${promptMaxHeight}px`,
   } as CSSProperties;
 
-  useEffect(() => {
-    if (selectedIndex >= visiblePickerOptions.length) setSelectedIndex(0);
-  }, [selectedIndex, visiblePickerOptions.length]);
-
-  useEffect(() => {
-    if (!pickerOpen) setHoveredPlugin(null);
-  }, [pickerOpen]);
-
+  
+  
   useEffect(() => {
     if (!pickerOpen) return;
     const isInsideMentionSurface = (target: EventTarget | null) => {
@@ -1014,10 +996,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     };
   }, [stagedFiles]);
 
-  useEffect(() => {
-    if (previewHomeFileKey && !previewHomeFile) setPreviewHomeFileKey(null);
-  }, [previewHomeFileKey, previewHomeFile]);
-
+  
   useEffect(() => {
     if (!previewHomeFileKey) return;
     function onKeyDown(event: KeyboardEvent) {
@@ -1137,25 +1116,12 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
       );
     }
     setProjectReferenceOpen(false);
-    trackContextLinkResult(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      context_kind: 'project',
-      result: 'success',
-      count: selections.length,
-    });
-  }
+      }
 
   async function handleLinkLocalCodeContext() {
     const selected = await onPickLocalCodeDir?.();
     if (!selected) {
-      trackContextLinkResult(analytics.track, {
-        page_name: 'home',
-        area: 'chat_composer',
-        context_kind: 'local_code',
-        result: 'cancelled',
-      });
-      return;
+            return;
     }
     const label = selected.split(/[/\\]/).filter(Boolean).pop() || selected;
     addWorkspaceContextItem(
@@ -1168,44 +1134,19 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
         absolutePath: selected,
       }
     );
-    trackContextLinkResult(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      context_kind: 'local_code',
-      result: 'success',
-      count: 1,
-    });
-  }
+      }
 
   // Both context actions live in the Add menu only (OPEND-3126), where the
   // project composer offers them too. Their pick still lands on the
   // working-directory trigger below (see `workdirSelection`), but that row's
   // own menu no longer offers a second copy of either entry.
   function referenceProjectAction() {
-    trackHomeChatComposerClick(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      element: 'plus_pick',
-      resource_kind: 'workspace',
-      resource_id: 'reference-project',
-    });
-    trackProjectReferenceModalSurfaceView(analytics.track, {
-      page_name: 'home',
-      area: 'project_reference_modal',
-    });
-    setProjectReferenceOpen(true);
+            setProjectReferenceOpen(true);
   }
 
   const linkLocalCodeAction = onPickLocalCodeDir
     ? () => {
-        trackHomeChatComposerClick(analytics.track, {
-          page_name: 'home',
-          area: 'chat_composer',
-          element: 'plus_pick',
-          resource_kind: 'workspace',
-          resource_id: 'local-code',
-        });
-        void handleLinkLocalCodeContext();
+                void handleLinkLocalCodeContext();
       }
     : undefined;
 
@@ -1255,10 +1196,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     setSelectedIndex(0);
   }
 
-  useEffect(() => {
-    if (!active) dismissMentionPicker();
-  }, [active]);
-
+  
   // Routes popover navigation keys from the Lexical editor over the visible
   // picker option union. Returns true when consumed so the editor can
   // preventDefault.
@@ -1313,13 +1251,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   }
 
   function usePromptExample(example: string) {
-    trackHomeChatComposerClick(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      element: 'example_prompt',
-      chip_id: activeChipId ?? 'prototype',
-    });
-    setSelectedPromptExample({
+        setSelectedPromptExample({
       label: promptExampleChipLabel(example),
       promptText: example,
     });
@@ -1336,15 +1268,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   }
 
   function pickExamplePluginPreset(record: InstalledPluginRecord, chipId: string, promptText: string) {
-    trackHomeChatComposerClick(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      element: 'example_prompt',
-      chip_id: chipId,
-      plugin_id: record.sourceMarketplaceEntryName ?? record.id,
-      plugin_type: record.marketplaceTrust ?? 'official',
-    });
-    setSelectedPromptExample({
+        setSelectedPromptExample({
       label: record.title,
       promptText,
     });
@@ -1359,13 +1283,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   // The task-type rail (原型 / 幻灯片 / HyperFrames / 视频 / …). Records which
   // task type the user picked before delegating to the host's chip handler.
   function handlePickTaskChip(chip: HomeHeroChip) {
-    trackHomeChatComposerClick(analytics.track, {
-      page_name: 'home',
-      area: 'chat_composer',
-      element: 'task_chip',
-      chip_id: chip.id,
-    });
-    // First chip pick completes the guide's first beat; the preset-card
+        // First chip pick completes the guide's first beat; the preset-card
     // pulse arms once the example cards for this chip render.
     if (readHomeGuideStage() === 'chip') {
       writeHomeGuideStage('card');
@@ -1834,14 +1752,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   type="button"
                   className="home-hero__active-clear od-tooltip"
                   onClick={() => {
-                    trackHomeChatComposerClick(analytics.track, {
-                      page_name: 'home',
-                      area: 'chat_composer',
-                      element: 'context_remove',
-                      resource_kind: 'plugin',
-                      resource_id: plugin.id,
-                    });
-                    onRemovePluginContext(plugin.id);
+                                        onRemovePluginContext(plugin.id);
                   }}
                   aria-label={t('chat.removeAria', { name: plugin.title })}
                   title={t('common.close')}
@@ -1870,14 +1781,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                     type="button"
                     className="home-hero__active-clear od-tooltip"
                     onClick={() => {
-                      trackHomeChatComposerClick(analytics.track, {
-                        page_name: 'home',
-                        area: 'chat_composer',
-                        element: 'context_remove',
-                        resource_kind: 'mcp',
-                        resource_id: server.id,
-                      });
-                      onRemoveMcpContext(server.id);
+                                            onRemoveMcpContext(server.id);
                     }}
                     aria-label={t('chat.removeAria', { name: label })}
                     title={t('common.close')}
@@ -1905,14 +1809,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   type="button"
                   className="home-hero__active-clear od-tooltip"
                   onClick={() => {
-                    trackHomeChatComposerClick(analytics.track, {
-                      page_name: 'home',
-                      area: 'chat_composer',
-                      element: 'context_remove',
-                      resource_kind: 'connector',
-                      resource_id: connector.id,
-                    });
-                    onRemoveConnectorContext(connector.id);
+                                        onRemoveConnectorContext(connector.id);
                   }}
                   aria-label={t('chat.removeAria', { name: connector.name })}
                   title={t('common.close')}
@@ -1965,13 +1862,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                       type="button"
                       className="home-hero__active-clear"
                       onClick={() => {
-                        trackHomeChatComposerClick(analytics.track, {
-                          page_name: 'home',
-                          area: 'chat_composer',
-                          element: 'plugin_chip_clear',
-                          chip_id: activePluginRecord?.id,
-                        });
-                        onClearActivePlugin();
+                                                onClearActivePlugin();
                       }}
                       /* No tooltip: the × sits inside the chip it clears, so a
                          floating label only covered the chip above it. The
@@ -2022,13 +1913,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
               onBackspaceAtStart={() => {
                 if (!showActivePluginRow) return false;
                 if (activeCreateChip && !activePluginIsExplicit) return false;
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plugin_chip_clear',
-                  chip_id: activePluginRecord?.id,
-                });
-                onClearActivePlugin();
+                                onClearActivePlugin();
                 return true;
               }}
               popoverOpen={pickerOpen && visiblePickerOptions.length > 0}
@@ -2185,109 +2070,42 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
               triggerTestId="home-hero-plus-trigger"
               placementPreference="down"
               onOpen={() =>
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_menu_open',
-                })
+                {}
               }
               onSubmenuOpen={(submenu) => {
                 // Home never passes the working-dir submenu (it keeps its own
                 // footer picker), so only the resource submenus reach here.
                 if (submenu === 'workingDir') return;
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_submenu_open',
-                  resource_kind: PLUS_SUBMENU_RESOURCE_KIND[submenu],
-                });
-              }}
+                              }}
               onSearchUsed={(submenu) => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_search',
-                  resource_kind: PLUS_SUBMENU_RESOURCE_KIND[submenu],
-                });
-              }}
+                              }}
               connectors={connectorOptions}
               onPickConnector={(connector) => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_pick',
-                  resource_kind: 'connector',
-                  resource_id: connector.id,
-                });
-                pickConnector(connector);
+                                pickConnector(connector);
               }}
               onAddConnector={() => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_add',
-                  resource_kind: 'connector',
-                });
-                onAddConnector();
+                                onAddConnector();
               }}
               plugins={pluginOptions}
               onPickPlugin={(record) => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_pick',
-                  resource_kind: 'plugin',
-                  resource_id: record.id,
-                });
-                pickPlugin(record);
+                                pickPlugin(record);
               }}
               onAddPlugin={onAddPlugin ? () => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_add',
-                  resource_kind: 'plugin',
-                });
-                onAddPlugin();
+                                onAddPlugin();
               } : undefined}
               skills={skillOptions}
               onPickSkill={(skill) => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_pick',
-                  resource_kind: 'skill',
-                  resource_id: skill.id,
-                });
-                pickSkill(skill);
+                                pickSkill(skill);
               }}
               mcpServers={mcpOptions}
               onPickMcp={(server) => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_pick',
-                  resource_kind: 'mcp',
-                  resource_id: server.id,
-                });
-                pickMcp(server);
+                                pickMcp(server);
               }}
               onAddMcp={() => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'plus_add',
-                  resource_kind: 'mcp',
-                });
-                onAddMcp();
+                                onAddMcp();
               }}
               onAttachFiles={() => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'attachment',
-                });
-                fileInputRef.current?.click();
+                                fileInputRef.current?.click();
               }}
               // Both context actions sit in the Add menu on Home as well as
               // in the project composer (OPEND-3085, per the Demo). This is
@@ -2297,40 +2115,16 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
               onReferenceProject={referenceProjectAction}
               onLinkLocalCode={linkLocalCodeAction}
               onSelectFromLibrary={() => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'library',
-                });
-                setLibraryPickerOpen(true);
+                                setLibraryPickerOpen(true);
               }}
               onImportFigma={onImportFigma ? () => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'figma_import',
-                });
-                onImportFigma();
+                                onImportFigma();
               } : undefined}
               onShowFigmaHelp={() => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'figma_help',
-                });
-                trackFigmaHelpModalSurfaceView(analytics.track, {
-                  page_name: 'home',
-                  area: 'figma_help_modal',
-                });
-                setFigmaHelpOpen(true);
+                                                setFigmaHelpOpen(true);
               }}
               onOpenDesignSystems={onDesignSystemChange ? () => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'design_system_open',
-                });
-                openDesignSystemPicker();
+                                openDesignSystemPicker();
               } : undefined}
             />
             {/* The design system is a PERMANENT head-of-row control sitting
@@ -2369,13 +2163,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   // Only the dismiss paths (X / backdrop / Escape / Cancel)
                   // land here — a confirmed pick closes via
                   // handleReferenceProjects, which reports 'success'.
-                  trackContextLinkResult(analytics.track, {
-                    page_name: 'home',
-                    area: 'chat_composer',
-                    context_kind: 'project',
-                    result: 'cancelled',
-                  });
-                  setProjectReferenceOpen(false);
+                                    setProjectReferenceOpen(false);
                 }}
                 onSelect={handleReferenceProjects}
               />
@@ -2486,28 +2274,13 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
             workingDir={workingDir}
             recentDirs={recentDirs}
             onPickDirectory={() => {
-              trackHomeChatComposerClick(analytics.track, {
-                page_name: 'home',
-                area: 'chat_composer',
-                element: 'working_dir',
-              });
-              void onPickWorkingDir();
+                            void onPickWorkingDir();
             }}
             onSelectRecent={(dir) => {
-              trackHomeChatComposerClick(analytics.track, {
-                page_name: 'home',
-                area: 'chat_composer',
-                element: 'working_dir_recent',
-              });
-              onSelectRecentWorkingDir?.(dir);
+                            onSelectRecentWorkingDir?.(dir);
             }}
             onClear={() => {
-              trackHomeChatComposerClick(analytics.track, {
-                page_name: 'home',
-                area: 'chat_composer',
-                element: 'working_dir_clear',
-              });
-              onClearWorkingDir?.();
+                            onClearWorkingDir?.();
             }}
             /* The folder rows here and the context actions in the Add menu
                answer one question — what may the agent read besides this
@@ -2522,14 +2295,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                     icon: workdirSelection.kind === 'local-code' ? 'terminal' : 'folder',
                     title: workdirSelection.absolutePath ?? workdirSelection.title,
                     onClear: () => {
-                      trackHomeChatComposerClick(analytics.track, {
-                        page_name: 'home',
-                        area: 'chat_composer',
-                        element: 'context_remove',
-                        resource_kind: 'workspace',
-                        resource_id: workdirSelection.id,
-                      });
-                      onRemoveWorkspaceContext(workdirSelection.id);
+                                            onRemoveWorkspaceContext(workdirSelection.id);
                     },
                   }
                 : null
@@ -2555,14 +2321,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
               type="button"
               className="home-hero__active-clear od-tooltip"
               onClick={() => {
-                trackHomeChatComposerClick(analytics.track, {
-                  page_name: 'home',
-                  area: 'chat_composer',
-                  element: 'context_remove',
-                  resource_kind: 'workspace',
-                  resource_id: item.id,
-                });
-                // Nothing to strip from the prompt any more: attaching one of
+                                // Nothing to strip from the prompt any more: attaching one of
                 // these no longer writes a mention into it.
                 onRemoveWorkspaceContext(item.id);
               }}
@@ -3305,10 +3064,7 @@ function FooterSelectOption({
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [open]);
-  useEffect(() => {
-    if (!open) setSearch('');
-  }, [open]);
-
+  
   return (
     <div
       ref={ref}

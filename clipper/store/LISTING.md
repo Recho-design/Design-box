@@ -7,9 +7,9 @@ All copy is keyword-tuned for discoverability (ASO) without keyword stuffing.
 - **Public name:** OpenDesign Web Clipper
 - **Version:** 0.2.0 (MV3)
 - **Package:** the `clipper/` directory (no build step — zip it as-is)
-- **Homepage:** https://open-design.ai
-- **Source:** https://github.com/nexu-io/open-design (folder `clipper/`)
-- **Support / issues:** https://github.com/nexu-io/open-design/issues
+- **Homepage:** https://github.com/Recho-design/Design-box
+- **Source:** https://github.com/Recho-design/Design-box (folder `clipper/`)
+- **Support / issues:** https://github.com/Recho-design/Design-box/issues
 - **Assets:** see `assets/` in this folder and the "Asset manifest" section below
 
 ---
@@ -86,13 +86,13 @@ Built for designers, researchers, and builders who collect references all day: d
 
 ━━ HOW TO USE ━━
 
-1. Install the open-source OpenDesign app — https://open-design.ai
+1. Install the open-source OpenDesign app — https://github.com/Recho-design/Design-box
 2. Start it so the local daemon is running.
 3. Click the OpenDesign Web Clipper toolbar icon and capture. That's it.
 
 OpenDesign is the local-first, open-source alternative to Claude Design and a Figma alternative for the agent era. The Web Clipper is how the web gets into it.
 
-Open source: https://github.com/nexu-io/open-design
+Open source: https://github.com/Recho-design/Design-box
 ```
 
 ### Category
@@ -125,7 +125,7 @@ Capture web content — full pages, design systems, screenshots, images, page el
 - Health / financial / authentication / personal communications / location / web history: **No**
 - User activity / website content: handled **locally only**, never transmitted off-device to us.
 - **Not sold to third parties. Not used for ads. Not used for creditworthiness/lending.** Used only for the item's single purpose.
-- Privacy policy URL: `https://open-design.ai/clipper/privacy` (publish `PRIVACY.md` from this folder there; or link the raw GitHub file).
+- Privacy policy URL: `https://github.com/Recho-design/Design-box/blob/main/clipper/store/PRIVACY.md` (or link the file from this folder).
 
 ### Screenshots (1280×800 PNG/JPEG, up to 5) — order + captions
 1. **Popup over a real page** — `Clip the whole page into your Library — one click.`
@@ -237,7 +237,7 @@ OpenDesign Web Clipper 把你在网上看到的任何内容一键剪藏进 OpenD
 • 默认高保真，可在「高级」中关闭内联图片以加快速度、减小体积。
 • 实时素材库：剪藏即刻出现，带「Clipper」来源标记与原页面回链。
 
-开源：https://github.com/nexu-io/open-design
+开源：https://github.com/Recho-design/Design-box
 ```
 - **搜索词:** `网页剪藏`, `剪藏`, `截图`, `保存网页`, `figma`, `素材库`, `open design`
 

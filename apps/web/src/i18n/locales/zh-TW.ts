@@ -579,29 +579,6 @@ export const zhTW: Dict = {
   "settings.mediaProviderReloadSuccess": "供應商設定已重新整理。",
   "settings.mediaProviderLoadError": "無法載入供應商設定，暫時使用本機儲存的設定。",
   "settings.mediaProviderComingSoonHint": "這些供應商已在規劃中，但目前尚無法設定。",
-  "settings.privacy": "隱私",
-  "settings.privacyHint": "與 OpenDesign 團隊共享哪些資料",
-  "settings.privacyConsentKicker": "協助我們改進 OpenDesign",
-  "settings.privacyConsentLead":
-    "分享使用資料後，我們能更了解 OpenDesign 在真實工作流裡的表現，並優先改進真正影響體驗的地方。",
-  "settings.privacyConsentFooter": "你可以隨時在 設定 → 隱私 中修改這些選項。",
-  "settings.privacyConsentShare": "分享",
-  "settings.privacyConsentDecline": "不分享",
-  "settings.privacyConsentAccept": "我知道了",
-  "settings.privacyConsentBannerFooter":
-    "預設開啟資料分享。你可以隨時在 設定 → 隱私 中關閉。",
-  "settings.privacyConsentPolicyLink": "閱讀隱私政策",
-  "settings.privacyMetrics": "匿名指標",
-  "settings.privacyMetricsHint":
-    "執行次數、token 用量、錯誤率、耗時等基礎使用指標。",
-  "settings.privacyContent": "對話內容",
-  "settings.privacyContentHint":
-    "在移除金鑰等敏感資訊後，我們會使用 prompt、助手回覆、工具輸入/輸出，以及品質回看所需的上下文。",
-  "settings.privacyInstallationId": "匿名 ID",
-  "settings.privacyOptedOut": "已退出",
-  "settings.privacyDataDeletion": "刪除我的資料",
-  "settings.privacyDataDeletionHint":
-    "輪換你的匿名 ID 並停止傳送。既有資料依保留政策自然過期。",
   "settings.about": "關於",
   "settings.aboutHint": "版本與執行環境詳情",
   "settings.appVersion": "版本",
@@ -674,8 +651,6 @@ export const zhTW: Dict = {
   "entry.tabConnectors": "連接器",
   "entry.openSettingsTitle": "設定",
   "entry.openSettingsAria": "開啟設定",
-  "entry.discordLabel": "加入 Discord",
-  "entry.discordOnlineLabel": "{count} 在線",
   "entry.accountSettings": "設定",
   "chat.collapsePane": "收起對話欄",
   "collabPresence.ariaOne": "1 位協作者在線",
@@ -693,12 +668,6 @@ export const zhTW: Dict = {
   "collabPresence.viewingFileOther": "正在查看 {file}",
   "collabPresence.viewingProjectSelf": "你正在查看此專案",
   "collabPresence.viewingProjectOther": "正在查看此專案",
-  "entry.followXLabel": "在 X 上追蹤 @OpenDesignHQ",
-  "entry.followThreadsLabel": "Follow OpenDesign on Threads",
-  "entry.followInstagramLabel": "在 Instagram 上追蹤 @opendesign.ai",
-  "entry.followLinkedinLabel": "在 LinkedIn 上追蹤 OpenDesign",
-  "entry.followXiaohongshuLabel": "在小紅書上追蹤 OpenDesign",
-  "entry.youtubeLabel": "OpenDesign on YouTube",
   "entry.resizeAria": "調整側邊欄寬度",
   "entry.loadingWorkspace": "正在載入工作區…",
   "entry.useEverywhereTitle": "隨處使用",
@@ -731,8 +700,6 @@ export const zhTW: Dict = {
   "entry.accountToggleTheme": "切換主題",
   "entry.accountSwitchLanguage": "切換語言",
   "entry.accountLanguageMeta": "中文 / English",
-  "entry.accountGithubHelp": "取得協助",
-  "entry.accountFeatureRequest": "Submit feature request",
   "entry.accountBilling": "帳單",
   "entry.accountAddAccount": "新增帳號",
   "entry.accountSignOut": "登出",
@@ -1630,9 +1597,6 @@ export const zhTW: Dict = {
     "請選擇要重複使用的專案，或切換為「每次執行建立新專案」。",
   "routines.errorAgentEmptyOutput":
     "代理已完成執行但未產生任何輸出。模型或提供商可能返回了空回應，請檢查代理日誌中的上游錯誤。",
-  "entry.githubStarLabel": "星標",
-  "entry.githubStarTitle": "在 GitHub 為我們點亮 Star",
-  "entry.githubStarAria": "在 GitHub 為 OpenDesign 點亮 Star",
   "entry.tabImageTemplates": "圖片範本",
   "entry.tabVideoTemplates": "影片範本",
   "promptTemplates.emptyNoMatch": "沒有符合的範本。",
@@ -2007,19 +1971,14 @@ export const zhTW: Dict = {
   "avatar.reasoningLabel": "推理",
   "avatar.serviceTierLabel": "服務層級",
   "avatar.customSuffix": "（自訂）",
-  "socialShare.openDesignSection": "分享 OpenDesign",
-  "socialShare.openDesignTitle": "GitHub 上的 OpenDesign",
-  "socialShare.openDesignText":
-    "OpenDesign 是原始碼可用的設計智慧工作區，可以生成、編輯、部署並交付設計產物。",
-  "socialShare.openDesignCopyText": "{text}\n{url}",
   "socialShare.projectSection": "社群分享",
   "socialShare.publishPageTitle": "發布分享頁",
   "socialShare.publishPageSubtitle": "發布目前預覽，以便分享到社群平台。",
   "socialShare.projectTitle": "{title} · OpenDesign",
   "socialShare.projectText":
-    "我用 OpenDesign 做了 {title}。查看已部署產物，也推薦收藏倉庫：{repo}",
+    "我用 OpenDesign 做了 {title}。查看已部署產物。",
   "socialShare.projectCopyText":
-    "我用 OpenDesign 做了 {title}\n{url}\nOpenDesign 倉庫：{repo}",
+    "我用 OpenDesign 做了 {title}\n{url}",
   "socialShare.deployFirst": "先部署，再分享到社群…",
   "socialShare.copied": "已複製",
   "socialShare.platform.x": "X",
@@ -3105,10 +3064,6 @@ export const zhTW: Dict = {
     "選好設計系統再生成，結果會與品牌風格保持一致。",
   "designFiles.usefulInfoTip5":
     "沒有想法？試試首頁「社群」的外掛模板，一鍵生成同款。",
-  "designFiles.usefulInfoTip6": "遇到問題或有建議？加入 Discord 和我們聊聊。",
-  "designFiles.usefulInfoTip7": "覺得好用？在 GitHub 給我們點個 Star。",
-  "designFiles.usefulInfoTip8":
-    "在 X 上關注 @OpenDesignHQ，第一時間了解新功能。",
   "designFiles.usefulInfoTip9":
     "把圖片、文件甚至整個資料夾拖到目前面板，智慧體都會用作上下文。",
   "designFiles.usefulInfoTip10":
@@ -3120,16 +3075,6 @@ export const zhTW: Dict = {
   "designFiles.usefulInfoTip14":
     "滿意的專案可透過「分享」選單儲存為範本，下次直接複用。",
   "designFiles.usefulInfoTip15": "部署後可以直接生成社群分享卡片。",
-  "designFiles.usefulInfoTip16":
-    "在 Threads 上追蹤 @opendesign.ai，看團隊幕後動態。",
-  "designFiles.usefulInfoTip17":
-    "在 Instagram 上追蹤 @opendesign.ai，獲取設計靈感。",
-  "designFiles.usefulInfoTip18":
-    "在 YouTube 上訂閱 OpenDesign，觀看教學和示範。",
-  "designFiles.usefulInfoTip19":
-    "在 LinkedIn 上追蹤 OpenDesign，了解產品動態。",
-  "designFiles.usefulInfoTip20":
-    "在小紅書上追蹤 OpenDesign，獲取技巧和靈感。",
   "quickSwitcher.placeholder": "開啟分頁或檔案…",
   "quickSwitcher.empty": "此專案中沒有檔案",
   "quickSwitcher.noMatches": "無符合項目",
@@ -3609,8 +3554,6 @@ export const zhTW: Dict = {
   "assistant.feedbackNegative": "沒幫助",
   "assistant.feedbackReasonTitle": "選擇原因",
   "assistant.feedbackReasonTitleNegative": "哪裡不對?",
-  "assistant.feedbackDiscordNegative": "到 {discord} 說說具體情況,團隊才能弄清哪裡出了問題並跟進。",
-  "assistant.feedbackDiscordPositive": "到 {discord} 社群曬曬你做的東西,或者發張截圖說說哪裡好用。",
   "assistant.feedbackReasonPositiveMatched": "理解了我的需求",
   "assistant.feedbackReasonPositiveVisual": "視覺效果滿意",
   "assistant.feedbackReasonPositiveUseful": "結構有幫助",
@@ -3644,7 +3587,6 @@ export const zhTW: Dict = {
   "chat.runError.actionBlocked.billing": "還在確認這個專案由哪個工作區付費，稍後再試。",
   "chat.runError.actionBlocked.busy": "這個對話還有任務在執行，結束後才能重試。",
   "chat.support.channel.feishu": "飛書社群",
-  "chat.support.channel.discord": "Discord",
   "assistant.outTokens": "{n} 輸出",
   "assistant.producedFiles": "本輪產出的檔案",
   "assistant.openFile": "開啟",
@@ -4341,7 +4283,6 @@ export const zhTW: Dict = {
   'settings.updateNow': '立即更新',
   'settings.updateRecheck': '重新檢查',
   'settings.updateRetry': '重試',
-  'settings.updateViewReleases': '查看發佈記錄',
   'settings.updateActionFailed': '無法完成更新操作。',
   'settings.updateQuitFailed': '安裝程式已開啟，但 OpenDesign 未能自動結束。',
   'settings.updateStatusNotChecked': '未檢查更新',

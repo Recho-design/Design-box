@@ -19,16 +19,16 @@
  * Three defects the ACP transport carries are avoided here BY CONSTRUCTION,
  * and each has a named test:
  *
- *   1. Langfuse's `stdin-write` / `agent-call` spans exist only when the run
+ *   1. The `stdin-write` / `agent-call` phase boundaries exist only when the run
  *      records prompt-send marks. ACP never records them because the marks are
- *      wired to the stdin branch, so its tool spans hang off `agent-run`. This
+ *      wired to the stdin branch, so its tool phases hang off `agent-run`. This
  *      module calls `onPromptSendStart` / `onPromptSendEnd` around the
  *      `turn/start` write, which is this transport's real prompt boundary.
  *   2. ACP files per-step usage under `diagnostic`, where the analytics scan
  *      cannot reach it. Usage here is a plain `usage` agent event — the exact
  *      channel `exec --json` uses.
  *   3. ACP raises `fatal_rpc_error` instead of the `stream_error` failure
- *      detail the Langfuse triage practice queries on. Every failure here,
+ *      detail the run-failure vocabulary expects. Every failure here,
  *      including a JSON-RPC error response, is emitted as an `error` AGENT
  *      event so it flows through `sendAgentEvent`'s classifier.
  *
@@ -255,8 +255,8 @@ export function attachCodexAppServerSession(
     const serviceTier = chosen(opts.serviceTier);
     if (serviceTier) params.serviceTier = serviceTier;
     // The prompt-send boundary for this transport. Marked here, not around a
-    // stdin write that never happens, so the Langfuse `stdin-write` and
-    // `agent-call` spans exist on app-server runs too.
+    // stdin write that never happens, so the `stdin-write` and
+    // `agent-call` phase boundaries exist on app-server runs too.
     onPromptSendStart?.();
     request(
       'turn/start',

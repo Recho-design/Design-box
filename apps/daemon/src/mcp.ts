@@ -19,21 +19,7 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import {
-  ANALYTICS_HEADER_ATTRIBUTION_QUALITY,
-  ANALYTICS_HEADER_CLIENT_TYPE,
-  ANALYTICS_HEADER_DEVICE_ID,
-  ANALYTICS_HEADER_DISTRIBUTION_MECHANISM,
-  ANALYTICS_HEADER_ENTRY_SURFACE,
-  ANALYTICS_HEADER_EXTERNAL_PLUGIN_ID,
-  ANALYTICS_HEADER_EXTERNAL_PLUGIN_VERSION,
-  ANALYTICS_HEADER_HOST_PRODUCT,
-  ANALYTICS_HEADER_LOCALE,
-  ANALYTICS_HEADER_MCP_SESSION_ID,
-  ANALYTICS_HEADER_PUBLISHER_CLASS,
-  ANALYTICS_HEADER_REQUEST_ID,
-  ANALYTICS_HEADER_SESSION_ID,
   buildProjectRawFileUrl,
-  type McpAnalyticsContextResponse,
   type WorkspaceProjectsResponse,
 } from '@open-design/contracts';
 import { randomUUID } from 'node:crypto';
@@ -96,7 +82,14 @@ interface BundleInput { project: ProjectPayload | ProjectSummary; entry: string;
 interface ErrorWithCode { message?: string; code?: string; cause?: { code?: string } }
 interface HandleMcpToolCallOptions {
   briefStore?: LocalMcpBriefStore;
-  analyticsHeaders?: Record<string, string>;
+  /**
+   * Daemon-facing headers that declare this caller. `x-od-client` is how the
+   * daemon learns a Run came from the MCP server instead of guessing from the
+   * user agent, so it is sent on every daemon request this module makes.
+   */
+  clientHeaders?: Record<string, string>;
+  /** Host product of the MCP client, for the Run's external-plugin hints. */
+  hostProduct?: string;
   pluginAttribution?: McpPluginAttribution | null;
   briefState?: 'confirmed' | 'skipped' | 'not_applicable';
 }
@@ -1142,12 +1135,6 @@ export async function _readMcpResource(
   };
 }
 
-interface McpObservedCall {
-  attribution: McpPluginAttribution | null;
-  attemptNumber: number;
-  pollAttemptCount?: number;
-}
-
 class BoundedLruMap<K, V> {
   private readonly values = new Map<K, V>();
 
@@ -1199,14 +1186,9 @@ export class McpObservabilitySession {
   readonly hostProduct;
   private readonly workflows = new BoundedLruMap<string, ExternalPluginContext>(2_048);
   private readonly runWorkflows = new BoundedLruMap<string, string>(2_048);
-  private readonly workflowRuns = new BoundedLruMap<string, string>(2_048);
-  private readonly workflowProjects = new BoundedLruMap<string, string>(2_048);
-  private readonly attempts = new BoundedLruMap<string, number>(4_096);
-  private readonly polls = new BoundedLruMap<string, number>(4_096);
 
   private constructor(
     private baseUrl: string,
-    private readonly identity: McpAnalyticsContextResponse,
     clientInfo: { name?: unknown; version?: unknown } | null | undefined,
   ) {
     this.hostProduct = mapMcpHostProduct(clientInfo);
@@ -1220,25 +1202,7 @@ export class McpObservabilitySession {
     baseUrl: string,
     clientInfo: { name?: unknown; version?: unknown } | null | undefined,
   ): Promise<McpObservabilitySession> {
-    let identity: McpAnalyticsContextResponse = {
-      enabled: false,
-      deviceId: null,
-      locale: 'en',
-    };
-    try {
-      identity = await postJson<McpAnalyticsContextResponse>(
-        `${baseUrl}/api/analytics/mcp/context`,
-        {},
-      );
-    } catch {
-      // A telemetry bootstrap failure must not block the MCP server.
-    }
-    const session = new McpObservabilitySession(baseUrl, identity, clientInfo);
-    await session.emit('mcp_session_initialized', null, {
-      mcp_session_id: session.id,
-      host_product: session.hostProduct,
-    });
-    return session;
+    return new McpObservabilitySession(baseUrl, clientInfo);
   }
 
   private async restoreAcceptedWorkflow(
@@ -1266,11 +1230,7 @@ export class McpObservabilitySession {
       binding.externalPluginContext,
     );
     this.workflows.set(pluginWorkflowId, context);
-    this.rememberRun(
-      binding.runId,
-      binding.projectId ?? undefined,
-      { context, pluginWorkflowId },
-    );
+    this.rememberRun(binding.runId, { context, pluginWorkflowId });
   }
 
   async resolveAttribution(
@@ -1351,182 +1311,27 @@ export class McpObservabilitySession {
     return null;
   }
 
-  beginCall(
-    name: string,
-    args: McpArgs,
-    attribution: McpPluginAttribution | null,
-  ): McpObservedCall {
-    const attemptKey = `${attribution?.pluginWorkflowId ?? 'ordinary'}:${name}`;
-    const attemptNumber = (this.attempts.get(attemptKey) ?? 0) + 1;
-    this.attempts.set(attemptKey, attemptNumber);
-    let pollAttemptCount: number | undefined;
-    if (name === 'get_run' && typeof args.runId === 'string') {
-      pollAttemptCount = (this.polls.get(args.runId) ?? 0) + 1;
-      this.polls.set(args.runId, pollAttemptCount);
-    }
-    return {
-      attribution,
-      attemptNumber,
-      ...(pollAttemptCount !== undefined ? { pollAttemptCount } : {}),
-    };
-  }
-
-  rememberRun(
-    runId: string,
-    projectId: string | undefined,
-    attribution: McpPluginAttribution,
-  ): void {
+  /**
+   * Remember which workflow a Run belongs to, so a later `get_run` in the same
+   * MCP session inherits its plugin attribution instead of asking the client to
+   * repeat `pluginWorkflowId`.
+   */
+  rememberRun(runId: string, attribution: McpPluginAttribution): void {
     this.runWorkflows.set(runId, attribution.pluginWorkflowId);
-    this.workflowRuns.set(attribution.pluginWorkflowId, runId);
-    if (projectId) {
-      this.workflowProjects.set(attribution.pluginWorkflowId, projectId);
-    }
   }
 
-  attributionQuality(
-    name: string,
-    args: McpArgs,
-    attribution: McpPluginAttribution | null,
-    payload: JsonObject | null,
-  ): 'self_reported' | 'session_correlated' {
-    if (!attribution || payload?.analyticsAttributionMismatch === true) {
-      return 'self_reported';
-    }
-    if (name === 'start_run') {
-      return this.workflowRuns.has(attribution.pluginWorkflowId)
-        ? 'session_correlated'
-        : 'self_reported';
-    }
-    if (name === 'get_run' && typeof args.runId === 'string') {
-      return this.runWorkflows.get(args.runId) === attribution.pluginWorkflowId
-        ? 'session_correlated'
-        : 'self_reported';
-    }
-    if (name === 'get_artifact') {
-      return this.workflowProjects.has(attribution.pluginWorkflowId)
-        ? 'session_correlated'
-        : 'self_reported';
-    }
-    return 'self_reported';
+  /**
+   * Headers that declare this caller to the daemon.
+   *
+   * `x-od-client: external_mcp` is the whole point: the daemon reads it off the
+   * run-creation request to set the Run's clientType, instead of falling back to
+   * user-agent guessing, which cannot tell an MCP host from the web app. This is
+   * a declaration, not an authorization signal — the daemon derives every
+   * Run-owned identity field itself.
+   */
+  clientHeaders(): Record<string, string> {
+    return { 'x-od-client': 'external_mcp' };
   }
-
-  correlationFacts(
-    name: string,
-    args: McpArgs,
-    attribution: McpPluginAttribution | null,
-    payload: JsonObject | null,
-  ): Record<string, unknown> {
-    if (!attribution) return {};
-    if (payload?.analyticsAttributionMismatch === true) {
-      return {
-        correlation_status: 'run_mismatch',
-        error_code: 'PLUGIN_ATTRIBUTION_MISMATCH',
-      };
-    }
-    if (name === 'get_run' && typeof args.runId === 'string') {
-      return {
-        correlation_status:
-          this.runWorkflows.get(args.runId) === attribution.pluginWorkflowId
-            ? 'matched'
-            : 'run_mismatch',
-      };
-    }
-    if (name === 'get_artifact') {
-      const expectedProject = this.workflowProjects.get(
-        attribution.pluginWorkflowId,
-      );
-      if (!expectedProject) return { correlation_status: 'missing_workflow' };
-      return {
-        correlation_status:
-          payload?.projectId === expectedProject
-            ? 'matched'
-            : 'project_mismatch',
-      };
-    }
-    return { correlation_status: 'matched' };
-  }
-
-  async emit(
-    event:
-      | 'mcp_session_initialized'
-      | 'mcp_tool_started'
-      | 'mcp_tool_finished',
-    attribution: McpPluginAttribution | null,
-    properties: Record<string, unknown>,
-  ): Promise<void> {
-    if (!this.identity.enabled || !this.identity.deviceId) return;
-    try {
-      const attributionQuality =
-        properties.attribution_quality === 'session_correlated'
-          ? 'session_correlated'
-          : 'self_reported';
-      await postJson(
-        `${this.baseUrl}/api/analytics/mcp/event`,
-        {
-          event,
-          eventId: randomUUID(),
-          occurredAt: new Date().toISOString(),
-          properties,
-        },
-        this.headers(attribution, undefined, attributionQuality),
-      );
-    } catch {
-      // Analytics is deliberately best-effort.
-    }
-  }
-
-  headers(
-    attribution: McpPluginAttribution | null,
-    requestId?: string,
-    attributionQuality: 'self_reported' | 'session_correlated' = 'self_reported',
-  ): Record<string, string> {
-    if (!this.identity.enabled || !this.identity.deviceId) return {};
-    return {
-      [ANALYTICS_HEADER_DEVICE_ID]: this.identity.deviceId,
-      [ANALYTICS_HEADER_SESSION_ID]: this.id,
-      [ANALYTICS_HEADER_CLIENT_TYPE]: 'external_mcp',
-      [ANALYTICS_HEADER_ENTRY_SURFACE]: 'external_mcp',
-      [ANALYTICS_HEADER_HOST_PRODUCT]: this.hostProduct,
-      [ANALYTICS_HEADER_LOCALE]: this.identity.locale || 'en',
-      [ANALYTICS_HEADER_MCP_SESSION_ID]: this.id,
-      ...(requestId ? { [ANALYTICS_HEADER_REQUEST_ID]: requestId } : {}),
-      ...(attribution
-        ? {
-            [ANALYTICS_HEADER_EXTERNAL_PLUGIN_ID]:
-              attribution.context.id,
-            [ANALYTICS_HEADER_EXTERNAL_PLUGIN_VERSION]:
-              attribution.context.version,
-            [ANALYTICS_HEADER_DISTRIBUTION_MECHANISM]:
-              attribution.context.distributionMechanism,
-            [ANALYTICS_HEADER_PUBLISHER_CLASS]:
-              attribution.context.publisherClass,
-            [ANALYTICS_HEADER_ATTRIBUTION_QUALITY]: attributionQuality,
-          }
-        : {}),
-    };
-  }
-}
-
-function mcpSourceProperties(
-  session: McpObservabilitySession,
-  attribution: McpPluginAttribution | null,
-  attributionQuality: 'self_reported' | 'session_correlated' = 'self_reported',
-): Record<string, unknown> {
-  return {
-    mcp_session_id: session.id,
-    host_product: session.hostProduct,
-    ...(attribution
-      ? {
-          external_plugin_id: attribution.context.id,
-          external_plugin_version: attribution.context.version,
-          distribution_mechanism:
-            attribution.context.distributionMechanism,
-          publisher_class: attribution.context.publisherClass,
-          attribution_quality: attributionQuality,
-          plugin_workflow_id: attribution.pluginWorkflowId,
-        }
-      : {}),
-  };
 }
 
 function parseMcpResult(result: McpToolCallResult): JsonObject | null {
@@ -1542,61 +1347,6 @@ function parseMcpResult(result: McpToolCallResult): JsonObject | null {
   }
 }
 
-function mcpFailureFacts(
-  name: string,
-  result: McpToolCallResult,
-): Record<string, unknown> {
-  if (result.isError !== true) return {};
-  const message = result.content[0]?.text ?? '';
-  const errorCode = message.includes('PLUGIN_CONTRACT_REJECTED')
-    ? 'PLUGIN_CONTRACT_REJECTED'
-    : message.includes('cannot reach the OpenDesign daemon')
-      ? 'DAEMON_UNREACHABLE'
-      : message.includes('DELIVERABLE_MISSING')
-        ? 'DELIVERABLE_MISSING'
-      : 'MCP_TOOL_FAILED';
-  const failureStage =
-    name === 'collect_brief' || name === 'confirm_brief'
-      ? 'brief'
-      : name.includes('project')
-          ? 'project'
-        : name === 'start_run'
-          ? 'run_accept'
-          : name === 'get_artifact' && errorCode === 'DELIVERABLE_MISSING'
-            ? 'artifact_validation'
-          : name === 'get_run'
-            ? 'delivery'
-            : name === 'get_artifact'
-              ? 'delivery'
-              : 'mcp_initialize';
-  const failureSource =
-    errorCode === 'PLUGIN_CONTRACT_REJECTED'
-      ? 'local_mcp'
-      : errorCode === 'DAEMON_UNREACHABLE'
-        ? 'open_design_daemon'
-        : errorCode === 'DELIVERABLE_MISSING'
-          ? 'artifact_store'
-          : 'open_design_daemon';
-  return {
-    error_code: errorCode,
-    failure_stage: failureStage,
-    failure_source: failureSource,
-    failure_category:
-      errorCode === 'PLUGIN_CONTRACT_REJECTED'
-        ? 'invalid_request'
-        : errorCode === 'DAEMON_UNREACHABLE'
-          ? 'availability'
-          : 'unknown',
-    retryable: errorCode === 'DAEMON_UNREACHABLE',
-    user_action:
-      errorCode === 'PLUGIN_CONTRACT_REJECTED'
-        ? 'fix_plugin'
-        : errorCode === 'DAEMON_UNREACHABLE'
-          ? 'start_open_design'
-          : 'retry',
-  };
-}
-
 async function observeMcpToolCall(
   session: McpObservabilitySession,
   briefStore: LocalMcpBriefStore,
@@ -1605,8 +1355,6 @@ async function observeMcpToolCall(
   args: McpArgs,
 ): Promise<McpToolCallResult> {
   const name = typeof nameValue === 'string' ? nameValue : 'unknown';
-  const startedAt = Date.now();
-  const toolAttemptId = randomUUID();
   let attribution: McpPluginAttribution | null = null;
   try {
     attribution = await session.resolveAttribution(name, args, briefStore);
@@ -1621,73 +1369,15 @@ async function observeMcpToolCall(
       );
     }
   } catch (error) {
-    const observed = session.beginCall(name, args, null);
-    const rawPlugin =
-      args.externalPluginContext
-      && typeof args.externalPluginContext === 'object'
-      && !Array.isArray(args.externalPluginContext)
-      && (args.externalPluginContext as JsonObject).id
-        === OPEN_DESIGN_PLUGIN_ID;
-    const rejected = errorResult(errorMessage(error));
-    const common = {
-      ...mcpSourceProperties(session, null),
-      ...(rawPlugin
-        ? {
-            external_plugin_id: OPEN_DESIGN_PLUGIN_ID,
-            attribution_quality: 'self_reported',
-          }
-        : {}),
-      tool_name: name,
-      tool_attempt_id: toolAttemptId,
-      attempt_number: observed.attemptNumber,
-    };
-    await session.emit('mcp_tool_started', null, common);
-    await session.emit('mcp_tool_finished', null, {
-      ...common,
-      result: 'failed',
-      duration_ms: Math.max(0, Date.now() - startedAt),
-      ...mcpFailureFacts(name, rejected),
-    });
-    return rejected;
+    return errorResult(errorMessage(error));
   }
-
-  const observed = session.beginCall(name, args, attribution);
-  const requestId =
-    typeof args.requestId === 'string' && args.requestId ? args.requestId : undefined;
-  const logical =
-    attribution && requestId
-      ? logicalPluginRequestDigest(requestId)
-      : null;
-  const startedAttributionQuality = session.attributionQuality(
-    name,
-    args,
-    attribution,
-    null,
-  );
-  const common = {
-    ...mcpSourceProperties(
-      session,
-      attribution,
-      startedAttributionQuality,
-    ),
-    tool_name: name,
-    tool_attempt_id: toolAttemptId,
-    attempt_number: observed.attemptNumber,
-    ...(typeof args.runId === 'string' ? { run_id: args.runId } : {}),
-    ...(logical
-      ? {
-          logical_request_digest: logical.digest,
-          logical_request_digest_version: logical.version,
-        }
-      : {}),
-  };
-  await session.emit('mcp_tool_started', attribution, common);
 
   const result = await daemonTarget.call(name, args, async (baseUrl) => {
     session.updateBaseUrl(baseUrl);
     return await handleMcpToolCall(baseUrl, name, args, {
       briefStore,
-      analyticsHeaders: session.headers(attribution, requestId),
+      clientHeaders: session.clientHeaders(),
+      hostProduct: session.hostProduct,
       pluginAttribution: attribution,
       ...(attribution
         ? {
@@ -1705,144 +1395,11 @@ async function observeMcpToolCall(
     && typeof payload?.runId === 'string'
     && payload.analyticsAttributionMismatch !== true
   ) {
-    session.rememberRun(
-      payload.runId,
-      typeof payload.projectId === 'string' ? payload.projectId : undefined,
-      attribution,
-    );
+    session.rememberRun(payload.runId, attribution);
   }
-  const delivery = mcpDeliveryFacts(
-    name,
-    result,
-    payload,
-    observed.pollAttemptCount,
-  );
-  const finishedAttributionQuality = session.attributionQuality(
-    name,
-    args,
-    attribution,
-    payload,
-  );
-  await session.emit('mcp_tool_finished', attribution, {
-    ...common,
-    ...(attribution
-      ? { attribution_quality: finishedAttributionQuality }
-      : {}),
-    result: result.isError === true ? 'failed' : 'success',
-    duration_ms: Math.max(0, Date.now() - startedAt),
-    ...(observed.pollAttemptCount
-      ? { poll_attempt_count: observed.pollAttemptCount }
-      : {}),
-    ...mcpFailureFacts(name, result),
-    ...delivery,
-    ...session.correlationFacts(name, args, attribution, payload),
-  });
   return result;
 }
 
-function mcpDeliveryFacts(
-  name: string,
-  result: McpToolCallResult,
-  payload: JsonObject | null,
-  pollAttemptCount?: number,
-): Record<string, unknown> {
-  if (
-    name === 'start_run'
-    && payload?.analyticsAttributionMismatch === true
-  ) {
-    return {
-      correlation_status: 'run_mismatch',
-      error_code: 'PLUGIN_ATTRIBUTION_MISMATCH',
-    };
-  }
-  if (name === 'get_artifact') {
-    if (result.isError === true || !payload) {
-      return {
-        delivery_kind: 'artifact_context_bundle',
-        delivery_result: 'failed',
-      };
-    }
-    const partial =
-      payload.truncated === true
-      || (typeof payload.skippedFileCount === 'number'
-        && payload.skippedFileCount > 0);
-    return {
-      delivery_kind: 'artifact_context_bundle',
-      delivery_result: partial ? 'partial' : 'complete',
-      truncated: payload.truncated === true,
-      skipped_file_count:
-        typeof payload.skippedFileCount === 'number'
-          ? payload.skippedFileCount
-          : 0,
-      ...(typeof payload.projectId === 'string'
-        ? { project_id: payload.projectId }
-        : {}),
-    };
-  }
-  if (name !== 'get_run' || !payload) return {};
-  const status = payload.status;
-  const terminal =
-    status === 'succeeded' || status === 'failed' || status === 'canceled';
-  if (!terminal) {
-    return {
-      poll_state: 'non_terminal',
-    };
-  }
-  const hasPreviewReference =
-    typeof payload.previewUrl === 'string'
-    && payload.previewUrl.length > 0
-    && typeof payload.entryFile === 'string'
-    && payload.entryFile.length > 0;
-  const hasStudioReference =
-    typeof payload.studioUrl === 'string'
-    && payload.studioUrl.length > 0;
-  const artifactCount =
-    typeof payload.artifactCount === 'number'
-    && Number.isFinite(payload.artifactCount)
-      ? Math.max(0, Math.floor(payload.artifactCount))
-      : null;
-  const hasAuthoritativeValidation =
-    typeof payload.deliverableValid === 'boolean'
-    || typeof payload.deliverableValidation === 'string';
-  const canonicalEntryMatches =
-    typeof payload.deliverableEntryFile === 'string'
-    && payload.deliverableEntryFile.length > 0
-    && (!hasPreviewReference
-      || payload.deliverableEntryFile === payload.entryFile);
-  // Compatible daemons validate the canonical entry against the filesystem and
-  // project kind. artifactCount alone only proves that this run touched
-  // something; it cannot promote a stale metadata entry or an unrelated file
-  // into a deliverable. The preview fallback is retained only for older,
-  // non-plugin MCP clients that predate the authoritative fields.
-  const hasValidatedArtifact = hasAuthoritativeValidation
-    ? payload.deliverableValid === true
-      && payload.deliverableValidation === 'valid'
-      && canonicalEntryMatches
-    : artifactCount === null
-      ? hasPreviewReference
-      : artifactCount > 0 && hasPreviewReference;
-  const complete =
-    status === 'succeeded'
-    && hasValidatedArtifact
-    && (hasPreviewReference || hasStudioReference);
-  return {
-    poll_state: 'terminal',
-    delivery_kind: 'preview_studio_reference',
-    delivery_result: complete ? 'complete' : 'failed',
-    deliverable_validation: complete ? 'valid' : 'invalid',
-    ...(pollAttemptCount ? { poll_attempt_count: pollAttemptCount } : {}),
-    ...(!complete && status === 'succeeded'
-      ? {
-          error_code: 'DELIVERABLE_MISSING',
-          failure_stage: 'artifact_validation',
-          failure_source: 'artifact_store',
-          failure_category: 'invalid_output',
-          retryable: true,
-          user_action: 'retry',
-        }
-      : {}),
-  };
-}
 
 export function _installMcpFatalErrorHandlers(options: {
   writeStderr?: (message: string) => void;
@@ -2776,8 +2333,7 @@ async function startRun(
     const logical = logicalPluginRequestDigest(requestId);
     body.analyticsHints = {
       entrySurface: 'external_mcp',
-      hostProduct:
-        options.analyticsHeaders?.[ANALYTICS_HEADER_HOST_PRODUCT] ?? 'unknown',
+      hostProduct: options.hostProduct ?? 'unknown',
       externalPluginId: options.pluginAttribution.context.id,
       externalPluginVersion:
         options.pluginAttribution.context.version,
@@ -2785,8 +2341,8 @@ async function startRun(
         options.pluginAttribution.context.distributionMechanism,
       publisherClass: options.pluginAttribution.context.publisherClass,
       // This payload is client-supplied. The daemon validates it against the
-      // request identity/digest and upgrades to session_correlated only after
-      // the Run/workflow binding is accepted.
+      // request identity/digest and never treats it as an authorization or
+      // billing signal.
       attributionQuality: 'self_reported',
       pluginWorkflowId: options.pluginAttribution.pluginWorkflowId,
       logicalRequestDigest: logical.digest,
@@ -2819,7 +2375,7 @@ async function startRun(
   const created = await postJson<JsonObject>(
     `${baseUrl}/api/runs`,
     body,
-    { ...options.analyticsHeaders, ...headers },
+    { ...options.clientHeaders, ...headers },
   );
   // Build studioUrl (conversation-level — no entry file yet) so the
   // outer agent has a URL to give the user right away. The daemon
@@ -3716,8 +3272,6 @@ export {
   logicalPluginRequestDigest,
   mapMcpHostProduct,
   normalizeExternalPluginRunAnalyticsHints,
-  mcpDeliveryFacts,
-  mcpFailureFacts,
   resolvePluginGenerationSloWindowMs,
   resolveProjectArg,
   resolveProjectId,

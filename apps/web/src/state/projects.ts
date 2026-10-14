@@ -63,7 +63,7 @@ import type {
   ProjectTemplate,
 } from '../types';
 import { removeDesignBrowserProjectCache } from '../components/design-browser-storage';
-import { boundedRequestErrorCode } from '../analytics/workspace';
+import { boundedRequestErrorCode } from '../runtime/error-codes';
 
 export type { PluginInstallOutcome } from '@open-design/contracts';
 export type { PluginShareAction } from '@open-design/contracts';
@@ -2201,7 +2201,7 @@ export interface PluginShareOutcome {
 
 export interface PluginShareTaskStart {
   taskId: string;
-  action: 'publish-github' | 'contribute-open-design';
+  action: 'publish-github';
   path: string;
   status: 'queued' | 'running' | 'done' | 'failed';
   startedAt: number;
@@ -2221,7 +2221,7 @@ export interface PluginShareTaskError {
 
 export interface PluginShareTaskSnapshot {
   taskId: string;
-  action: 'publish-github' | 'contribute-open-design';
+  action: 'publish-github';
   path: string;
   status: 'queued' | 'running' | 'done' | 'failed';
   startedAt: number;
@@ -2245,23 +2245,10 @@ export async function publishGeneratedPluginToGitHub(
   );
 }
 
-export async function contributeGeneratedPluginToOpenDesign(
-  projectId: string,
-  relativePath: string,
-  workspaceContext?: WorkspaceCollabContext | null,
-): Promise<PluginShareOutcome> {
-  return postGeneratedPluginShareAction(
-    projectId,
-    relativePath,
-    'contribute-open-design',
-    workspaceContext,
-  );
-}
-
 export async function startGeneratedPluginShareTask(
   projectId: string,
   relativePath: string,
-  action: 'publish-github' | 'contribute-open-design',
+  action: 'publish-github',
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<PluginShareTaskStart> {
   const resp = await fetch(
@@ -2394,7 +2381,7 @@ export async function createPluginShareProject(
 async function postGeneratedPluginShareAction(
   projectId: string,
   relativePath: string,
-  action: 'publish-github' | 'contribute-open-design',
+  action: 'publish-github',
   workspaceContext?: WorkspaceCollabContext | null,
 ): Promise<PluginShareOutcome> {
   try {

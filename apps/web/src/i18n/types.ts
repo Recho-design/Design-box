@@ -556,24 +556,6 @@ export interface Dict {
   'settings.mediaProviderFetchModelsFailed': string;
   'settings.mediaProviderNoKeyRequired': string;
   'settings.mediaProviderNoKeyHint': string;
-  'settings.privacy': string;
-  'settings.privacyHint': string;
-  'settings.privacyConsentKicker': string;
-  'settings.privacyConsentLead': string;
-  'settings.privacyConsentFooter': string;
-  'settings.privacyConsentShare': string;
-  'settings.privacyConsentDecline': string;
-  'settings.privacyConsentAccept': string;
-  'settings.privacyConsentBannerFooter': string;
-  'settings.privacyConsentPolicyLink': string;
-  'settings.privacyMetrics': string;
-  'settings.privacyMetricsHint': string;
-  'settings.privacyContent': string;
-  'settings.privacyContentHint': string;
-  'settings.privacyInstallationId': string;
-  'settings.privacyOptedOut': string;
-  'settings.privacyDataDeletion': string;
-  'settings.privacyDataDeletionHint': string;
   'settings.about': string;
   'settings.aboutHint': string;
   'settings.appVersion': string;
@@ -592,7 +574,6 @@ export interface Dict {
   'settings.updateNow': string;
   'settings.updateRecheck': string;
   'settings.updateRetry': string;
-  'settings.updateViewReleases': string;
   'settings.updateActionFailed': string;
   'settings.updateQuitFailed': string;
   'settings.updateStatusNotChecked': string;
@@ -1070,8 +1051,6 @@ export interface Dict {
   'entry.tabVideoTemplates': string;
   'entry.openSettingsTitle': string;
   'entry.openSettingsAria': string;
-  'entry.discordLabel': string;
-  'entry.discordOnlineLabel': string;
   'entry.accountSettings': string;
   'chat.collapsePane': string;
   'collabPresence.ariaOne': string;
@@ -1089,12 +1068,6 @@ export interface Dict {
   'collabPresence.viewingFileOther': string;
   'collabPresence.viewingProjectSelf': string;
   'collabPresence.viewingProjectOther': string;
-  'entry.followXLabel': string;
-  'entry.followThreadsLabel': string;
-  'entry.youtubeLabel': string;
-  'entry.followInstagramLabel': string;
-  'entry.followLinkedinLabel': string;
-  'entry.followXiaohongshuLabel': string;
   'entry.resizeAria': string;
   'entry.loadingWorkspace': string;
   'entry.useEverywhereTitle': string;
@@ -1127,8 +1100,6 @@ export interface Dict {
   'entry.accountToggleTheme': string;
   'entry.accountSwitchLanguage': string;
   'entry.accountLanguageMeta': string;
-  'entry.accountGithubHelp': string;
-  'entry.accountFeatureRequest': string;
   /** Account menu row that opens the workspace's billing console. */
   'entry.accountBilling': string;
   'entry.accountAddAccount': string;
@@ -2131,9 +2102,6 @@ export interface Dict {
   'mcpClient.forwardedAcpNote': string;
   'mcpClient.notForwardedNote': string;
   // GitHub star pill in the top bar
-  'entry.githubStarLabel': string;
-  'entry.githubStarTitle': string;
-  'entry.githubStarAria': string;
 
   // Connectors tab
   'connectors.title': string;
@@ -2654,10 +2622,6 @@ export interface Dict {
   'avatar.reasoningLabel': string;
   'avatar.serviceTierLabel': string;
   'avatar.customSuffix': string;
-  'socialShare.openDesignSection': string;
-  'socialShare.openDesignTitle': string;
-  'socialShare.openDesignText': string;
-  'socialShare.openDesignCopyText': string;
   'socialShare.projectSection': string;
   'socialShare.publishPageTitle': string;
   'socialShare.publishPageSubtitle': string;
@@ -3797,9 +3761,6 @@ export interface Dict {
   'designFiles.usefulInfoTip2': string;
   'designFiles.usefulInfoTip4': string;
   'designFiles.usefulInfoTip5': string;
-  'designFiles.usefulInfoTip6': string;
-  'designFiles.usefulInfoTip7': string;
-  'designFiles.usefulInfoTip8': string;
   'designFiles.usefulInfoTip9': string;
   'designFiles.usefulInfoTip10': string;
   'designFiles.usefulInfoTip11': string;
@@ -3807,11 +3768,6 @@ export interface Dict {
   'designFiles.usefulInfoTip13': string;
   'designFiles.usefulInfoTip14': string;
   'designFiles.usefulInfoTip15': string;
-  'designFiles.usefulInfoTip16': string;
-  'designFiles.usefulInfoTip17': string;
-  'designFiles.usefulInfoTip18': string;
-  'designFiles.usefulInfoTip19': string;
-  'designFiles.usefulInfoTip20': string;
   'quickSwitcher.placeholder': string;
   'quickSwitcher.empty': string;
   'quickSwitcher.noMatches': string;
@@ -4359,9 +4315,6 @@ export interface Dict {
   'assistant.feedbackReasonTitle': string;
   /** 点踩那一路的问句(交付稿第 40 格写的是「哪里不对?」);点赞仍用上面那条中性文案 */
   'assistant.feedbackReasonTitleNegative': string;
-  /** 社区入口那一句。`{discord}` 会被替换成可点的 Discord 链接 */
-  'assistant.feedbackDiscordNegative': string;
-  'assistant.feedbackDiscordPositive': string;
   'assistant.feedbackReasonPositiveMatched': string;
   'assistant.feedbackReasonPositiveVisual': string;
   'assistant.feedbackReasonPositiveUseful': string;
@@ -4397,7 +4350,6 @@ export interface Dict {
   'chat.runError.actionBlocked.billing': string;
   'chat.runError.actionBlocked.busy': string;
   'chat.support.channel.feishu': string;
-  'chat.support.channel.discord': string;
   /** {name} = the workspace owner's display name. */
   /** Same sentence with the owner's role in place of their name (T57). */
   'assistant.outTokens': string;

@@ -8,7 +8,7 @@ const hostSynthesizedEmissions = new WeakSet<object>();
 /**
  * Retain host provenance on the live payload identity even when a consumer only
  * stores { event, data }. Weak references neither retain transcripts nor add
- * fields to SSE, persisted JSON, or Langfuse. Deserialized legacy events have
+ * fields to SSE or persisted JSON. Deserialized legacy events have
  * no provenance and keep the existing pairing behavior.
  */
 export function withAcpEmissionProvenance<T extends object>(

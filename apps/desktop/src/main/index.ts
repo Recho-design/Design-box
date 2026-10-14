@@ -1,6 +1,6 @@
 import { recordIncomingUpdateLifecycle, type UpdateLifecycleObservation } from "./update-lifecycle-observations.js";
 export { recordIncomingUpdateLifecycle, type UpdateLifecycleObservation } from "./update-lifecycle-observations.js";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -42,12 +42,6 @@ import {
 import { createDesktopRuntime, type DesktopRuntime } from "./runtime.js";
 import { focusDesktopForDeeplink } from "./deeplink-focus.js";
 import { setUpDesktopCrashReporter, writeDesktopGpuInfo } from "./crash-diagnostics.js";
-import { beginDesktopSession, clearReportedCrash, endDesktopSessionCleanly, markDesktopSessionRunning } from "./session-lifecycle.js";
-import {
-  attachDesktopChildProcessCrashReporter,
-  reportDesktopObservabilityEvent,
-  reportPriorDesktopUncleanExits,
-} from "./observability.js";
 import { attachDesktopProcessErrorFilter } from "./uncaught-exception.js";
 import {
   DEFAULT_DESKTOP_UPDATE_MENU_LABELS,
@@ -408,32 +402,6 @@ function installDesktopMenu(
         label: "Help",
         role: "help",
         submenu: [
-          {
-            label: "Documentation",
-            click() {
-              void shell.openExternal("https://github.com/nexu-io/open-design#readme");
-            },
-          },
-          { type: "separator" },
-          {
-            label: "Contact Us",
-            click() {
-              void shell.openExternal("https://x.com/OpenDesignHQ");
-            },
-          },
-          {
-            label: "Report Issue",
-            click() {
-              void shell.openExternal("https://github.com/nexu-io/open-design/issues/new");
-            },
-          },
-          {
-            label: "Join Discord",
-            click() {
-              void shell.openExternal("https://discord.gg/mHAjSMV6gz");
-            },
-          },
-          { type: "separator" },
           { label: "Export Diagnostics…", click: exportDiagnostics },
         ],
       },
@@ -594,20 +562,6 @@ export async function runDesktopMain(
   // bundle enough to root-cause a native renderer crash (e.g. 0x80000003).
   setUpDesktopCrashReporter(join(dirname(desktopLogPath), "crashes"));
   void writeDesktopGpuInfo(join(dirname(desktopLogPath), "gpu-info.json"));
-  // Abnormal-exit detection: read the previous run's marker (unclean if the app
-  // died without a graceful quit — a main-process crash, OS kill, force-quit
-  // after a hang, or power loss), then stamp a fresh dirty marker for this run.
-  // The renderer-crash and startup-crash events don't cover this "runtime 闪退"
-  // class, and a dead process can't report itself, so this is the only way to
-  // observe it. Reported below once the daemon is reachable; marked clean on a
-  // graceful shutdown.
-  const sessionStatePath = join(dirname(desktopLogPath), "session-state.json");
-  const { previousUncleanSessions } = beginDesktopSession({
-    stateFilePath: sessionStatePath,
-    sessionId: randomUUID(),
-    version: app.getVersion(),
-    now: () => new Date(),
-  });
 
   let desktop: DesktopRuntime | null = null;
   let disposeMenu: () => void = () => undefined;
@@ -702,8 +656,6 @@ export async function runDesktopMain(
         console.error("desktop beforeShutdown failed", error);
       });
       console.info("[open-design desktop] shutdown sidecars settled", { durationMs: Date.now() - startedAt });
-      // Mark clean only after teardown; a stalled cleanup is not a clean exit.
-      endDesktopSessionCleanly({ stateFilePath: sessionStatePath });
       console.info("[open-design desktop] shutdown completed", { durationMs: Date.now() - startedAt });
       await updater.recordLifecycle?.({ stage: "shutdown_completed", outcome: shutdownFailed ? "failed" : "completed", duration_ms: Date.now() - startedAt, repeated_quit_count: shutdownRequestCount - 1 });
       shutdownComplete = true;
@@ -801,12 +753,6 @@ export async function runDesktopMain(
     // protection still works) and POSTs once more.
     registerDesktopAuthWithDaemon: () => options.registerDesktopAuth(desktopAuthSecret),
     rendererLogPath,
-    // Mark "reached running" only when the window is ACTUALLY revealed (web app
-    // mounted + shown), not when createDesktopRuntime returns — it starts async
-    // bootstrap via `void tick()` and returns before the first load. Until this
-    // fires, a crash is still a startup failure (covered by
-    // packaged_runtime_failed), not a runtime abnormal exit.
-    onRevealed: () => markDesktopSessionRunning({ stateFilePath: sessionStatePath }),
     onUpdateMenuLabels: menuController.setUpdateLabels,
     requestQuit: shutdownAndExit,
     onMainWindowReady: () => {
@@ -828,29 +774,6 @@ export async function runDesktopMain(
     },
   });
 
-  const discoverDaemonBaseUrl = resolveDaemonBaseUrl(options);
-  // Report each abnormal exit of a prior run now that the daemon is up to relay
-  // it (best-effort; the events carry no user content). Each is dropped from the
-  // queue only once the daemon acks it, so a failed report is retried next launch.
-  if (previousUncleanSessions.length > 0) {
-    console.warn("[open-design desktop] prior session(s) ended abnormally (no clean shutdown)", {
-      count: previousUncleanSessions.length,
-    });
-    void reportPriorDesktopUncleanExits({
-      previousUncleanSessions,
-      currentVersion: app.getVersion(),
-      stateFilePath: sessionStatePath,
-      report: (event, properties) => reportDesktopObservabilityEvent(discoverDaemonBaseUrl, event, properties),
-      clearReported: clearReportedCrash,
-    });
-  }
-  // GPU / utility child-process crashes: the window keeps running but degraded
-  // (a GPU-process crash is a common cause of a window that then goes blank or
-  // vanishes), and the child can't report itself. `clean-exit` is normal teardown.
-  attachDesktopChildProcessCrashReporter(
-    app,
-    (event, properties) => reportDesktopObservabilityEvent(discoverDaemonBaseUrl, event, properties),
-  );
   removeDiagnosticsIpc = registerDesktopDiagnosticsIpc({
     discoverDaemonBaseUrl: resolveDaemonBaseUrl(options),
   });

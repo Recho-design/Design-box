@@ -1,6 +1,5 @@
 import type { Express } from 'express';
 import { type ChatSessionMode } from '@open-design/contracts';
-import { readAnalyticsContext } from '../../analytics.js';
 import { nextForkedConversationTitle } from '../../conversation-fork-title.js';
 import { backfillBrandExtractionTranscriptForProject } from '../../brands/index.js';
 import type { RouteDeps } from '../../server-context.js';
@@ -17,7 +16,7 @@ import {
   listSiblingRunDoneKeys,
 } from '../../db.js';
 
-export interface RegisterProjectConversationRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'conversations' | 'ids' | 'telemetry' | 'appConfig' | 'agents'> {
+export interface RegisterProjectConversationRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'conversations' | 'ids' | 'appConfig' | 'agents'> {
   authorizeProjectRequest?: (req: any, res: any, projectId: string, options?: any) => Promise<boolean>;
 }
 
@@ -677,11 +676,6 @@ export function registerProjectConversationRoutes(app: Express, ctx: RegisterPro
     });
     // Bump the parent project's updatedAt so the project list re-orders.
     updateProject(db, req.params.id, {});
-    ctx.telemetry?.reportFinalizedMessage(saved, m, {
-      analyticsContext: readAnalyticsContext(req),
-      projectId: req.params.id,
-      conversationId: req.params.cid,
-    });
     res.json({ message: saved });
   });
 

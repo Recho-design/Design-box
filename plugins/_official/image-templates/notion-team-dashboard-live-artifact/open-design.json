@@ -68,7 +68,7 @@
     "surface": "image",
     "preview": {
       "type": "image",
-      "poster": "https://raw.githubusercontent.com/nexu-io/open-design/main/prompt-templates/image/notion-team-dashboard-live-artifact.preview.png"
+      "poster": "https://raw.githubusercontent.com/Recho-design/Design-box/main/prompt-templates/image/notion-team-dashboard-live-artifact.preview.png"
     },
     "useCase": {
       "query": {

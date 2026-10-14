@@ -18,13 +18,7 @@ import {
 } from '../lib/updater';
 import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
-import { useAnalytics, useAppVersion } from '../analytics/provider';
-import {
-  trackUpdateIndicatorClick,
-  trackUpdateIndicatorSurfaceView,
-  trackUpdateInstallResult,
-  trackUpdatePromptSurfaceView,
-} from '../analytics/events';
+import { useAppVersion } from '../runtime/app-version';
 import styles from './UpdaterPopup.module.css';
 
 /** Rocket badge from the update visual language, on the ready indicator. */
@@ -236,8 +230,7 @@ export function UpdaterPopup({
       ? t('updater.installRestart')
       : t('updater.openInstaller');
   const channelLabel = channelLabelFor(model.status?.channel);
-  const analytics = useAnalytics();
-  const appVersionBefore = useAppVersion();
+    const appVersionBefore = useAppVersion();
   const versionProps = useMemo(
     () => updateVersionProps(model, appVersionBefore),
     [appVersionBefore, model.availableVersion],
@@ -245,47 +238,14 @@ export function UpdaterPopup({
 
   const indicatorSurfaceKey = `${model.currentVersion ?? 'unknown'}->${model.availableVersion ?? 'unknown'}:${model.status?.downloadPath ?? 'unknown'}`;
   const lastIndicatorSurfaceKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!ready) {
-      lastIndicatorSurfaceKeyRef.current = null;
-      return;
-    }
-    if (lastIndicatorSurfaceKeyRef.current === indicatorSurfaceKey) return;
-    lastIndicatorSurfaceKeyRef.current = indicatorSurfaceKey;
-    trackUpdateIndicatorSurfaceView(analytics.track, {
-      page_name: 'home',
-      area: 'update_indicator',
-      ...versionProps,
-    });
-  }, [analytics.track, indicatorSurfaceKey, ready, versionProps]);
-
+  
   const promptSurfaceKey = panelOpen ? indicatorSurfaceKey : null;
   const lastPromptSurfaceKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (promptSurfaceKey == null) {
-      lastPromptSurfaceKeyRef.current = null;
-      return;
-    }
-    if (lastPromptSurfaceKeyRef.current === promptSurfaceKey) return;
-    lastPromptSurfaceKeyRef.current = promptSurfaceKey;
-    trackUpdatePromptSurfaceView(analytics.track, {
-      page_name: 'home',
-      area: 'update_prompt',
-      ...versionProps,
-    });
-  }, [analytics.track, promptSurfaceKey, versionProps]);
-
+  
   const close = useCallback(() => {
     if (installBusy) return;
-    trackUpdateIndicatorClick(analytics.track, {
-      page_name: 'home',
-      area: 'update_prompt',
-      element: 'later',
-      action: 'dismiss',
-      ...versionProps,
-    });
-    setPanelOpen(false);
-  }, [analytics.track, installBusy, versionProps]);
+        setPanelOpen(false);
+  }, [ installBusy, versionProps]);
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -311,14 +271,7 @@ export function UpdaterPopup({
     setInstallError(null);
     setInstallState('opening');
     setPanelOpen(true);
-    trackUpdateIndicatorClick(analytics.track, {
-      page_name: 'home',
-      area: 'update_prompt',
-      element: 'install_update',
-      action: 'install',
-      ...versionProps,
-    });
-    try {
+        try {
       if (onAllowSilentUpdatesChange != null) {
         try {
           await onAllowSilentUpdatesChange(allowSilentUpdatesChecked);
@@ -331,41 +284,21 @@ export function UpdaterPopup({
         actionInFlightRef.current = false;
         setInstallError(installFailureText);
         setInstallState('idle');
-        trackUpdateInstallResult(analytics.track, {
-          page_name: 'home',
-          area: 'update_prompt',
-          result: 'failed',
-          error_code: result.reason,
-          ...versionProps,
-        });
-        return;
+                return;
       }
       if (result.model.errorMessage != null) {
         const safety = restartSafetyFromUpdaterStatus(result.status);
         actionInFlightRef.current = false;
         setInstallError(safety == null ? installFailureText : restartSafetyText(t, safety));
         setInstallState('idle');
-        trackUpdateInstallResult(analytics.track, {
-          page_name: 'home',
-          area: 'update_prompt',
-          result: 'failed',
-          ...(updaterErrorCode(result.model) ? { error_code: updaterErrorCode(result.model) } : {}),
-          ...versionProps,
-        });
-        return;
+                return;
       }
       setModel(result.model);
       setInstallError(null);
       // An accepted quit may still be draining background processes. Only a
       // failed quit response permits recovery; elapsed time is not failure.
       setInstallState('handoff');
-      trackUpdateInstallResult(analytics.track, {
-        page_name: 'home',
-        area: 'update_prompt',
-        result: 'success',
-        ...versionProps,
-      });
-      const quitResult = await quitAfterUpdaterInstallerOpen({ payload: { source: 'updater-prompt' } });
+            const quitResult = await quitAfterUpdaterInstallerOpen({ payload: { source: 'updater-prompt' } });
       if (!quitResult.ok) {
         const quitSafety = restartSafetyFromActionResult(quitResult);
         if (quitSafety != null) setInstallError(restartSafetyText(t, quitSafety));
@@ -377,14 +310,7 @@ export function UpdaterPopup({
       actionInFlightRef.current = false;
       setInstallError(installFailureText);
       setInstallState('idle');
-      trackUpdateInstallResult(analytics.track, {
-        page_name: 'home',
-        area: 'update_prompt',
-        result: 'failed',
-        error_code: error instanceof Error ? error.name : 'unknown',
-        ...versionProps,
-      });
-    }
+          }
   };
 
   const retryQuit = async () => {
@@ -422,14 +348,7 @@ export function UpdaterPopup({
             setPanelOpen(false);
             return;
           }
-          trackUpdateIndicatorClick(analytics.track, {
-            page_name: 'home',
-            area: 'update_indicator',
-            element: 'ready_indicator',
-            action: 'open_prompt',
-            ...versionProps,
-          });
-          setPanelOpen(true);
+                    setPanelOpen(true);
         }}
       >
         <RocketBadgeIcon className={styles.rocketIcon} />

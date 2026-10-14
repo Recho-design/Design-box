@@ -16,8 +16,17 @@ export function registerSocialShareRoutes(
 
   app.post('/api/social-share', (req, res) => {
     const body = (req.body ?? {}) as Partial<SocialShareRequest>;
-    const kind = body.kind === 'project-html' ? 'project-html' : 'open-design-repo';
-    if (kind === 'project-html' && !normalizeSocialShareUrl(body.url)) {
+    // Only a deployed project URL is shareable. The former repo-promo kind was
+    // removed with the upstream project's promotional surface.
+    if (body.kind !== 'project-html') {
+      return sendApiError(
+        res,
+        400,
+        'BAD_REQUEST',
+        'social share kind must be project-html',
+      );
+    }
+    if (!normalizeSocialShareUrl(body.url)) {
       return sendApiError(
         res,
         400,
@@ -26,6 +35,6 @@ export function registerSocialShareRoutes(
       );
     }
 
-    res.json(buildSocialSharePayload({ ...body, kind }));
+    res.json(buildSocialSharePayload({ ...body, kind: 'project-html' }));
   });
 }

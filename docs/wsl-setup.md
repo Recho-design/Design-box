@@ -23,8 +23,8 @@ same environment.
 ## 1. Install from source in WSL
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git ~/tools/open-design
-cd ~/tools/open-design
+git clone https://github.com/Recho-design/Design-box.git ~/tools/design-box
+cd ~/tools/design-box
 
 node --version   # should print v24.x.x
 corepack enable

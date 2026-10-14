@@ -17,9 +17,8 @@
 //   • templates below 20 distinct users are OMITTED so thin-sample
 //     tail templates keep their curated/visual fallback order
 //
-// Regenerate with: pnpm exec tsx scripts/refresh-plugin-popularity.ts --write
-// Refreshed weekly by .github/workflows/refresh-plugin-popularity.yml.
-// See pluginPopularity.RUNBOOK.md here.
+// Frozen snapshot. The popularity refresh pipeline has been retired and
+// this data is preserved as a static baseline.
 
 export interface PluginPopularityMeta {
   readonly generatedAt: string;

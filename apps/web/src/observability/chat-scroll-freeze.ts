@@ -117,9 +117,6 @@
 // text, no selector, no user-authored string is read. Class names and test
 // ids ARE read — to derive a role enum, which is the only thing reported.
 
-import type { ChatScrollFreezeProps } from '@open-design/contracts/analytics';
-
-import { reportSafetyEvent } from '../analytics/error-tracking';
 import { chatCorrelation } from './chat-context';
 import {
   ACTIVITY_NEAR_WINDOW_MS,
@@ -1720,7 +1717,7 @@ function report(
   const firstShortfall = ledger.first;
   const tailSpacerPx = readTailSpacerPx(active.element);
 
-  const props: ChatScrollFreezeProps = {
+  const props: Record<string, unknown> = {
     ...chatCorrelation(),
     // Not cast: the detector's trigger union and the contract's are the
     // same literals, so a divergence must fail typecheck rather than be
@@ -1821,7 +1818,7 @@ function report(
     ...runtime,
   };
 
-  reportSafetyEvent('client_chat_scroll_frozen', { ...props });
+  // reportSafetyEvent removed
 
   // After the report, deliberately. Whatever a consumer does about this — and
   // the only consumer today is an off-by-default wheel takeover — must not be

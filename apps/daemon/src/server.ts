@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { startEvidenceDelivery } from './services/evidence-delivery.js';
 import type {
   DesktopExportArtifactInput,
   DesktopExportArtifactResult,
@@ -497,10 +496,8 @@ import { createChatRunService } from './runtimes/runs.js';
 import { reapLeftoverAgentProcesses, spawnAgentProcess } from './runtimes/agent-process.js';
 
 import { createInternalRunCreationService } from './services/internal-run-service.js';
-import {
-  createRunAnalyticsLifecycle,
-  inheritedRunLineageHints,
-} from './services/run-analytics-lifecycle.js';
+import { installRunProjectEnrichment } from './services/run-project-enrichment.js';
+import { installFatalHandlers } from './services/fatal-handlers.js';
 import {
   createOdNextRunInputProjection,
   OdNextTaskInputSnapshotError,
@@ -571,18 +568,11 @@ import {
   artifactOriginForRun,
   snapshotAiHtmlVersionsForRun,
 } from './run-html-version-snapshots.js';
-import { reportRunCompletedFromDaemon } from './langfuse-bridge.js';
-import {
-  describeRunTelemetrySink,
-  readRunTelemetrySinkConfig,
-} from './langfuse-trace.js';
 import { reconcileDurableRunTerminals } from './runtimes/run-terminal-reconciliation.js';
 import {
   startMessageEventPayloadHeal,
   type MessageEventPayloadHealHandle,
 } from './storage/message-event-payload-heal.js';
-import { createTaskObservationRolloutService } from './observability/task-observation-rollout.js';
-import { strategyTaskRunObservationId } from './observability/task-observation-aggregation.js';
 import { collectCodexChildEvidence } from './runtimes/codex-child-evidence.js';
 import {
   collectOpenCodeChildEvidenceFacts,
@@ -593,11 +583,6 @@ import {
   bindOdNextExactSendPromptEvidence,
   buildPromptStackTelemetry,
 } from './prompt-telemetry.js';
-import { newInsertId, readAnalyticsContext, type AnalyticsContext, type AnalyticsService } from './analytics.js';
-import {
-  agentIdToTracking,
-  modelIdForTracking,
-} from '@open-design/contracts/analytics';
 import {
   mergeNoProxyWithLoopbackDefaults,
   redactSecrets,
@@ -677,23 +662,18 @@ import {
   validateTarget as validateRoutineTarget,
 } from './routines.js';
 import { buildMcpInstallPayload } from './mcp-install-info.js';
-import { createDiagnosticsExportHandler, buildAutomaticDiagnosticSources, resolveDaemonPreviousLogPath } from './diagnostics-export.js';
-import { AutomaticDiagnostics } from './services/automatic-diagnostics.js';
-import { createDiagnosticRunObserver, diagnosticFaultFromApi, diagnosticFaultFromLifecycle } from './services/diagnostic-faults.js';
-import { diagnosticRelayUrl } from './integrations/diagnostic-relay.js';
-import { automaticDiagnosticsConsent, observeAppConfig } from './app-config.js';
+import { createDiagnosticsExportHandler, resolveDaemonPreviousLogPath } from './diagnostics-export.js';
 import { applyProxyPrefsToProcess, snapshotInheritedProxyEnv } from './services/proxy-apply.js';
 import { proxyEnvFromPrefs } from './runtimes/env.js';
-import { observeApiFailures } from './http/api-failure-journal.js';
+import { readSqlitePageStats } from './storage/db-inspect.js';
 import { configureDiagnosticsEvidence } from './services/diagnostics-evidence.js';
 import { beginDaemonHealthSession } from './services/daemon-health.js';
-import { readSqlitePageStats } from './storage/db-inspect.js';
 import {
   CHAT_SCROLL_FORENSICS_PATH,
   chatScrollForensicsBodyParser,
   chatScrollForensicsHandler,
 } from './diagnostics-client-evidence.js';
-import { DIAGNOSTIC_DELIVERY_LOG_PREFIX, DIAGNOSTICS_EXPORT_PATH } from '@open-design/diagnostics';
+import { DIAGNOSTICS_EXPORT_PATH } from '@open-design/diagnostics';
 import {
   createProjectArchiveStream,
   createBatchArchiveStream,
@@ -740,7 +720,6 @@ import {
   getDeployment,
   getDeploymentById,
   getMessage,
-  getMessageTelemetryFinalizationState,
   getPreviewComment,
   getProjectCommentAnchorConversationId,
   getProjectPreviewComment,
@@ -879,10 +858,8 @@ import {
 } from './chat-artifacts/maintenance.js';
 import {
   captureRunChatArtifactSnapshots,
-  type CaptureRunChatArtifactsReport,
 } from './chat-artifacts/run-capture.js';
 import { associateRunProducedFiles } from './runtimes/run-produced-files.js';
-import { chatArtifactCaptureResultProps } from './chat-artifacts/telemetry.js';
 import { freezeAndRenderChatArtifactCovers } from './chat-artifacts/cover.js';
 import { setMessageArtifactHtmlVersionIds } from './chat-artifacts/store.js';
 
@@ -898,7 +875,6 @@ import { registerBrowserSessionRoutes } from './routes/browser-sessions.js';
 import { createTerminalService } from './terminals.js';
 import { createBrowserSessionService } from './browser-sessions.js';
 import { registerSocialShareRoutes } from './routes/social-share.js';
-import { registerOpenDesignPublicMetadataRoutes } from './routes/open-design-public-metadata.js';
 import { registerWhatsNewRoutes } from './routes/whats-new.js';
 import { registerMemoryRoutes } from './routes/memory.js';
 /** 阶段2 摘除：云协作与工作区相关路由及模块导入已清零 */
@@ -906,7 +882,6 @@ import { registerMemoryRoutes } from './routes/memory.js';
 
 
 
-import { registerTelemetryRoutes } from './routes/telemetry.js';
 import {
   assembleExample,
   registerAtomRoutes,
@@ -978,7 +953,6 @@ import {
   isApiAuthDisabled,
   isApiTokenMiddlewareEnabled,
 } from './api-token-auth.js';
-import { createOpenDesignPublicMetadataService } from './services/open-design-public-metadata.js';
 import { createWhatsNewService } from './services/whats-new.js';
 import { execCommandViaLoginShell } from './services/login-shell.js';
 import { uniqueFileName } from './services/unique-file-name.js';
@@ -1738,8 +1712,6 @@ export function composeProjectDisplayStatus(
   };
 }
 
-const TERMINAL_RUN_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
-const LANGFUSE_TERMINAL_FALLBACK_DELAY_MS = 15_000;
 // How much of a turn's visible text `run.askUserScanText` keeps: enough of the
 // head to validate a complete `<question-form>` block, which a clarification
 // turn emits near the top.
@@ -1835,20 +1807,6 @@ export function __forTestFilesystemEmptyAnswerFallbackText(fileNames) {
   return filesystemEmptyAnswerFallbackText(fileNames);
 }
 
-
-export function shouldReportRunCompletedFromMessage(saved, body = {}) {
-  return Boolean(
-    saved &&
-      saved.runId &&
-      typeof saved.runStatus === 'string' &&
-      TERMINAL_RUN_STATUSES.has(saved.runStatus) &&
-      body?.telemetryFinalized === true,
-  );
-}
-
-export function telemetryPromptFromRunRequest(message, currentPrompt) {
-  return typeof currentPrompt === 'string' ? currentPrompt : message;
-}
 
 // Keep this header grammar aligned with parseFormAnswers in @open-design/contracts.
 const FORM_ANSWERS_HEADER_RE =
@@ -2042,283 +2000,6 @@ export function composeChatUserRequestForAgent(
   // three branches — a conversation with nothing outstanding cannot shift a
   // single prompt byte (and so cannot move an upstream cache boundary).
   return parts.join('\n\n');
-}
-
-export function createFinalizedMessageTelemetryReporter({
-  design,
-  db,
-  dataDir,
-  reportedRuns,
-  taskObservationRollout,
-  getAppVersion = () => null,
-  report = reportRunCompletedFromDaemon,
-}: {
-  design: any;
-  db: unknown;
-  dataDir: string;
-  reportedRuns: Set<string>;
-  taskObservationRollout?: {
-    modeForRun(runId: string): 'off' | 'observe' | 'send';
-    representationForRun(runId: string):
-      | 'single_run'
-      | 'task_pending'
-      | 'task_accepted'
-      | 'task_not_expected';
-    beginFinalizeForRun(runId: string): {
-      durableTaskTruth: boolean;
-      suppressSingleRun: boolean;
-      completion: Promise<unknown>;
-    };
-    finalizeForRun(runId: string): Promise<unknown>;
-  };
-  getAppVersion?: () => any;
-  report?: typeof reportRunCompletedFromDaemon;
-}) {
-  const appVersionForCapture = () => {
-    const appVersion = getAppVersion();
-    if (typeof appVersion === 'string') return appVersion;
-    if (appVersion && typeof appVersion.version === 'string') return appVersion.version;
-    if (typeof design?.getAppVersion === 'function') return design.getAppVersion();
-    return 'unknown';
-  };
-  const captureResult = ({
-    analyticsContext,
-    conversationId,
-    delivery,
-    durationMs,
-    projectId,
-    reportResult,
-    reportTrigger = 'final_message',
-    run,
-    runId,
-    skipReason,
-    status,
-  }) => {
-    const context = analyticsContext ?? run?.analyticsContext ?? null;
-    if (!context || !design?.analytics?.capture || !runId || !delivery) return;
-    const terminalResult = status ? runResultFromStatus(status) : undefined;
-    design.analytics.capture({
-      eventName: 'langfuse_report_result',
-      context,
-      appVersion: appVersionForCapture(),
-      properties: {
-        page_name: 'chat_panel',
-        area: 'chat_panel',
-        project_id: run?.projectId ?? projectId ?? null,
-        conversation_id: run?.conversationId ?? conversationId ?? null,
-        run_id: runId,
-        langfuse_trace_id: runId,
-        langfuse_expected: delivery.langfuse_expected,
-        langfuse_delivery_status: delivery.langfuse_delivery_status,
-        ...(delivery.langfuse_drop_reason
-          ? { langfuse_drop_reason: delivery.langfuse_drop_reason }
-          : {}),
-        langfuse_report_result: reportResult,
-        langfuse_report_trigger: reportTrigger,
-        ...(skipReason ? { langfuse_report_skip_reason: skipReason } : {}),
-        ...(durationMs !== undefined ? { report_duration_ms: durationMs } : {}),
-        ...(terminalResult ? { result: terminalResult } : {}),
-        ...(run?.errorCode ? { error_code: run.errorCode } : {}),
-        ...(run?.agentId ? { agent_provider_id: agentIdToTracking(run.agentId) } : {}),
-        ...(run?.model !== undefined || run?.resolvedModelId !== undefined
-          ? { model_id: modelIdForTracking(run.resolvedModelId ?? run.model) }
-          : {}),
-      },
-      insertId: `${runId}-langfuse-report-${reportTrigger}-${reportResult}${skipReason ? `-${skipReason}` : ''}`,
-    });
-  };
-  const reportFinalized = (saved, body = {}, options = {}) => {
-    if (!shouldReportRunCompletedFromMessage(saved, body)) return;
-    const runId = saved.runId;
-    const run = design.runs.get(runId);
-    if (!run) {
-      captureResult({
-        analyticsContext: options.analyticsContext,
-        conversationId: options.conversationId ?? saved.conversationId,
-        delivery: {
-          langfuse_expected: true,
-          langfuse_delivery_status: 'failed',
-          langfuse_drop_reason: 'network_error',
-        },
-        projectId: options.projectId,
-        reportTrigger: options.reportTrigger,
-        reportResult: 'skipped',
-        runId,
-        skipReason: 'run_not_found',
-        status: saved.runStatus,
-      });
-      return;
-    }
-    const reportTrigger = options.reportTrigger ?? 'final_message';
-    if (reportedRuns.has(run.id)) {
-      captureResult({
-        analyticsContext: options.analyticsContext,
-        conversationId: options.conversationId ?? saved.conversationId,
-        delivery: {
-          langfuse_expected: true,
-          langfuse_delivery_status: 'failed',
-          langfuse_drop_reason: 'network_error',
-        },
-        projectId: options.projectId,
-        reportTrigger: options.reportTrigger,
-        reportResult: 'skipped',
-        run,
-        runId: run.id,
-        skipReason: 'duplicate_run',
-        status: saved.runStatus,
-      });
-      return;
-    }
-    let taskObservationMode = 'off';
-    try {
-      taskObservationMode = taskObservationRollout?.modeForRun(run.id) ?? 'off';
-    } catch (error) {
-      // Representation persistence is a best-effort optimization. A SQLite
-      // claim/insert failure must leave the ordinary single-Run obligation
-      // intact instead of aborting the reporter before it reaches that path.
-      console.warn('[telemetry] task observation representation failed', String(error));
-    }
-    if (taskObservationMode === 'observe') {
-      void taskObservationRollout!.finalizeForRun(run.id).catch((error) => {
-        console.warn('[telemetry] task observation failed in observe mode', String(error));
-      });
-    } else if (taskObservationMode === 'send') {
-      let taskCompletion: Promise<unknown> | null = null;
-      try {
-        // Establish task-level durable truth before erasing the compatibility
-        // single-Run obligation. The returned completion may continue across
-        // network I/O, but the SQLite claim is already committed here.
-        const handle = taskObservationRollout!.beginFinalizeForRun(run.id);
-        if (handle.suppressSingleRun) taskCompletion = handle.completion;
-      } catch (error) {
-        // A claim/storage failure leaves this Run on the compatibility path;
-        // never suppress the only recoverable telemetry obligation.
-        console.warn('[telemetry] task observation claim failed', String(error));
-      }
-      if (!taskCompletion) {
-        // Fall through to the existing single-Run reporter below.
-      } else {
-        // The pending Task row owns this Run, but ownership alone is not a
-        // delivery checkpoint. Keep the Run unfinished until the Task is
-        // accepted/not-expected. A deterministic pre-network release removes
-        // the process-local gate and immediately resumes this same Run through
-        // the compatibility reporter.
-        reportedRuns.add(run.id);
-        void taskCompletion.then(() => {
-          if (taskObservationRollout!.representationForRun(run.id) !== 'single_run') {
-            return;
-          }
-          reportedRuns.delete(run.id);
-          reportFinalized(saved, body, options);
-        }).catch((error) => {
-          console.warn('[telemetry] task observation delivery failed', String(error));
-        });
-        return;
-      }
-    }
-    const existingDelivery = run.telemetryDelivery;
-    if (
-      existingDelivery?.status === 'in_flight'
-      || typeof existingDelivery?.finalizedAt === 'number'
-    ) {
-      reportedRuns.add(run.id);
-      const alreadyTerminal = typeof existingDelivery.finalizedAt === 'number';
-      captureResult({
-        analyticsContext: options.analyticsContext,
-        conversationId: options.conversationId ?? saved.conversationId,
-        delivery: {
-          langfuse_expected: alreadyTerminal
-            ? existingDelivery.status !== 'not_expected'
-            : true,
-          langfuse_delivery_status: alreadyTerminal
-            ? existingDelivery.status
-            : 'failed',
-          ...(alreadyTerminal && existingDelivery.dropReason
-            ? { langfuse_drop_reason: existingDelivery.dropReason }
-            : !alreadyTerminal
-              ? { langfuse_drop_reason: 'network_error' }
-              : {}),
-        },
-        projectId: options.projectId,
-        reportTrigger: options.reportTrigger,
-        reportResult: 'skipped',
-        run,
-        runId: run.id,
-        skipReason: 'duplicate_run',
-        status: saved.runStatus,
-      });
-      return;
-    }
-    const deliveryAttempt = design.runs.beginTelemetryDelivery?.(run);
-    reportedRuns.add(run.id);
-    void (async () => {
-      const start = Date.now();
-      let delivery;
-      try {
-        delivery = await report({
-          db,
-          dataDir,
-          run,
-          persistedRunStatus: saved.runStatus,
-          persistedEndedAt: saved.endedAt,
-          appVersion: getAppVersion(),
-          ...(deliveryAttempt?.idempotencyKey
-            ? { deliveryIdempotencyKey: deliveryAttempt.idempotencyKey }
-            : {}),
-          ...(design.runs.recordTelemetryDeliveryAttempt
-            ? {
-                onDeliveryAttempt: () => {
-                  design.runs.recordTelemetryDeliveryAttempt(run);
-                },
-              }
-            : {}),
-        });
-      } catch {
-        // The production bridge already converts provider and assembly errors
-        // into a failed result. Keep this final guard so an injected/custom
-        // reporter cannot reject out of the detached telemetry task or leave
-        // a normal failure looking like a daemon crash window.
-        delivery = {
-          langfuse_expected: true,
-          langfuse_delivery_status: 'failed',
-          langfuse_drop_reason: 'network_error',
-          langfuse_attempt_count: 0,
-          ...(deliveryAttempt?.idempotencyKey
-            ? { langfuse_idempotency_key: deliveryAttempt.idempotencyKey }
-            : {}),
-        };
-      }
-      const state = delivery ?? {
-        langfuse_expected: true,
-        langfuse_delivery_status: 'accepted',
-      };
-      captureResult({
-        analyticsContext: options.analyticsContext,
-        conversationId: options.conversationId ?? saved.conversationId,
-        delivery: state,
-        durationMs: Date.now() - start,
-        projectId: options.projectId,
-        reportTrigger,
-        reportResult: state.langfuse_expected === false
-          ? 'skipped'
-          : state.langfuse_delivery_status === 'accepted'
-            ? 'accepted'
-            : state.langfuse_delivery_status === 'failed'
-              ? 'failed'
-              : 'skipped',
-        run,
-        runId: run.id,
-        skipReason: state.langfuse_expected === false ? 'not_expected' : undefined,
-        status: saved.runStatus,
-      });
-      design.runs.finalizeTelemetryDelivery?.(run, state);
-    })();
-  };
-  return reportFinalized;
-}
-
-export function shouldReportRunCompletionTelemetryFallbackStatus(status: unknown): boolean {
-  return status === 'failed' || status === 'canceled';
 }
 
 const PROJECT_PREVIEW_SCOPE_TTL_MS = 60 * 60 * 1000;
@@ -3481,7 +3162,6 @@ export async function startServer({
   const verifyWorkspaceRequestAuthority = async () => ({ ok: true, context: null });
   const verifyPersonalProjectDeleteLeaseAuthority = async () => ({ ok: true, context: null });
   const projectIsUnmaterializedSharedPlaceholder = (_id: string) => false;
-  let workspaceAnalyticsService: any = null;
 
   registerMemoryRoutes(app, {
     http: { createSseResponse, requireLocalDaemonRequest },
@@ -3504,71 +3184,24 @@ export async function startServer({
   // follow-up — see reconcile decision log.
   // (legacy POST /api/projects body deleted — see registerProjectRoutes below.)
 
-  let automaticDiagnostics: AutomaticDiagnostics | null = null;
-  const telemetry = registerTelemetryRoutes(app, {
-    dataDir: RUNTIME_DATA_DIR,
-    namespace: runtime?.namespace,
-    readAppConfig,
-    writeAppConfig,
-    onClientExperience: (evidence) => automaticDiagnostics?.record({
-      sourceId: `client:${evidence.occurrenceId}`, kind: evidence.category,
-      at: Date.now(), runId: evidence.runId, projectId: evidence.projectId,
-      conversationId: evidence.conversationId, errorCode: evidence.errorCode, detail: evidence,
-    }) ?? null,
-    onHostFault: (event, properties) => automaticDiagnostics?.record({
-      sourceId: `host:${event}:${typeof properties.previous_session_id === 'string' ? properties.previous_session_id : randomUUID()}`,
-      kind: event, at: Date.now(), detail: properties,
-    }) ?? null,
-  });
+  // Process-wide and local-only: a fatal error is formatted to stderr and the
+  // process exits non-zero. Installed before the first startup await so a
+  // failure while reading the app version is still reported and still ends the
+  // process, and disposed on daemon shutdown like the rest of the process-wide
+  // instrumentation.
+  const disposeFatalHandlers = installFatalHandlers();
   const resolvedAppVersionInfo = normalizeTelemetryAppVersionInfo(
-    await telemetry.resolveAppVersion(),
+    await readCurrentAppVersionInfo(),
   );
-  const currentAppVersionInfo = () =>
-    normalizeTelemetryAppVersionInfo(telemetry.getCachedAppVersion())
-    ?? resolvedAppVersionInfo;
+  const currentAppVersionInfo = () => resolvedAppVersionInfo;
   const currentAppVersion = () =>
     currentAppVersionInfo()?.version ?? UNKNOWN_APP_VERSION;
-  const { analyticsService } = telemetry;
   registerStrategyRolloutRoutes(app, {
     requireLocalDaemonRequest,
     // Uncaught on purpose: an operator asking which mode is in effect must get
     // an error when the config cannot be read, never `off` / `default`.
     readOdNextPreference: () => readAppConfig(RUNTIME_DATA_DIR),
   });
-  workspaceAnalyticsService = analyticsService;
-  console.info(
-    '[telemetry] effective run sink',
-    describeRunTelemetrySink(
-      readRunTelemetrySinkConfig(process.env),
-    ),
-  );
-  try {
-    automaticDiagnostics = new AutomaticDiagnostics({
-      dataRoot: RUNTIME_DATA_DIR,
-      relayOrigin: diagnosticRelayUrl(process.env),
-      consent: () => automaticDiagnosticsConsent(RUNTIME_DATA_DIR),
-      sources: (incident) => buildAutomaticDiagnosticSources({ runtime, projectRoot: PROJECT_ROOT,
-        runsDir: path.join(RUNTIME_DATA_DIR, 'runs'), dataDir: RUNTIME_DATA_DIR }, incident),
-      baselineSources: () => buildAutomaticDiagnosticSources({ runtime, projectRoot: PROJECT_ROOT,
-        runsDir: path.join(RUNTIME_DATA_DIR, 'runs'), dataDir: RUNTIME_DATA_DIR }, { agentId: '*' }),
-      context: () => currentAppVersionInfo(),
-      onDelivered: (incidentId, receipt, evidence) => {
-        console.info(DIAGNOSTIC_DELIVERY_LOG_PREFIX, incidentId, JSON.parse(receipt).object_key);
-        void analyticsService.captureSafety({ eventName: 'diagnostic_bundle_uploaded',
-          appVersion: currentAppVersion(), properties: { diagnostic_incident_id: incidentId,
-            diagnostic_object_key: JSON.parse(receipt).object_key, run_id: evidence.runId,
-            fault_kind: evidence.kind } }).catch(() => {});
-      },
-    });
-    automaticDiagnostics.start();
-  } catch { console.warn('[diagnostics] local outbox unavailable'); }
-  const stopDiagnosticConfigObserver = observeAppConfig(RUNTIME_DATA_DIR, () => automaticDiagnostics?.consentChanged());
-  const stopDiagnosticApiObserver = observeApiFailures((failure) => {
-    const fault = diagnosticFaultFromApi(failure);
-    if (fault) automaticDiagnostics?.record(fault);
-  });
-  const observeDiagnosticRun = createDiagnosticRunObserver();
-  const stopEvidenceDelivery = startEvidenceDelivery(RUNTIME_DATA_DIR);
   const strategyWriteEvidence = createStrategyRunWriteEvidenceRecorder(db);
   const codexThreadCleanupOwner = createCodexThreadCleanupOwner();
   const design = {
@@ -3581,25 +3214,7 @@ export async function startServer({
       // each event is emitted, so the finalization verdict (retry safety gate,
       // artifact_count, close-status artifactProducedThisRun) does not depend on
       // early tool_use/artifact events surviving the run.events ring buffer.
-      onDiagnosticLifecycle: (run, kind, at, errorType) => {
-        const incidentId = automaticDiagnostics?.record(diagnosticFaultFromLifecycle(run, kind, at, errorType));
-        if (incidentId) run.diagnosticIncidentIds = [...new Set([...(run.diagnosticIncidentIds ?? []), incidentId])].slice(-100);
-      },
       onEventEmitted: (run, record) => {
-        if (record.event === 'start') automaticDiagnostics?.trackRun(run.id, {
-          sourceId: `run:${run.id}:interrupted:${run.manualResumeAttemptCount ?? 0}:${record.timestamp}`,
-          kind: 'active_run', at: record.timestamp, runId: run.id, agentId: run.agentId,
-          projectId: run.projectId, conversationId: run.conversationId,
-        });
-        const fault = observeDiagnosticRun(run, record);
-        if (fault) {
-          const incidentId = automaticDiagnostics?.record(fault);
-          if (incidentId) run.diagnosticIncidentIds = [...new Set([...(run.diagnosticIncidentIds ?? []), incidentId])].slice(-100);
-        }
-        if (record.event === 'end') automaticDiagnostics?.finishRun(run.id);
-        if (record.event === 'run_retry_finished' && record.data?.retry_result === 'success') {
-          automaticDiagnostics?.recovered(run.id, record.timestamp);
-        }
         if (!run.sideEffectLedger) run.sideEffectLedger = createRunSideEffectLedger();
         foldEventIntoRunSideEffectLedger(run.sideEffectLedger, record);
         strategyWriteEvidence.observeToolStream(run);
@@ -3638,172 +3253,46 @@ export async function startServer({
         }
       },
     }),
-    analytics: analyticsService,
     getAppVersion: currentAppVersion,
-    readAnalyticsContext,
   };
-  const taskObservationRollout = createTaskObservationRolloutService({
-    db,
-    dataDir: RUNTIME_DATA_DIR,
-    getRun: (runId) => design.runs.get(runId),
-    readTelemetry: async () => {
-      const appConfig = await readAppConfig(RUNTIME_DATA_DIR);
-      return {
-        prefs: appConfig.telemetry ?? {},
-        installationId: appConfig.installationId ?? null,
-        appVersionInfo: telemetry.getCachedAppVersion(),
-      };
-    },
-    checkpointMappedRun: (runId, reason) => {
-      const mappedRun = design.runs.get(runId);
-      if (!mappedRun) return;
-      design.runs.beginTelemetryDelivery?.(mappedRun);
-      design.runs.finalizeTelemetryDelivery?.(mappedRun, {
-        langfuse_expected: false,
-        langfuse_delivery_status: 'not_expected',
-        langfuse_drop_reason: reason,
-        langfuse_attempt_count: 0,
-      });
-    },
-  });
-  console.info(
-    '[telemetry] effective task observation rollout',
-    taskObservationRollout.diagnostic(),
-  );
 
   // Interactive Terminal sessions (node-pty). In-memory, process-local, and
   // killed on daemon shutdown — see shutdownDaemonRuns below.
   const terminalService = createTerminalService();
   const browserSessionService = createBrowserSessionService();
 
-  // Tracks runs whose finalized assistant message has already been forwarded
-  // so repeated message updates only enter the reporter once. Terminal
-  // fallback and delayed final-message writes share this process-local gate;
-  // the durable delivery terminal keeps the same guarantee across restarts.
-  const reportedRuns = new Set();
-  const terminalTelemetryFallbackTimers = new Set<ReturnType<typeof setTimeout>>();
-
-  const reportFinalizedMessage = createFinalizedMessageTelemetryReporter({
-    design,
-    db,
-    dataDir: RUNTIME_DATA_DIR,
-    reportedRuns,
-    taskObservationRollout,
-    getAppVersion: telemetry.getCachedAppVersion,
-  });
-  const reportRunCompletionTelemetryFallback = ({
-    analyticsContext,
-    run,
-    status,
-  }: {
-    analyticsContext: any;
-    run: any;
-    status: string;
-  }) => {
-    if (!shouldReportRunCompletionTelemetryFallbackStatus(status)) return;
-    const timer = setTimeout(() => {
-      terminalTelemetryFallbackTimers.delete(timer);
-      if (reportedRuns.has(run.id)) return;
-      if (run.assistantMessageId) {
-        const messageTelemetry = getMessageTelemetryFinalizationState(db, run.assistantMessageId);
-        // An empty canceled assistant can be marked finalized by the UI without
-        // ever claiming a Task delivery. For Task-owned Runs, let the durable gates in
-        // reportFinalizedMessage decide whether delivery is already owned.
-        if (messageTelemetry.finalizedAt !== null
-          && !getStrategyTaskExecutionByRunId(db, run.id)) return;
-      }
-      reportFinalizedMessage(
-        {
-          id: run.assistantMessageId ?? `${run.id}-terminal`,
-          conversationId: run.conversationId,
-          endedAt: run.updatedAt,
-          role: 'assistant',
-          runId: run.id,
-          runStatus: status,
-        },
-        { telemetryFinalized: true },
-        {
-          analyticsContext,
-          conversationId: run.conversationId,
-          projectId: run.projectId,
-          reportTrigger: 'terminal_fallback',
-        },
-      );
-    }, LANGFUSE_TERMINAL_FALLBACK_DELAY_MS);
-    terminalTelemetryFallbackTimers.add(timer);
-    timer.unref?.();
-  };
-
-  // Every physical Run is started through this service so the analytics
-  // lifecycle is installed once, for whoever asked for the Run — an HTTP
+  // Every physical Run is started through this service, so the local run
+  // observers are installed once for whoever asked for the Run — an HTTP
   // client, an OD Next automatic continuation, a scheduled Automation, or a
-  // live-artifact refresh. Starting a Run any other way drops its analytics
-  // silently, which is what OPEND-2365 was.
-  const runAnalyticsLifecycle = createRunAnalyticsLifecycle({
-    db,
-    design,
-    paths: { PROJECTS_DIR, RUNTIME_DATA_DIR },
-    agents: { detectAgents },
-    telemetry: {
-      reportRunCompletionTelemetryFallback,
-      resolveRunProjectKindForAnalytics,
-      runArtifactBaselines,
-      runRetryEventsForAnalytics,
-    },
-  });
+  // live-artifact refresh. Starting a Run any other way drops them silently,
+  // which is what OPEND-2365 was.
   const internalRunCreation = createInternalRunCreationService({
     runs: design.runs,
     claimAssistantMessage: (run, options) =>
       pinAssistantMessageOnRunCreate(db, run, options),
-    analyticsLifecycle: runAnalyticsLifecycle,
+    runStartObserver: {
+      install: ({ run, body }) => installRunProjectEnrichment({
+        deps: { db, runs: design.runs },
+        run,
+        facts: { body },
+      }),
+    },
   });
-  // Runs are process-local, but their terminal obligations are durable. On a
-  // fresh daemon boot, repair stale message rows and replay any PostHog or
-  // Langfuse terminal work whose checkpoint was not committed. Network work
-  // stays off the startup critical path.
+  // Runs are process-local, but their terminal state is durable. On a fresh
+  // daemon boot, interrupt the Runs a restart left running and repair their
+  // message rows and strategy-task terminals. Entirely local: nothing here
+  // talks to the network, so it stays on the startup critical path.
   void reconcileDurableRunTerminals({
-    analytics: analyticsService,
-    appVersion: currentAppVersion(),
-    appVersionInfo: currentAppVersionInfo(),
     db,
     recoverBeforeInterrupt: (state, states, now) => recoverPlanningIntentResolution(db, state, states, now),
-    reportLangfuse: reportRunCompletedFromDaemon,
-    finalizeTerminalLocally: undefined,
-    taskObservationModeForRun: (runId) => taskObservationRollout.modeForRun(runId),
-    taskObservationRepresentationForRun: (runId) =>
-      taskObservationRollout.representationForRun(runId),
-    taskObservationNotExpectedReasonForRun: (runId) =>
-      taskObservationRollout.notExpectedReasonForRun(runId),
-    seedTaskObservationRunFact: (runId, fact) =>
-      taskObservationRollout.seedRepresentationFromRunFact(runId, fact),
-    beginTaskObservationForRun: (runId) => taskObservationRollout.beginFinalizeForRun(runId),
     runsLogDir: path.join(RUNTIME_DATA_DIR, 'runs'),
-  }).then(async (reconciled) => {
+  }).then((reconciled) => {
     if (reconciled.interrupted > 0 || reconciled.messagesReconciled > 0) {
       console.warn('[runs] reconciled interrupted run terminals', reconciled);
-    }
-    const taskObservationsRecovered = await taskObservationRollout.reconcileCrashWindows();
-    if (taskObservationsRecovered > 0) {
-      console.warn('[telemetry] reconciled task observation crash windows', {
-        recovered: taskObservationsRecovered,
-      });
     }
   }).catch((error) => {
     console.warn('[runs] terminal reconciliation failed', error);
   });
-
-  const reportFeedback = (req) => {
-    // Resolve Task ownership on the server, using the same representation as
-    // completed-run telemetry. The client does not choose a trace or sink.
-    const representation = taskObservationRollout.representationForRun(req.runId);
-    const task = (representation === 'task_accepted' || representation === 'task_pending')
-      ? getStrategyTaskExecutionByRunId(db, req.runId)
-      : null;
-    return telemetry.reportFeedback({
-      ...req,
-      ...(task ? { traceId: `strategy-task:${task.taskExecutionId}` } : {}),
-    });
-  };
 
   // DNS-aware wrapper. The sync `validateBaseUrl` only inspects the literal
   // hostname string, so a public DNS name pointing at an internal address
@@ -3833,7 +3322,6 @@ export async function startServer({
     resolvedPortRef,
   };
   const attributionService = registerAttributionRoutes(app, {
-    analytics: analyticsService,
     appConfig: { readAppConfig },
     http: httpDeps,
     paths: { RUNTIME_DATA_DIR },
@@ -3935,12 +3423,6 @@ export async function startServer({
     env: process.env,
   });
 
-  const openDesignPublicMetadata = createOpenDesignPublicMetadataService();
-  registerOpenDesignPublicMetadataRoutes(app, {
-    http: httpDeps,
-    openDesignPublicMetadata,
-  });
-
   registerWhatsNewRoutes(app, {
     whatsNew: createWhatsNewService(),
   });
@@ -3995,7 +3477,6 @@ export async function startServer({
       projectRoot: PROJECT_ROOT,
       runsDir: path.join(RUNTIME_DATA_DIR, 'runs'),
       dataDir: RUNTIME_DATA_DIR,
-      automaticUploadStatus: () => automaticDiagnostics?.outbox.diagnostics() ?? { available: false },
     }),
   );
 
@@ -4364,30 +3845,6 @@ export async function startServer({
     },
     events: projectEventDeps,
     ids: idDeps,
-    telemetry: {
-      reportFinalizedMessage,
-      captureProductEvent: async (req, eventName, properties) => {
-        const analyticsContext = readAnalyticsContext(req);
-        if (!analyticsContext) return;
-        await analyticsService.capture({
-          eventName,
-          context: analyticsContext,
-          appVersion: currentAppVersion(),
-          properties,
-          insertId: newInsertId(),
-        });
-      },
-      identifyWorkspaceGroup: async (req, workspaceId, properties) => {
-        const analyticsContext = readAnalyticsContext(req);
-        if (!analyticsContext) return;
-        await analyticsService.identifyGroup({
-          context: analyticsContext,
-          groupType: 'workspace',
-          groupKey: workspaceId,
-          properties,
-        });
-      },
-    },
     appConfig: appConfigDeps,
     agents: agentDeps,
     validation: validationDeps,
@@ -4851,12 +4308,14 @@ export async function startServer({
         if (!USER_PLUGIN_SOURCE_KINDS.has(sourcePlugin.sourceKind)) return res.status(409).json({ ok: false, code: 'plugin-not-shareable', message: 'Only user-installed plugins can start a share project.' });
         const body = req.body && typeof req.body === 'object' ? req.body : {};
         const action = normalizePluginShareAction(body.action);
-        if (!action) return sendApiError(res, 400, 'BAD_REQUEST', 'action must be publish-github or contribute-open-design');
-        /** 阶段2 摘除：本地模式下直接创建分享任务项目 */
+        if (!action) return sendApiError(res, 400, 'BAD_REQUEST', 'action must be publish-github');
+        // The only share action left is GitHub publishing: the project is
+        // created directly in local mode, with the source plugin copied in as
+        // isolated context and the installed action plugin run against it.
         const actionPluginId = PLUGIN_SHARE_ACTION_PLUGIN_IDS[action];
         const actionPlugin = getInstalledPlugin(db, actionPluginId);
         if (!actionPlugin) return res.status(409).json({ ok: false, code: 'share-action-plugin-missing', message: `The bundled action plugin "${actionPluginId}" is not installed. Restart the daemon so bundled plugins are registered.` });
-        const now = Date.now(); const id = randomId(); const cid = randomId(); const sourceSlug = githubRepoNameFromPluginName(sourcePlugin.id); const stagedPath = `plugin-source/${sourceSlug}`; const prompt = renderPluginSharePrompt({ action, sourcePlugin, stagedPath }); const metadata = { kind: 'prototype' }; const projectRoot = await ensureProject(PROJECTS_DIR, id, metadata); await copyPluginFolderForProjectContext(sourcePlugin.fsPath, path.join(projectRoot, 'plugin-source', sourceSlug));
+        const now = Date.now(); const id = randomId(); const cid = randomId(); const sourceSlug = githubRepoNameFromPluginName(sourcePlugin.id); const stagedPath = `plugin-source/${sourceSlug}`; const prompt = renderPluginSharePrompt({ sourcePlugin, stagedPath }); const metadata = { kind: 'prototype' }; const projectRoot = await ensureProject(PROJECTS_DIR, id, metadata); await copyPluginFolderForProjectContext(sourcePlugin.fsPath, path.join(projectRoot, 'plugin-source', sourceSlug));
         insertProject(db, { id, name: `${PLUGIN_SHARE_ACTION_LABELS[action]}: ${sourcePlugin.title || sourcePlugin.id}`, skillId: null, designSystemId: null, pendingPrompt: prompt, metadata, createdAt: now, updatedAt: now });
         insertConversation(db, { id: cid, projectId: id, title: null, createdAt: now, updatedAt: now });
         const registry = await loadPluginRegistryView({});
@@ -4889,8 +4348,8 @@ export async function startServer({
     handleProjectInstallFolder: async (req, res) => {
       try { const project = getProject(db, req.params.id); if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found'); const projectBinding = getWorkspaceProjectByProjectId(db, req.params.id); if (!projectBinding?.workspaceId || !projectBinding.createdByWorkspaceMemberId) return sendApiError(res, 409, 'WORKSPACE_PROJECT_UNBOUND', 'project must have an exact workspace owner before installing a plugin'); const installScope = { workspaceId: String(projectBinding.workspaceId), workspaceMemberId: String(projectBinding.createdByWorkspaceMemberId) }; const body = req.body && typeof req.body === 'object' ? req.body : {}; const relativePath = normalizeProjectPluginFolderPath(body.path); const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata); const folder = await resolveProjectChildDirectory(projectRoot, relativePath); const warnings = []; const log = []; let plugin = null; let message = 'Install finished.'; for await (const ev of installPlugin(db, { source: folder, roots: PLUGIN_REGISTRY_ROOTS, allowReplacePlugin: (pluginId) => allowScopedPluginReplace(installScope, pluginId) })) { if (ev.message) log.push(ev.message); if (Array.isArray(ev.warnings)) warnings.splice(0, warnings.length, ...ev.warnings); if (ev.kind === 'success') { plugin = ev.plugin; ensureWorkspaceResource(db, 'plugin', installScope.workspaceId, ev.plugin.id, { visibility: 'personal', resourceState: 'active', createdByWorkspaceMemberId: installScope.workspaceMemberId, updatedByWorkspaceMemberId: installScope.workspaceMemberId }); message = `Installed ${ev.plugin.title}.`; break; } if (ev.kind === 'error') { message = ev.message; break; } } res.status(plugin ? 200 : 400).json({ ok: Boolean(plugin), plugin, warnings, message, log }); } catch (err) { const code = err && err.code; const status = code === 'ENOENT' || code === 'ENOTDIR' ? 404 : 400; sendApiError(res, status, status === 404 ? 'PLUGIN_FOLDER_NOT_FOUND' : 'BAD_REQUEST', String(err?.message || err)); }
     },
-    handleProjectPluginCli: async (req, res, action) => {
-      try { const project = getProject(db, req.params.id); if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found'); const body = req.body && typeof req.body === 'object' ? req.body : {}; const relativePath = normalizeProjectPluginFolderPath(body.path); const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata); const folder = await resolveProjectChildDirectory(projectRoot, relativePath); const subcommand = action === 'publish-github' ? 'publish-repo' : 'open-design-pr'; const timeout = action === 'publish-github' ? 240_000 : 300_000; const result = await execCommandViaLoginShell(OD_NODE_BIN, [OD_BIN, 'plugin', subcommand, folder, '--json'], { timeout }); const payload = result.stdout ? JSON.parse(result.stdout) : null; if (!result.ok || !payload?.ok) return res.status(500).json({ ok: false, code: payload?.error?.label || (action === 'publish-github' ? 'publish-repo-failed' : 'open-design-pr-failed'), message: payload?.error?.stderr || payload?.error?.stdout || (action === 'publish-github' ? 'GitHub repo publish failed.' : 'OpenDesign PR creation failed.'), log: payload?.steps?.map((step) => step.stderr || step.stdout || step.command).filter(Boolean) ?? [result.stderr || result.stdout || `${subcommand} failed`] }); res.json({ ok: true, message: action === 'publish-github' ? (payload.repoUrl ? `Published plugin to ${payload.repoUrl}.` : 'Published plugin to GitHub.') : (payload.prUrl ? `Opened OpenDesign PR flow at ${payload.prUrl}.` : 'Opened OpenDesign PR flow.'), ...(payload.repoUrl ? { url: payload.repoUrl } : {}), ...(payload.prUrl ? { url: payload.prUrl } : {}), log: payload.steps?.map((step) => step.stderr || step.stdout || step.command).filter(Boolean) ?? [] }); } catch (err) { res.status(400).json({ ok: false, message: String(err?.message || err), log: [] }); }
+    handleProjectPluginCli: async (req, res) => {
+      try { const project = getProject(db, req.params.id); if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found'); const body = req.body && typeof req.body === 'object' ? req.body : {}; const relativePath = normalizeProjectPluginFolderPath(body.path); const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata); const folder = await resolveProjectChildDirectory(projectRoot, relativePath); const subcommand = 'publish-repo'; const result = await execCommandViaLoginShell(OD_NODE_BIN, [OD_BIN, 'plugin', subcommand, folder, '--json'], { timeout: 240_000 }); const payload = result.stdout ? JSON.parse(result.stdout) : null; if (!result.ok || !payload?.ok) return res.status(500).json({ ok: false, code: payload?.error?.label || 'publish-repo-failed', message: payload?.error?.stderr || payload?.error?.stdout || 'GitHub repo publish failed.', log: payload?.steps?.map((step) => step.stderr || step.stdout || step.command).filter(Boolean) ?? [result.stderr || result.stdout || `${subcommand} failed`] }); res.json({ ok: true, message: payload.repoUrl ? `Published plugin to ${payload.repoUrl}.` : 'Published plugin to GitHub.', ...(payload.repoUrl ? { url: payload.repoUrl } : {}), log: payload.steps?.map((step) => step.stderr || step.stdout || step.command).filter(Boolean) ?? [] }); } catch (err) { res.status(400).json({ ok: false, message: String(err?.message || err), log: [] }); }
     },
     handleCandidateDraft: async (req, res) => {
       if (!isLocalSameOrigin(req, resolvedPort)) return res.status(403).json({ error: 'cross-origin request rejected' });
@@ -4898,11 +4357,11 @@ export async function startServer({
     },
     handleCandidateShareTask: async (req, res) => {
       if (!isLocalSameOrigin(req, resolvedPort)) return res.status(403).json({ error: 'cross-origin request rejected' });
-      try { const project = getProject(db, req.params.id); if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found'); const body = req.body && typeof req.body === 'object' ? req.body : {}; const action = body.action === 'publish-github' || body.action === 'contribute-open-design' ? body.action : null; if (!action) return sendApiError(res, 400, 'BAD_REQUEST', 'plugin share action is required'); const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata); const draft = await generateSkillPluginDraft(db, projectRoot, req.params.id, req.params.candidateId); if (!draft) return sendApiError(res, 404, 'NOT_FOUND', 'plugin candidate not found'); if (!draft.validation.ok) return res.status(422).json({ ok: false, code: 'plugin-draft-invalid', message: 'Generated plugin draft is invalid.', draft }); const task = pluginShareTaskStore.createAndStart(req.params.id, { action, path: draft.draftPath }, draft.folder); res.status(202).json({ taskId: task.id, action, path: draft.draftPath, status: task.status, startedAt: task.startedAt, draft }); } catch (err) { res.status(400).json({ ok: false, message: String(err?.message || err) }); }
+      try { const project = getProject(db, req.params.id); if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found'); const body = req.body && typeof req.body === 'object' ? req.body : {}; const action = body.action === 'publish-github' ? 'publish-github' : null; if (!action) return sendApiError(res, 400, 'BAD_REQUEST', 'plugin share action is required'); const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata); const draft = await generateSkillPluginDraft(db, projectRoot, req.params.id, req.params.candidateId); if (!draft) return sendApiError(res, 404, 'NOT_FOUND', 'plugin candidate not found'); if (!draft.validation.ok) return res.status(422).json({ ok: false, code: 'plugin-draft-invalid', message: 'Generated plugin draft is invalid.', draft }); const task = pluginShareTaskStore.createAndStart(req.params.id, { action, path: draft.draftPath }, draft.folder); res.status(202).json({ taskId: task.id, action, path: draft.draftPath, status: task.status, startedAt: task.startedAt, draft }); } catch (err) { res.status(400).json({ ok: false, message: String(err?.message || err) }); }
     },
     handleProjectShareTask: async (req, res) => {
       if (!isLocalSameOrigin(req, resolvedPort)) return res.status(403).json({ error: 'cross-origin request rejected' });
-      try { const project = getProject(db, req.params.id); if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found'); const body = req.body && typeof req.body === 'object' ? req.body : {}; const action: any = body.action === 'publish-github' || body.action === 'contribute-open-design' ? body.action : null; if (!action) return sendApiError(res, 400, 'BAD_REQUEST', 'plugin share action is required'); const relativePath = normalizeProjectPluginFolderPath(body.path); const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata); const folder = await resolveProjectChildDirectory(projectRoot, relativePath); const task = pluginShareTaskStore.createAndStart(req.params.id, { action, path: relativePath }, folder); res.status(202).json({ taskId: task.id, action, path: relativePath, status: task.status, startedAt: task.startedAt }); } catch (err) { const code = err && err.code; const status = code === 'ENOENT' || code === 'ENOTDIR' ? 404 : 400; sendApiError(res, status, status === 404 ? 'PLUGIN_FOLDER_NOT_FOUND' : 'BAD_REQUEST', String(err?.message || err)); }
+      try { const project = getProject(db, req.params.id); if (!project) return sendApiError(res, 404, 'PROJECT_NOT_FOUND', 'project not found'); const body = req.body && typeof req.body === 'object' ? req.body : {}; const action = body.action === 'publish-github' ? 'publish-github' : null; if (!action) return sendApiError(res, 400, 'BAD_REQUEST', 'plugin share action is required'); const relativePath = normalizeProjectPluginFolderPath(body.path); const projectRoot = resolveProjectDir(PROJECTS_DIR, req.params.id, project.metadata); const folder = await resolveProjectChildDirectory(projectRoot, relativePath); const task = pluginShareTaskStore.createAndStart(req.params.id, { action, path: relativePath }, folder); res.status(202).json({ taskId: task.id, action, path: relativePath, status: task.status, startedAt: task.startedAt }); } catch (err) { const code = err && err.code; const status = code === 'ENOENT' || code === 'ENOTDIR' ? 404 : 400; sendApiError(res, status, status === 404 ? 'PLUGIN_FOLDER_NOT_FOUND' : 'BAD_REQUEST', String(err?.message || err)); }
     },
   };
 
@@ -6327,17 +5786,6 @@ export async function startServer({
       run.workspaceScope = null;
       design.runs.persistState(run);
     }
-    // Stash the original user prompt + per-turn config so the
-    // langfuse-bridge report path can include them without reaching back
-    // into chatBody across the createChatRunService boundary. Each field
-    // is optional and only set when the chat body actually carried it.
-    const telemetryPrompt = telemetryPromptFromRunRequest(message, currentPrompt);
-    if (
-      !pendingNativeSessionContinue &&
-      typeof telemetryPrompt === 'string'
-    ) {
-      run.userPrompt = telemetryPrompt;
-    }
     if (typeof model === 'string' && model) run.model = model;
     if (typeof reasoning === 'string' && reasoning) run.reasoning = reasoning;
     if (typeof serviceTier === 'string' && serviceTier) run.serviceTier = serviceTier;
@@ -6993,33 +6441,6 @@ export async function startServer({
       const afterSnapshot = await snapshotProjectArtifactsAsync(artifactBaseline.cwd);
       return resolveRunArtifactOutcomeBeforeFinish(afterSnapshot);
     };
-    // Design §10.3. The properties object is the builder's return value
-    // VERBATIM — nothing is spread in or added here, so what the builder's own
-    // tests assert on is exactly what reaches the sink.
-    const emitChatArtifactCaptureTelemetry = (
-      captureRun: { id: string; projectId?: string; analyticsContext?: AnalyticsContext | null },
-      report: CaptureRunChatArtifactsReport,
-    ) => {
-      try {
-        const context = captureRun.analyticsContext ?? null;
-        if (!context || !captureRun.projectId || !design?.analytics?.capture) return;
-        const properties = chatArtifactCaptureResultProps({
-          projectId: captureRun.projectId,
-          runId: captureRun.id,
-          report,
-        });
-        if (!properties) return;
-        design.analytics.capture({
-          eventName: 'chat_artifact_capture_result',
-          context,
-          appVersion: design.getAppVersion?.() ?? 'unknown',
-          properties,
-          insertId: `chat_artifact_capture_result:${captureRun.id}`,
-        });
-      } catch {
-        // Telemetry never changes the turn's outcome.
-      }
-    };
     // Freeze this turn's artifact evidence while the daemon still owns the
     // moment: at the terminal chokepoint, BEFORE the terminal SSE frame goes
     // out and before any client can see the message as done. A snapshot taken
@@ -7060,7 +6481,6 @@ export async function startServer({
           runId: run.id,
           touchedPaths,
         });
-        emitChatArtifactCaptureTelemetry(run, captured);
         // Same chokepoint, same reason (spec §6.3). The image path above froze
         // BYTES here; this freezes the HTML card's RENDERER INPUT here, so the
         // cover render that follows can take its seconds without the file it is
@@ -7647,7 +7067,7 @@ export async function startServer({
             { kind: 'formOverride', content: agentFormOverride },
             // Phase 1 explicitly needs redactedContent for these aggregate prompts:
             // they are the quickest way to inspect the system context sent to the
-            // model when diagnosing Langfuse traces.
+            // model when diagnosing a run from the stored transcript.
             { kind: 'daemonSystemPrompt', content: daemonSystemPrompt },
             { kind: 'runtimeToolPrompt', content: runtimeToolPrompt },
             { kind: 'runContextPrompt', content: runContextPrompt },
@@ -10867,9 +10287,9 @@ export async function startServer({
         onCliReady: () => noteCliReadyAt(),
         onSessionReady: () => noteSessionInitDoneAt(),
         // The prompt boundary for this transport is the `turn/start` write, not
-        // a stdin write that never happens. Marking it keeps the Langfuse
-        // `stdin-write` and `agent-call` spans — and therefore the tool spans
-        // nested under `agent-call` — present on app-server runs.
+        // a stdin write that never happens. Marking it keeps the historical
+        // `stdin-write` and `agent-call` phase boundaries — and therefore the
+        // tool phases nested under `agent-call` — present on app-server runs.
         onPromptSendStart: () => {
           lifecycle.mark('model_call_start');
           lifecycle.mark('stdin_write_start');
@@ -11064,10 +10484,11 @@ export async function startServer({
               runId: run.id,
               taskRunIndex: mapping.taskRunIndex,
               stage: mapping.inputStage,
-              parentObservationId: strategyTaskRunObservationId(
-                strategyTaskAtStart.taskExecutionId,
-                run.id,
-              ),
+              // The Run-level observation root of this task's physical Run.
+              // Kept byte-identical to the aggregator's former
+              // `strategyTaskRunObservationId(taskExecutionId, runId)`, which
+              // the normalized-observation schema and its parent graph read.
+              parentObservationId: `task-run:${strategyTaskAtStart.taskExecutionId}:${run.id}`,
               ...(run.preflightAgentCliVersion
                 ? { agentCliVersion: run.preflightAgentCliVersion }
                 : {}),
@@ -11981,13 +11402,6 @@ export async function startServer({
                   .digest('hex');
                 const meta = {
                   ...chatBody,
-                  // One logical task, several physical Runs. The chain is only
-                  // reassemblable downstream if each Run reports the lineage of
-                  // the Run that caused it.
-                  analyticsHints: {
-                    ...(chatBody.analyticsHints ?? {}),
-                    ...inheritedRunLineageHints(run, chatBody, taskRunIndex),
-                  },
                   projectId: strategyTaskAtStart.projectId,
                   conversationId: strategyTaskAtStart.conversationId,
                   agentId: strategyTaskAtStart.selectedAgentId,
@@ -12389,12 +11803,6 @@ export async function startServer({
         }
         return true;
       },
-    },
-    telemetry: {
-      reportRunCompletionTelemetryFallback,
-      resolveRunProjectKindForAnalytics,
-      runArtifactBaselines,
-      runRetryEventsForAnalytics,
     },
     messages: {
       pinAssistantMessageOnRunCreate,
@@ -12875,7 +12283,6 @@ export async function startServer({
     },
     agents: agentDeps,
     critique: critiqueDeps,
-    openDesignPublicMetadata,
     lifecycle: { isDaemonShuttingDown: () => daemonShuttingDown },
   });
 
@@ -12906,7 +12313,6 @@ export async function startServer({
     appConfig: { readAppConfig },
     validation: validationDeps,
     lifecycle: { isDaemonShuttingDown: () => daemonShuttingDown },
-    telemetry: { reportFinalizedMessage, reportFeedback },
   });
 
   registerStaticSpaFallback(app, staticDir);
@@ -12920,25 +12326,16 @@ export async function startServer({
   //   - `apps/daemon/tests/version-route.test.ts` → expects `{ url, server }`
   return await new Promise((resolve, reject) => {
     let daemonShutdownStarted = false;
-    const clearTerminalTelemetryFallbackTimers = () => {
-      for (const timer of terminalTelemetryFallbackTimers) clearTimeout(timer);
-      terminalTelemetryFallbackTimers.clear();
-    };
     // One-time heal of run events stored before the payload budget existed
     // (storage/message-event-payload-heal.ts). Started once the daemon is
     // listening, never on a request path; stopped with the other background
     // work below.
     let messageEventPayloadHeal: MessageEventPayloadHealHandle | null = null;
     const cleanupDaemonBackgroundWork = () => {
-      stopDiagnosticConfigObserver();
-      stopDiagnosticApiObserver();
-      void automaticDiagnostics?.stop();
       daemonHealth?.markCleanShutdown();
       daemonHealth?.stop();
       void messageEventPayloadHeal?.stop();
-      stopEvidenceDelivery();
-      clearTerminalTelemetryFallbackTimers();
-      telemetry.disposeFatalHandlers();
+      disposeFatalHandlers();
       composioConnectorProvider.stopCatalogRefreshLoop();
       orbitService.stop();
       routineService?.stop();
@@ -12949,7 +12346,6 @@ export async function startServer({
       if (daemonShutdownStarted) return;
       daemonShutdownStarted = true;
       daemonShuttingDown = true;
-      clearTerminalTelemetryFallbackTimers();
       const shutdownGraceMs = resolveChatRunShutdownGraceMs();
       await design.runs.shutdownActive({ graceMs: shutdownGraceMs });
       // Cleanup runs independently of user terminal classification. Give
@@ -12960,7 +12356,6 @@ export async function startServer({
       }
       await terminalService.shutdownActive();
       await browserSessionService.shutdownActive();
-      await design.analytics.shutdown();
     };
     let server;
     try {
@@ -13007,17 +12402,10 @@ export async function startServer({
         }
         resolvedPort = boundPort;
         messageEventPayloadHeal ??= startMessageEventPayloadHeal({ db });
-        // Only once listening: a startup-time fatal report would add lines to
-        // the log tail that packaged startup telemetry samples.
+        // Only once listening, so a startup-time fatal report cannot describe a
+        // daemon that never bound its port.
         daemonHealth?.enableFatalReports();
         daemonHealth?.setAppVersion(currentAppVersion());
-        daemonHealth?.attachSink(({ eventName, properties, insertId }) =>
-          analyticsService.captureSafety({
-            eventName,
-            appVersion: currentAppVersion(),
-            properties,
-            insertId,
-          }));
         // When binding to all interfaces report localhost for local callers;
         // when binding to a specific address (e.g. a Tailscale IP) report that
         // address so remote callers and the sidecar use the correct URL.

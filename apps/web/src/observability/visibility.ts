@@ -17,7 +17,6 @@
 //     doesn't fire on iOS Safari, and `unload` is being deprecated in
 //     Chrome.
 
-import { reportSafetyEvent } from '../analytics/error-tracking';
 
 let installed = false;
 
@@ -48,13 +47,7 @@ export function installVisibilityObserver(): () => void {
     }
     times.lastChange = now;
     times.lastState = document.visibilityState;
-    reportSafetyEvent('client_visibility_change', {
-      to_state: document.visibilityState,
-      // `delta_ms` is how long the *previous* state lasted — useful for
-      // distinguishing "user blinked at a notification" (~500 ms hidden)
-      // from "user left for lunch" (~30 minutes).
-      previous_state_duration_ms: Math.round(delta),
-    });
+    // reportSafetyEvent removed
   };
 
   const onPageHide = (): void => {
@@ -62,10 +55,7 @@ export function installVisibilityObserver(): () => void {
     if (times.lastState === 'visible') {
       times.foregroundMs += now - times.lastChange;
     }
-    reportSafetyEvent('client_session_summary', {
-      page_lifetime_ms: Math.round(now - times.pageStart),
-      foreground_ms: Math.round(times.foregroundMs),
-    });
+    // reportSafetyEvent removed
   };
 
   document.addEventListener('visibilitychange', onVisibilityChange);

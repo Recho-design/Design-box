@@ -16,7 +16,6 @@
 // stuck in working state forever". After this lands those reports become
 // data instead of GitHub anecdotes.
 
-import { reportSafetyEvent } from '../analytics/error-tracking';
 
 const STUCK_AFTER_MS = 5 * 60 * 1000; // 5 minutes with no progress
 
@@ -66,12 +65,7 @@ export function trackRunTerminal(runId: string, terminalState: string): void {
   // terminal arrival is still useful to know about, though, so emit a
   // recovery event so the dashboard can pair the two.
   if (entry.emitted) {
-    reportSafetyEvent('client_run_unstuck', {
-      run_id: runId,
-      terminal_state: terminalState,
-      total_duration_ms: Date.now() - entry.startedAt,
-      ...entry.context,
-    });
+    // reportSafetyEvent removed
   }
 }
 
@@ -91,12 +85,7 @@ function emitStuck(runId: string): void {
   if (!entry) return;
   if (entry.emitted) return;
   entry.emitted = true;
-  reportSafetyEvent('client_run_stuck', {
-    run_id: runId,
-    duration_since_last_progress_ms: Date.now() - entry.lastProgressAt,
-    duration_since_start_ms: Date.now() - entry.startedAt,
-    ...entry.context,
-  });
+  // reportSafetyEvent removed
 }
 
 // Test-only — flush internal state between cases.

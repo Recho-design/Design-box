@@ -1,7 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { TrackingProjectKind } from '@open-design/contracts/analytics';
-import { useAnalytics } from '../analytics/provider';
-import { trackFileManagerClick } from '../analytics/events';
 import { useT } from '../i18n';
 import { LIBRARY_UI_VISIBLE } from '../features/libraryUi';
 import type { Dict } from '../i18n/types';
@@ -50,7 +47,7 @@ export interface DesignFilesNavState {
 
 interface Props {
   projectId: string;
-  projectKind: TrackingProjectKind;
+  projectKind: string;
   filesRefreshKey?: number;
   /** Read-only viewer of a team-shared project: disables project mutations. */
   viewerOnly?: boolean;
@@ -354,17 +351,6 @@ const USEFUL_TIPS: ReadonlyArray<{ key: keyof Dict; url?: string }> = [
   { key: 'designFiles.usefulInfoTip14' },
   { key: 'designFiles.usefulInfoTip15' },
   { key: 'designFiles.usefulInfoTip5' },
-  { key: 'designFiles.usefulInfoTip6', url: 'https://discord.gg/mHAjSMV6gz' },
-  { key: 'designFiles.usefulInfoTip7', url: 'https://github.com/nexu-io/open-design' },
-  { key: 'designFiles.usefulInfoTip8', url: 'https://x.com/OpenDesignHQ' },
-  { key: 'designFiles.usefulInfoTip16', url: 'https://www.threads.com/@opendesign.ai' },
-  { key: 'designFiles.usefulInfoTip17', url: 'https://www.instagram.com/opendesign.ai/' },
-  { key: 'designFiles.usefulInfoTip18', url: 'https://www.youtube.com/@Open-Design-ai' },
-  { key: 'designFiles.usefulInfoTip19', url: 'https://www.linkedin.com/company/open-design-ai/' },
-  {
-    key: 'designFiles.usefulInfoTip20',
-    url: 'https://www.xiaohongshu.com/user/profile/691effad000000003002978f',
-  },
 ];
 const TIP_TYPE_MS = 32; // per-character typing speed
 const TIP_HOLD_MS = 3800; // pause on a fully-typed tip before advancing
@@ -503,8 +489,7 @@ export function DesignFilesPanel({
 }: Props) {
   const { workspaceContext } = useProjectCollabContext();
   const t = useT();
-  const analytics = useAnalytics();
-  // The page the run is currently building, if it has produced one. Only HTML
+    // The page the run is currently building, if it has produced one. Only HTML
   // qualifies: there is nothing to watch take shape in a markdown file or an
   // image, and swapping the preview for one mid-run would be a downgrade.
   const buildPreviewName = useMemo(
@@ -521,10 +506,7 @@ export function DesignFilesPanel({
   // A long run must not trap the user away from their files. The topbar's
   // preview switch flips this both ways; it resets when the next run starts.
   const [buildPreviewDismissed, setBuildPreviewDismissed] = useState(false);
-  useEffect(() => {
-    if (running) setBuildPreviewDismissed(false);
-  }, [running]);
-  const [draggingFiles, setDraggingFiles] = useState(false);
+    const [draggingFiles, setDraggingFiles] = useState(false);
   const [dropReadError, setDropReadError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
   const [hover, setHover] = useState<string | null>(null);
@@ -1397,14 +1379,7 @@ export function DesignFilesPanel({
                   role="menuitem"
                   disabled={createDesignSystemFromProjectBusy}
                   onClick={() => {
-                    trackFileManagerClick(analytics.track, {
-                      page_name: 'file_manager',
-                      area: 'file_manager',
-                      element: 'create_design_system_from_project',
-                      project_id: projectId,
-                      project_kind: projectKind,
-                    });
-                    setProjectMenuOpen(false);
+                                        setProjectMenuOpen(false);
                     onCreateDesignSystemFromProject();
                   }}
                 >
@@ -1418,14 +1393,7 @@ export function DesignFilesPanel({
                   role="menuitem"
                   disabled={duplicateProjectBusy}
                   onClick={() => {
-                    trackFileManagerClick(analytics.track, {
-                      page_name: 'file_manager',
-                      area: 'file_manager',
-                      element: 'duplicate_project',
-                      project_id: projectId,
-                      project_kind: projectKind,
-                    });
-                    setProjectMenuOpen(false);
+                                        setProjectMenuOpen(false);
                     onDuplicateProject();
                   }}
                 >
@@ -1557,14 +1525,7 @@ export function DesignFilesPanel({
                 <button
                   type="button"
                   onClick={() => {
-                    trackFileManagerClick(analytics.track, {
-                      page_name: 'file_manager',
-                      area: 'file_manager',
-                      element: 'download_as_zip',
-                      project_id: projectId,
-                      project_kind: projectKind,
-                    });
-                    void handleBatchDownload();
+                                        void handleBatchDownload();
                   }}
                   title={t('designFiles.downloadSelected', { n: selected.size })}
                 >
@@ -1821,17 +1782,6 @@ export function DesignFilesPanel({
                             }
                           >
                             {sharingFolder === `publish:${folder.path}` ? 'Sending…' : 'Publish repo'}
-                          </button>
-                          <button
-                            type="button"
-                            className="df-plugin-install"
-                            data-testid={`design-plugin-folder-contribute-${folder.path}`}
-                            disabled={actionBusy || installingFolder !== null || sharingFolder !== null}
-                            onClick={() =>
-                              void handlePluginFolderAgentAction(folder.path, 'contribute')
-                            }
-                          >
-                            {sharingFolder === `contribute:${folder.path}` ? 'Sending…' : 'OpenDesign PR'}
                           </button>
                         </div>
                       ) : null}

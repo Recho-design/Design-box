@@ -32,17 +32,10 @@ import {
 } from './run-restart-recovery.js';
 import { classifyRunSteering, writeSteeringUserMessage } from './run-steering.js';
 import {
-  beginRunTelemetryDelivery,
-  finalizeRunTelemetryDelivery,
-  recordRunTelemetryDeliveryAttempt,
-} from '../observability/delivery-state.js';
-import {
-  beginPosthogTerminalDelivery,
-  finalizePosthogTerminalDelivery,
   recordIgnoredTerminalClaim,
   terminalLifecycleSnapshot,
   terminalPersistenceErrorType,
-} from '../observability/run-terminal-lifecycle.js';
+} from './run-terminal-integrity.js';
 import { mintRunDoneKey } from './run-done-key.js';
 import { normalizeTelemetryAppVersionInfo } from '../app-version.js';
 
@@ -623,7 +616,6 @@ function durableRunState(run) {
     ...(run.analyticsTelemetry ? { analyticsTelemetry: run.analyticsTelemetry } : {}),
     ...(run.promptTelemetry ? { promptTelemetry: run.promptTelemetry } : {}),
     ...(run.promptCache ? { promptCache: run.promptCache } : {}),
-    ...(run.analyticsRecovery ? { analyticsRecovery: run.analyticsRecovery } : {}),
     ...(run.externalPluginAnalytics
       ? { externalPluginAnalytics: run.externalPluginAnalytics }
       : {}),
@@ -667,10 +659,6 @@ function durableRunState(run) {
     ...(run.odNextTaskInputSnapshot
       ? { odNextTaskInputSnapshot: run.odNextTaskInputSnapshot }
       : {}),
-    ...(typeof run.langfuseCompletedAt === 'number'
-      ? { langfuseCompletedAt: run.langfuseCompletedAt }
-      : {}),
-    ...(run.telemetryDelivery ? { telemetryDelivery: run.telemetryDelivery } : {}),
     ...(run.terminalLifecycle ? { terminalLifecycle: run.terminalLifecycle } : {}),
   };
 }
@@ -1227,7 +1215,6 @@ export function createChatRunService({
       terminalIntegrity:
         lifecycleEvidence?.terminalIntegrity ?? run.terminalIntegrity ?? 'canonical',
       terminalPersistence,
-      posthogDelivery: lifecycleEvidence?.posthogDelivery,
       duplicateTerminalCount: lifecycleEvidence?.duplicateTerminalCount,
       lateTerminalCount: lifecycleEvidence?.lateTerminalCount,
     });
@@ -1243,7 +1230,6 @@ export function createChatRunService({
         terminalTrigger: run.terminalTrigger ?? null,
         terminalIntegrity:
           run.terminalLifecycle?.terminalIntegrity ?? run.terminalIntegrity ?? 'canonical',
-        posthogDelivery: run.terminalLifecycle?.posthogDelivery,
         duplicateTerminalCount: run.terminalLifecycle?.duplicateTerminalCount,
         lateTerminalCount: run.terminalLifecycle?.lateTerminalCount,
         terminalPersistence: {
@@ -1254,87 +1240,6 @@ export function createChatRunService({
     }
     if (!result.ok) observeDiagnosticLifecycle(run, 'terminal_persistence_failure', Date.now(), result.errorType ?? 'unknown');
     return result;
-  };
-
-  const setAnalyticsRecovery = (run, recovery) => {
-    if (!run || !recovery) return;
-    run.analyticsRecovery = {
-      context: recovery.context,
-      properties: recovery.properties,
-      insertId: recovery.insertId,
-    };
-    persistState(run);
-  };
-
-  const markAnalyticsCompleted = (run) => {
-    if (!run?.analyticsRecovery) return;
-    run.analyticsRecovery.completedAt = Date.now();
-    persistState(run);
-  };
-
-  const beginAnalyticsDelivery = (run) => {
-    if (!run?.terminalLifecycle) return null;
-    run.terminalLifecycle = beginPosthogTerminalDelivery(run.terminalLifecycle);
-    persistState(run);
-    return run.terminalLifecycle.posthogDelivery;
-  };
-
-  const finalizeAnalyticsDelivery = (run, delivery) => {
-    if (!run?.terminalLifecycle || !delivery) return null;
-    run.terminalLifecycle = finalizePosthogTerminalDelivery(
-      run.terminalLifecycle,
-      delivery,
-    );
-    persistState(run);
-    return run.terminalLifecycle.posthogDelivery;
-  };
-
-  const beginTelemetryDelivery = (run) => {
-    if (!run) return null;
-    run.telemetryDelivery = beginRunTelemetryDelivery(
-      run.telemetryDelivery,
-      run.id,
-    );
-    persistState(run);
-    return run.telemetryDelivery;
-  };
-
-  const finalizeTelemetryDelivery = (run, delivery) => {
-    if (!run || !delivery) return null;
-    run.telemetryDelivery = finalizeRunTelemetryDelivery(
-      run.telemetryDelivery,
-      run.id,
-      delivery,
-    );
-    if (typeof run.telemetryDelivery.finalizedAt === 'number') {
-      run.langfuseCompletedAt = run.telemetryDelivery.finalizedAt;
-    } else {
-      delete run.langfuseCompletedAt;
-    }
-    persistState(run);
-    return run.telemetryDelivery;
-  };
-
-  const recordTelemetryDeliveryAttempt = (run) => {
-    if (!run) return null;
-    run.telemetryDelivery = recordRunTelemetryDeliveryAttempt(
-      run.telemetryDelivery,
-      run.id,
-    );
-    persistState(run);
-    return run.telemetryDelivery;
-  };
-
-  // Compatibility alias for older in-process callers. New delivery paths use
-  // the explicit begin/finalize pair so a daemon crash cannot be confused
-  // with a terminal network failure.
-  const markLangfuseCompleted = (run) => {
-    if (!run) return;
-    finalizeTelemetryDelivery(run, {
-      langfuse_expected: true,
-      langfuse_delivery_status: 'accepted',
-      langfuse_attempt_count: 1,
-    });
   };
 
   const setDeliverableValidation = (run, result) => {
@@ -2610,14 +2515,6 @@ export function createChatRunService({
     emit,
     persistState,
     noteMediaTaskFailure,
-    setAnalyticsRecovery,
-    beginAnalyticsDelivery,
-    finalizeAnalyticsDelivery,
-    markAnalyticsCompleted,
-    beginTelemetryDelivery,
-    recordTelemetryDeliveryAttempt,
-    finalizeTelemetryDelivery,
-    markLangfuseCompleted,
     setDeliverableValidation,
     finish,
     fail,

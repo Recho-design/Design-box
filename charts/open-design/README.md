@@ -1,7 +1,7 @@
 <!--- app-name: OpenDesign -->
 
 ## Introduction
-This chart bootstraps an [OpenDesign](https://github.com/nexu-io/open-design) deployment on a [Kubernetes](https://kubernetes.io) cluster using the [Helm](https://helm.sh) package manager.
+This chart bootstraps an [OpenDesign](https://github.com/Recho-design/Design-box) deployment on a [Kubernetes](https://kubernetes.io) cluster using the [Helm](https://helm.sh) package manager.
 
 ## Prerequisites
 - Kubernetes 1.23+

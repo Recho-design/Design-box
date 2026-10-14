@@ -1,13 +1,13 @@
 import type { WhatsNewContent, WhatsNewLocaleContent } from '@open-design/contracts';
 
-// Fetches the post-update "what's new" highlight from a single hosted document
-// on a dedicated R2 bucket. Operators edit that one file after a release; the
-// document carries an `id` that drives the home card's once-per-highlight
-// behavior (see apps/web/src/lib/whats-new.ts). This service does not know
-// about release channels or the running version — content identity is the
-// only thing that matters. A missing, unreachable, or malformed document
-// resolves to `{ id: null, content: null }`; this endpoint must never fail the
-// home surface.
+// Fetches the post-update "what's new" highlight from a single document hosted
+// by whoever operates this deployment (see `whatsNewSourceUrl`). The document
+// carries an `id` that drives the home card's once-per-highlight behavior (see
+// apps/web/src/lib/whats-new.ts). This service does not know about release
+// channels or the running version — content identity is the only thing that
+// matters, and with no configured source there is nothing to show. A missing,
+// unreachable, or malformed document resolves to `{ id: null, content: null }`;
+// this endpoint must never fail the home surface.
 
 export interface WhatsNewReadResult {
   id: string | null;
@@ -23,19 +23,8 @@ export interface WhatsNewServiceOptions {
 }
 
 export interface WhatsNewService {
-  readWhatsNew(channel: string): Promise<WhatsNewReadResult>;
+  readWhatsNew(): Promise<WhatsNewReadResult>;
 }
-
-/** The dedicated, hardcoded highlights document. Operators update this file. */
-export const DEFAULT_WHATS_NEW_URL = 'https://whatsnew.open-design.ai/whats-new.json';
-
-/**
- * The post-update card is a release feature. Only real release channels fetch
- * the hosted document; development/CI builds resolve to no card so the card
- * never intrudes on tests or unreleased builds. `OD_WHATS_NEW_URL` opts any
- * channel in (used by e2e fixtures that exercise the card on purpose).
- */
-const WHATS_NEW_RELEASE_CHANNELS = new Set(['beta', 'prerelease', 'preview', 'stable']);
 
 // Short enough that an operator's edit reaches users on their next Home visit
 // without a long stale window, long enough that Home activations do not hammer
@@ -45,14 +34,15 @@ const WHATS_NEW_TIMEOUT_MS = 4_000;
 
 /**
  * The document URL, or null when this build must not show the card.
- * `OD_WHATS_NEW_URL` overrides it for local fixtures and tests (e.g. a
- * tools-serve endpoint) regardless of channel; otherwise the dedicated R2
- * object is used only on release channels.
+ *
+ * This fork publishes no hosted highlights document, so there is deliberately
+ * no default source: nothing is fetched unless the deployment opts in with
+ * `OD_WHATS_NEW_URL` (local fixtures, tests, or a self-hosted document). With no
+ * source the card is simply absent — never an error.
  */
-export function whatsNewSourceUrl(env: NodeJS.ProcessEnv, channel: string): string | null {
+export function whatsNewSourceUrl(env: NodeJS.ProcessEnv): string | null {
   const override = env.OD_WHATS_NEW_URL?.trim();
-  if (override) return override;
-  return WHATS_NEW_RELEASE_CHANNELS.has(channel) ? DEFAULT_WHATS_NEW_URL : null;
+  return override && override.length > 0 ? override : null;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -130,11 +120,11 @@ export function createWhatsNewService({
   let cache: { key: string; result: WhatsNewReadResult } | null = null;
   let inflight: Promise<WhatsNewReadResult> | null = null;
 
-  async function readWhatsNew(channel: string): Promise<WhatsNewReadResult> {
-    const sourceUrl = whatsNewSourceUrl(env, channel);
+  async function readWhatsNew(): Promise<WhatsNewReadResult> {
+    const sourceUrl = whatsNewSourceUrl(env);
     if (sourceUrl == null) {
-      // Development/CI builds (no release channel, no override) never show the
-      // card and never reach out to the network.
+      // No configured source: never show the card and never reach out to the
+      // network.
       return { id: null, content: null, fetchedAt: now(), stale: false };
     }
     const cacheKey = sourceUrl;

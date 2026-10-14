@@ -11,9 +11,8 @@ import {
   resolveWhatsNewPrompt,
   whatsNewNotesFromBody,
 } from '../lib/whats-new';
-import { useAnalytics, useAppVersion } from '../analytics/provider';
-import { isResolvedAppVersion } from '../analytics/app-version';
-import { trackWhatsNewPopupClick, trackWhatsNewPopupSurfaceView } from '../analytics/events';
+import { useAppVersion } from '../runtime/app-version';
+import { isResolvedAppVersion } from '../runtime/app-version';
 import styles from './WhatsNewPopup.module.css';
 
 // Post-update highlights dialog, shown once per highlight on the home surface
@@ -30,7 +29,6 @@ import styles from './WhatsNewPopup.module.css';
 // (see ./UpdaterPopup.tsx) — this surface must never claim to install anything.
 
 // Fallback for the CTA when the highlight document omits an explicit link.
-const RELEASES_INDEX_URL = 'https://github.com/nexu-io/open-design/releases';
 
 /**
  * The version this dialog is allowed to state, or null when nothing real can
@@ -73,8 +71,7 @@ type CardModel = {
 // `page_name: 'home'` analytics on this flag instead of on mount alone.
 export function WhatsNewPopup({ active }: { active: boolean }) {
   const { t, locale } = useI18n();
-  const analytics = useAnalytics();
-  const hookAppVersion = useAppVersion();
+    const hookAppVersion = useAppVersion();
   const [card, setCard] = useState<CardModel | null>(null);
   const surfaceTrackedRef = useRef(false);
   // Flips only once a decision is actually REACHED, never merely when a fetch
@@ -103,7 +100,7 @@ export function WhatsNewPopup({ active }: { active: boolean }) {
         headline: localized.title,
         notes: whatsNewNotesFromBody(localized.body),
         imageUrl: info.content.imageUrl ?? null,
-        linkUrl: localized.linkUrl ?? RELEASES_INDEX_URL,
+        linkUrl: localized.linkUrl ?? '',
         ctaLabel: localized.ctaLabel,
       });
     });
@@ -115,17 +112,7 @@ export function WhatsNewPopup({ active }: { active: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
-  useEffect(() => {
-    if (!active || card == null || appVersion == null || surfaceTrackedRef.current) return;
-    surfaceTrackedRef.current = true;
-    trackWhatsNewPopupSurfaceView(analytics.track, {
-      page_name: 'home',
-      area: 'whats_new_popup',
-      app_version: appVersion,
-      has_release_notes: true,
-    });
-  }, [active, analytics.track, appVersion, card]);
-
+  
   // Every close path — the Close button, the backdrop, Escape — spends the
   // once-per-highlight dialog. Unlike the non-modal toast this replaced, a
   // focus-trapping modal cannot receive a stray Escape aimed at other UI, so
@@ -133,29 +120,15 @@ export function WhatsNewPopup({ active }: { active: boolean }) {
   const dismiss = useCallback(() => {
     if (card == null || appVersion == null) return;
     markWhatsNewSeen(card.id);
-    trackWhatsNewPopupClick(analytics.track, {
-      page_name: 'home',
-      area: 'whats_new_popup',
-      element: 'dismiss',
-      action: 'dismiss',
-      app_version: appVersion,
-    });
-    setCard(null);
-  }, [analytics.track, appVersion, card]);
+        setCard(null);
+  }, [ appVersion, card]);
 
   const openLink = useCallback(() => {
     if (card == null || appVersion == null) return;
     markWhatsNewSeen(card.id);
-    trackWhatsNewPopupClick(analytics.track, {
-      page_name: 'home',
-      area: 'whats_new_popup',
-      element: 'see_whats_new',
-      action: 'open_link',
-      app_version: appVersion,
-    });
-    void openExternalUrl(card.linkUrl);
+        void openExternalUrl(card.linkUrl);
     setCard(null);
-  }, [analytics.track, appVersion, card]);
+  }, [ appVersion, card]);
 
   // `appVersion == null` means neither the hook nor the document can name a
   // version yet; the dialog waits rather than titling itself with a guess.

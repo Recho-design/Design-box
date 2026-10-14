@@ -1237,12 +1237,12 @@ function checkCrossAppImportsOnce(): Promise<boolean> {
 
 // Only the internal run-creation service may start a physical Run.
 //
-// The run analytics lifecycle is installed there, once, for every Run. Four
+// The local run observers are installed there, once, for every Run. Four
 // daemon-internal callers used to reach past it and call the run registry
-// directly; each of those Runs reported no `run_created` and no `run_finished`,
-// and nothing said so (OPEND-2365). The service's `start` now requires the
-// caller to declare its analytics identity, but that only binds callers who go
-// through it — this check is what keeps the bypass from coming back.
+// directly; each of those Runs silently skipped its observers (OPEND-2365).
+// The service's `start` now requires the caller to supply the Run's own facts,
+// but that only binds callers who go through it — this check is what keeps the
+// bypass from coming back.
 const RUN_START_BYPASS_ALLOWLIST = new Set([
   "apps/daemon/src/services/internal-run-service.ts",
 ]);
@@ -1264,8 +1264,8 @@ async function checkRunStartChokePoint(): Promise<boolean> {
 
   if (violations.length > 0) {
     console.error("Run start choke-point violations found:");
-    console.error("Start physical Runs through `internalRunCreation.start(run, analytics, starter)`");
-    console.error("so the Run analytics lifecycle is installed. See AGENTS.md -> Starting a physical Run.");
+    console.error("Start physical Runs through `internalRunCreation.start(run, facts, starter)`");
+    console.error("so the Run's local observers are installed. See AGENTS.md -> Starting a physical Run.");
     for (const violation of violations) console.error(`- ${violation}`);
     return false;
   }

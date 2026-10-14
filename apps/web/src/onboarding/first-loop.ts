@@ -12,11 +12,6 @@
 // later project can never close another project's loop; a plain project with
 // no ledger is always a silent no-op. Session-only and storage-denied-safe.
 
-import type {
-  OnboardingCompletedProps,
-  TrackingOnboardingFirstLoopStep,
-  TrackingOnboardingProductType,
-} from '@open-design/contracts/analytics';
 import type { OnboardingEntry } from './onboarding-entry';
 
 type Track = (event: string, properties: Record<string, unknown>) => void;
@@ -58,12 +53,12 @@ function readEntry(projectId: string): OnboardingEntry | null {
   }
 }
 
-function readSteps(projectId: string): TrackingOnboardingFirstLoopStep[] {
+function readSteps(projectId: string): string[] {
   try {
     const raw = window.sessionStorage.getItem(STEPS_KEY(projectId));
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
     return Array.isArray(parsed)
-      ? (parsed.filter((s) => typeof s === 'string') as TrackingOnboardingFirstLoopStep[])
+      ? (parsed.filter((s) => typeof s === 'string') as string[])
       : [];
   } catch {
     return [];
@@ -77,37 +72,4 @@ function readSteps(projectId: string): TrackingOnboardingFirstLoopStep[] {
  * `delivered` for the project — with every step observed so far, then clears
  * the ledger so post-completion activity can't re-open or grow it.
  */
-export function recordFirstLoopStep(
-  track: Track,
-  step: TrackingOnboardingFirstLoopStep,
-  projectId: string,
-): void {
-  if (!projectId) return;
-  const entry = readEntry(projectId);
-  if (!entry) return;
-  let steps: TrackingOnboardingFirstLoopStep[];
-  try {
-    steps = readSteps(projectId);
-    if (!steps.includes(step)) {
-      steps = [...steps, step];
-      window.sessionStorage.setItem(STEPS_KEY(projectId), JSON.stringify(steps));
-    }
-    if (step !== 'delivered') return;
-    if (window.sessionStorage.getItem(DONE_KEY(projectId)) === '1') return;
-    window.sessionStorage.setItem(DONE_KEY(projectId), '1');
-    // Loop closed: drop the entry + steps so any later share/export in this
-    // project is a silent no-op and the ledger stops growing. The DONE flag
-    // stays as a tombstone against races.
-    window.sessionStorage.removeItem(ENTRY_KEY(projectId));
-    window.sessionStorage.removeItem(STEPS_KEY(projectId));
-  } catch {
-    return;
-  }
-  const props: OnboardingCompletedProps = {
-    entry_source: entry.source,
-    product_type: entry.productType as TrackingOnboardingProductType,
-    recommendation_id: entry.recommendationId,
-    completed_steps: steps,
-  };
-  track('onboarding_completed', props as unknown as Record<string, unknown>);
-}
+export function recordFirstLoopStep(...args: any[]): void {}

@@ -54,18 +54,10 @@ import {
 import { createPortal } from 'react-dom';
 import historyStyles from './chat/ConversationHistoryDock.module.css';
 import { hasOdCard, OD_NEXT_STRATEGY_ID, type ProjectMediaTask } from '@open-design/contracts';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackChatPanelClick,
-  trackMessageQueueClick,
-  trackRunFailedToastSurfaceView,
-  trackRunRecoveryActionClick,
-  trackRunRecoveryActionSurfaceView,
-} from '../analytics/events';
 import {
   buildRecoveryTaskAnalytics,
   runAgentProviderId,
-} from '../analytics/run-task';
+} from '../runtime/run-task';
 import { setChatCorrelation } from '../observability/chat-context';
 import {
   chatSurfaceSample,
@@ -108,10 +100,6 @@ import type {
   RunContextSelection,
   WorkspaceContextItem,
 } from '@open-design/contracts';
-import type {
-  TrackingProjectKind,
-  TrackingRunRecoveryActionType,
-} from '@open-design/contracts/analytics';
 import { isDesignSystemWorkspacePrompt } from '../design-system-auto-prompt';
 import {
   isTodoWriteToolName,
@@ -165,13 +153,14 @@ import {
   RunErrorCard,
   RunErrorCardAction,
 } from './chat/RunErrorCard';
-import { SupportDialog } from './chat/SupportDialog';
 import { Toast } from './Toast';
-import { supportChannels } from './chat/support-channels';
 import { ExportLogsAction } from './chat/ExportLogsAction';
 import type { RecoveryActionBlockReason } from '../runtime/chat/recovery-gating';
 import { repoConnectCopy } from './design-system-github-evidence';
 import { isRenderableSketchJson, SketchPreview } from './SketchPreview';
+
+type TrackingProjectKind = string;
+type TrackingRunRecoveryActionType = string;
 import type { SettingsSection } from './SettingsDialog';
 
 type TranslateFn = (key: keyof Dict, vars?: Record<string, string | number>) => string;
@@ -1284,8 +1273,7 @@ export function ChatPane({
 }: Props) {
   const { workspaceContext } = useProjectCollabContext();
   const { t, locale } = useI18n();
-  const analytics = useAnalytics();
-  const displayMessages = useMemo(
+    const displayMessages = useMemo(
     () => foldStrategyTaskTurns(
       messages.filter((message) => !shouldHideEmptyBrandAssistantMessage(message, projectMetadata)),
     ),
@@ -2090,7 +2078,6 @@ export function ChatPane({
   const errorCardOwnerId =
     !accessErrorCopy && retryAssistant && failedRunErrorEvent ? retryAssistant.id : null;
   const showRetry = Boolean(retryAssistant && onRetry);
-  const [supportDialogOpen, setSupportDialogOpen] = useState(false);
   const visibleRecoveryActionTypes = useMemo(() => {
     const actions: TrackingRunRecoveryActionType[] = [];
     if (!displayError) return actions;
@@ -2125,30 +2112,14 @@ export function ChatPane({
       const key = `${props.recovery_action_instance_id}:surface`;
       if (runRecoverySurfaceKeysRef.current.has(key)) continue;
       runRecoverySurfaceKeysRef.current.add(key);
-      trackRunRecoveryActionSurfaceView(analytics.track, {
-        page_name: 'chat_panel',
-        area: 'chat_panel',
-        element: 'run_recovery_action',
-        ...props,
-      });
-    }
-  }, [analytics.track, recoveryAnalyticsProps, retryAssistant, visibleRecoveryActionTypes]);
+          }
+  }, [ recoveryAnalyticsProps, retryAssistant, visibleRecoveryActionTypes]);
   const trackRecoveryClick = useCallback((
     assistantMessage: ChatMessage,
     actionType: TrackingRunRecoveryActionType,
     target?: { agentProviderId?: string; modelId?: string },
   ) => {
-    trackRunRecoveryActionClick(analytics.track, {
-      page_name: 'chat_panel',
-      area: 'chat_panel',
-      element: 'run_recovery_action',
-      ...recoveryAnalyticsProps(assistantMessage, actionType),
-      ...(target?.agentProviderId
-        ? { target_agent_provider_id: target.agentProviderId }
-        : {}),
-      ...(target?.modelId ? { target_model_id: target.modelId } : {}),
-    });
-  }, [analytics.track, recoveryAnalyticsProps]);
+      }, [ recoveryAnalyticsProps]);
   useEffect(() => {
     if (!displayError || !failedRunErrorEvent?.code || !retryAssistant) return;
     /*
@@ -2167,35 +2138,9 @@ export function ChatPane({
     if (runFailedToastSurfaceKeysRef.current.has(key)) return;
     runFailedToastSurfaceKeysRef.current.add(key);
 
-    trackRunFailedToastSurfaceView(analytics.track, {
-      page_name: 'chat_panel',
-      area: 'chat_panel',
-      element: 'run_failed_toast',
-      error_code: failedRunErrorEvent.code,
-      /*
-       * 卡上那句话**到底是哪一句**,以及它是不是兜底那句。
-       *
-       * `error_code` 回答的是「daemon 说这是什么错」,回答不了「用户读到了什么」——
-       * 这两件事之间隔着一张映射表,而映射表**总会少一行**
-       * (`resolveRunErrorCardDescription` 的注释把这件事写死了:表可以短一行,
-       * 判据不能)。少那一行的时候用户看到的是一句空洞的「任务失败了」,
-       * 这正是最该被量出来的一格。
-       *
-       * 判据现成:`runFailureUi.messageKey` 为 null 就是「表里没有这条文案」
-       * (`run-failure-ui.ts` 的 `RunErrorCardDescription`)。
-       * 兜底那一格**必须有自己的值而不是缺字段** —— 缺了,兜底率的分母就没了。
-       */
-      message_key: runFailureUi?.messageKey ?? 'generic_fallback',
-      failure_category: failedRunErrorEvent.failureCategory ?? 'unknown',
-      project_id: projectId ?? '',
-      project_kind: projectKindForTracking,
-      conversation_id: activeConversationId,
-      assistant_message_id: retryAssistant.id,
-      run_id: retryAssistant.runId ?? null,
-    });
-  }, [
+      }, [
     activeConversationId,
-    analytics.track,
+    
     displayError,
     failedRunErrorEvent?.code,
     failedRunErrorEvent?.failureCategory,
@@ -3744,12 +3689,7 @@ export function ChatPane({
           setShowConvList((v) => {
             const next = !v;
             if (next) {
-              trackChatPanelClick(analytics.track, {
-                page_name: 'chat_panel',
-                area: 'chat_panel',
-                element: 'history',
-              });
-            }
+                          }
             return next;
           });
         }}
@@ -3792,12 +3732,7 @@ export function ChatPane({
                 disabled={newConversationDisabled}
                 onClick={() => {
                   if (newConversationDisabled) return;
-                  trackChatPanelClick(analytics.track, {
-                    page_name: 'chat_panel',
-                    area: 'chat_panel',
-                    element: 'new_chat',
-                  });
-                  onNewConversation();
+                                    onNewConversation();
                   setShowConvList(false);
                 }}
               >
@@ -4083,17 +4018,6 @@ export function ChatPane({
                     actions={(
                       <>
                         {/* OPEND-2807: two standing actions and one runtime action. */}
-                        <RunErrorCardAction
-                          type="button"
-                          className="od-tooltip"
-                          variant="secondary"
-                          data-testid="chat-error-contact-support"
-                          data-tooltip={t('chat.runError.contactSupportCta')}
-                          onClick={() => setSupportDialogOpen(true)}
-                        >
-                          <Icon name="headset" size={11} />
-                          {t('chat.runError.contactSupportCta')}
-                        </RunErrorCardAction>
                         <ExportLogsAction />
                         {showRetry && retryAssistant && onRetry ? (
                           <RunErrorCardAction
@@ -4102,8 +4026,7 @@ export function ChatPane({
                             data-testid="chat-error-retry"
                             disabled={recoveryActionsDisabled}
                             onClick={() => {
-                              trackRecoveryClick(retryAssistant, 'manual_retry');
-                              onRetry(retryAssistant, 'manual_retry');
+                                                            onRetry(retryAssistant, 'manual_retry');
                             }}
                           >
                             <Icon name="refresh" size={11} />
@@ -4196,25 +4119,11 @@ export function ChatPane({
               items={queuedItems}
               editingId={editingQueuedSendId}
               onEdit={(item) => {
-                trackMessageQueueClick(analytics.track, {
-                  page_name: 'chat_panel',
-                  area: 'message_queue',
-                  element: 'edit',
-                  project_id: projectId ?? '',
-                  queue_length: queuedItems.length,
-                });
-                restoreQueuedSendToComposer(item);
+                                restoreQueuedSendToComposer(item);
               }}
               onRemove={onRemoveQueuedSend
                 ? (id) => {
-                    trackMessageQueueClick(analytics.track, {
-                      page_name: 'chat_panel',
-                      area: 'message_queue',
-                      element: 'delete',
-                      project_id: projectId ?? '',
-                      queue_length: queuedItems.length,
-                    });
-                    onRemoveQueuedSend(id);
+                                        onRemoveQueuedSend(id);
                   }
                 : undefined}
               onReorder={onReorderQueuedSends}
@@ -4225,14 +4134,7 @@ export function ChatPane({
                  surface no longer emits `send_now` at all. */
               onSendNow={onSendQueuedNow
                 ? (id) => {
-                    trackMessageQueueClick(analytics.track, {
-                      page_name: 'chat_panel',
-                      area: 'message_queue',
-                      element: 'steer',
-                      project_id: projectId ?? '',
-                      queue_length: queuedItems.length,
-                    });
-                    onSendQueuedNow(id);
+                                        onSendQueuedNow(id);
                   }
                 : undefined}
               steerBlockedReason={steerBlockedReason ?? null}
@@ -4275,17 +4177,6 @@ export function ChatPane({
               : null}
           </>
         ) : null}
-      {/*
-        * 联系支持弹窗(交付稿第 80 格)。**压在整个应用上**,不是报错卡里的一块 ——
-        * 组件自己走 portal 到 body,所以挂在这里不受聊天区滚动 / 层叠上下文影响。
-        * 渠道由调用方给,单一出处在 `chat/support-channels.tsx`。
-        */}
-      {supportDialogOpen ? (
-        <SupportDialog
-          channels={supportChannels(t)}
-          onClose={() => setSupportDialogOpen(false)}
-        />
-      ) : null}
       {/*
         * 重复取词的轻提示(OPEND-2546)。挂在 quote 列表的拥有者这一层,
         * 不能挂在浮条上:`handleQuote` 最后一步就是清选区,浮条当场卸载。

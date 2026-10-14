@@ -1,4 +1,4 @@
-export type PluginFolderAgentAction = 'install' | 'publish' | 'contribute';
+export type PluginFolderAgentAction = 'install' | 'publish';
 
 const INSTALL_TITLE = 'Install this generated plugin into My plugins.';
 const INSTALL_NOTE =
@@ -9,7 +9,6 @@ export function buildPluginFolderAgentActionPrompt(
   action: PluginFolderAgentAction,
 ): string {
   const folderPath = normalizePluginFolderPath(relativePath);
-  if (action === 'contribute') return buildContributePrompt(folderPath);
   if (action === 'publish') return buildPublishPrompt(folderPath);
   return [
     INSTALL_TITLE,
@@ -24,40 +23,6 @@ export function buildPluginFolderAgentActionPrompt(
   ].join('\n');
 }
 
-// `contribute` opens a draft PR against the `nexu-io/open-design` community
-// catalog. The agent drives the whole git/gh sequence — fork, branch, copy
-// the plugin into `plugins/community/<name>/`, commit, push, then hand the
-// `gh pr create --web` URL back so the author reviews and clicks Create in
-// their browser. Two design constraints encoded in the prompt:
-//   - `--web` flag preserves the author's final review window (see
-//     `apps/daemon/src/plugins/publish.ts` "We never POST anywhere" — the
-//     author always sees the PR form before it lands).
-//   - Hard ban on mid-turn clarification forms: a previous run stalled for
-//     600s when the agent paused waiting for an answer the user expected the
-//     plugin-folder buttons to satisfy.
-function buildContributePrompt(folderPath: string): string {
-  return [
-    'Open a draft Pull Request that adds this generated plugin to the OpenDesign community catalog at `nexu-io/open-design`.',
-    'The goal is to end this turn with a single PR URL the user can click in their browser to review the pre-filled form and press Create.',
-    '',
-    `Plugin folder: \`${folderPath}\``,
-    `Manifest: \`${folderPath}/open-design.json\``,
-    '',
-    'Run this deterministic OpenDesign CLI workflow from the current project workspace:',
-    '',
-    `\`"$OD_NODE_BIN" "$OD_BIN" plugin open-design-pr ${folderPath}\``,
-    '',
-    'The CLI owns the GitHub auth gate and owner resolution: `--owner` if supplied, otherwise local `gh auth status`, with `gh api user --jq .login` only as a last-resort fallback. It then runs fork/clone/copy/branch/push and `gh pr create --web`. It must open the GitHub PR-create form in the browser; the author reviews and clicks Create themselves.',
-    'Report the exact command, any structured CLI error, and the final PR URL printed by the CLI. Stop on failure; do not recreate the git/gh workflow manually.',
-    '',
-    '**Hard constraints.** Treat these as inviolable:',
-    '- Do NOT emit a `<question-form>` or any clarification UI that waits for the user. This flow is fire-and-forget; no mid-turn questions.',
-    '- Do NOT try to install `gh`, `git`, or any other binary. Detect-and-instruct only.',
-    '- Do NOT auto-submit the PR. The final Create click is the author\'s.',
-    '- Do NOT retry a failed step. Report the error and stop.',
-    '- Do NOT call the legacy `od plugin publish --to open-design` CLI — that flow produces an issue URL, which is the old path we are replacing.',
-  ].join('\n');
-}
 
 // `publish` pushes the generated plugin to the author's own public GitHub
 // repository named by manifest `plugin.repo`. It is NOT the registry

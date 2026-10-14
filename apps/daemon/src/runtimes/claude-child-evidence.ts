@@ -866,7 +866,7 @@ export interface AdaptClaudeChildFactInput {
   runId: string;
   taskRunIndex: number;
   taskRunObservationId: string;
-  /** Langfuse-only parent span for the root native Agent tool invocation. */
+  /** Parent span for the root native Agent tool invocation. */
   rootParentToolObservationId?: string;
   stage: StrategyInputStageV2;
 }

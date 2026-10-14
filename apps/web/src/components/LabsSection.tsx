@@ -2,11 +2,15 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type {
   OdNextRolloutControlResponse,
   OdNextRolloutMode,
-  TrackingLabsOptOutReason,
 } from '@open-design/contracts';
 
-import { trackLabsItemToggled } from '../analytics/events';
-import { useAnalytics } from '../analytics/provider';
+export type TrackingLabsOptOutReason =
+  | 'worse_output'
+  | 'too_slow'
+  | 'not_what_i_wanted'
+  | 'other'
+  | 'skipped';
+
 import { useT } from '../i18n';
 import { Icon } from './Icon';
 import styles from './LabsSection.module.css';
@@ -231,8 +235,7 @@ export interface LabsSectionProps {
 
 export function LabsSection({ autosave }: LabsSectionProps) {
   const t = useT();
-  const analytics = useAnalytics();
-  const [state, setState] = useState<LabsHarnessState | null>(LOADING);
+    const [state, setState] = useState<LabsHarnessState | null>(LOADING);
   const [busy, setBusy] = useState(false);
   const noticeId = useId();
   // Non-null while the reason panel is up. Held in a ref as well as state so
@@ -324,17 +327,9 @@ export function LabsSection({ autosave }: LabsSectionProps) {
       if (!reasonPendingRef.current) return;
       reasonPendingRef.current = false;
       const custom = answer.customReason?.trim() ?? '';
-      trackLabsItemToggled(analytics.track, {
-        item_id: 'design_harness',
-        to: 'off',
-        source: 'settings',
-        reason: answer.reason,
-        has_custom_reason: custom.length > 0,
-        ...(custom ? { custom_reason: custom } : {}),
-      });
-      if (mountedRef.current) setAskingReason(false);
+            if (mountedRef.current) setAskingReason(false);
     },
-    [analytics.track],
+    [],
   );
 
   useEffect(() => () => {
@@ -380,12 +375,7 @@ export function LabsSection({ autosave }: LabsSectionProps) {
         // After the write, not on click: a failed write rolls the switch back,
         // and an event for a preference the machine does not hold is worse
         // than a missing one.
-        trackLabsItemToggled(analytics.track, {
-          item_id: 'design_harness',
-          to: next ? 'on' : 'off',
-          source: 'settings',
-        });
-        if (next) {
+                if (next) {
           // Turning it back on retracts the question. Left open, a fumbled
           // off/on/off would report two opt-outs against a single reason row
           // and leave the panel asking about a switch that is now on. Settling
@@ -424,7 +414,7 @@ export function LabsSection({ autosave }: LabsSectionProps) {
         }
       }
     })();
-  }, [analytics.track, answerOptOut, readStatus, reportSaved, settleAutosave, state]);
+  }, [ answerOptOut, readStatus, reportSaved, settleAutosave, state]);
 
   const lockNoticeKey = state?.lock === 'env'
     ? 'labs.envOverrideNotice'

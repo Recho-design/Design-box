@@ -4,7 +4,6 @@ import {
   type AttributionClaimResponse,
   type AttributionClaimSource,
 } from '@open-design/contracts';
-import type { AnalyticsService } from '../analytics.js';
 import type { AppConfigPrefs } from '../app-config.js';
 import {
   readInstallationFile,
@@ -31,7 +30,6 @@ export interface AttributionClaimInput {
 }
 
 export interface RegisterAttributionRoutesDeps {
-  analytics: AnalyticsService;
   env?: NodeJS.ProcessEnv;
   http: {
     isLocalSameOrigin: (req: Request, port: number) => boolean;
@@ -134,74 +132,34 @@ export function createAttributionService(deps: Omit<RegisterAttributionRoutesDep
     });
     if (!ledger) {
       await persistPendingIfNeeded(attribution, true);
-      const result = response('pending_ledger', { found: true, pending: true });
-      await captureClaimResult(result, attribution.source, attribution.platform, installationId);
-      return result;
+      return response('pending_ledger', { found: true, pending: true });
     }
     if (ledger.status === 'not_found') {
       await writeInstallationFile(installationDir, {
         attributionClaimResultAt: now().toISOString(),
         pendingAttribution: null,
       });
-      const result = response('not_found');
-      await captureClaimResult(result, attribution.source, attribution.platform, installationId);
-      return result;
+      return response('not_found');
     }
     if (ledger.status === 'already_consumed_other') {
-      await deps.analytics.captureSafety({
-        eventName: 'attribution_shared_installer',
-        distinctId: installationId,
-        appVersion: '0.0.0',
-        properties: { token: attribution.token, source: attribution.source },
-      });
       await writeInstallationFile(installationDir, {
         attributionClaimResultAt: now().toISOString(),
         pendingAttribution: null,
       });
-      const result = response('shared_installer', { found: true });
-      await captureClaimResult(result, attribution.source, attribution.platform, installationId);
-      return result;
+      return response('shared_installer', { found: true });
     }
     if (!ledger.webDistinctId) {
       await persistPendingIfNeeded(attribution, true);
       return response('pending_ledger', { found: true, pending: true });
     }
-    await deps.analytics.mergeAnonymousPerson({
-      anonymousDistinctId: ledger.webDistinctId,
-      distinctId: installationId,
-      properties: {
-        od_source_bound_at: now().toISOString(),
-        od_source_resolution: 'download_token',
-        od_download_token_source: attribution.source,
-        ...ledger.properties,
-      },
-      insertId: `download-attribution-${attribution.token}`,
-    });
     await writeInstallationFile(installationDir, {
       attributionClaimedAt: now().toISOString(),
       attributionClaimResultAt: now().toISOString(),
       pendingAttribution: null,
     });
-    const result = response(ledger.status === 'already_consumed_same' ? 'already_claimed' : 'claimed', {
+    return response(ledger.status === 'already_consumed_same' ? 'already_claimed' : 'claimed', {
       found: true,
       merged: true,
-    });
-    await captureClaimResult(result, attribution.source, attribution.platform, installationId);
-    return result;
-  }
-
-  async function captureClaimResult(
-    result: AttributionClaimResponse,
-    source: string,
-    platform: string | undefined,
-    installationId: string,
-  ): Promise<void> {
-    await deps.analytics.captureSafety({
-      eventName: 'attribution_claim_result',
-      distinctId: installationId,
-      appVersion: '0.0.0',
-      properties: { found: result.found, merged: result.merged, source, platform: platform ?? 'unknown', status: result.status },
-      insertId: `attribution-claim-result-${Date.now()}`,
     });
   }
 

@@ -349,33 +349,6 @@
   display: none;
 }
 
-/* Bottom-left action cluster (GitHub star / Discord / help).
-   Compact toolbar: Star keeps the GitHub icon plus live count; secondary
-   actions collapse to icons. */
-.entry-rail-actions {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 4px;
-  width: 100%;
-  max-width: calc(100% - 18px);
-  padding: 0 0 4px;
-  margin: 0 auto;
-  box-sizing: border-box;
-}
-.entry-nav-rail__footer .entry-rail-actions {
-  order: 1;
-  /* Action row rides higher, clear of the credits + account stack. */
-  margin-bottom: 12px;
-}
-/* With no update in flight, the actions box has no children because the
-   updater host renders nothing. Collapse it AND the footer's own padding so
-   the rail doesn't end in a blank strip under the account row. */
-.entry-nav-rail__footer .entry-rail-actions:empty {
-  display: none;
-}
 /* Community/contact links (Discord / X / mail), the footer's last
    row. They moved here out of the account menu so the rail's bottom strip
    carries something instead of reading as a dead white band. */
@@ -411,15 +384,6 @@
   width: calc(100% - 18px);
   margin: 0 auto;
   padding-top: 0;
-}
-.entry-rail-actions > * {
-  align-self: center;
-}
-.entry-rail-actions .entry-star-badge,
-.entry-rail-actions .entry-discord-badge,
-.entry-rail-actions .entry-mail-badge,
-.entry-rail-actions .use-everywhere-chip {
-  justify-content: center;
 }
 .entry-local-mode-tip {
   /* In flow, not absolute. It used to be anchored to the footer's bottom edge
@@ -522,7 +486,7 @@
    flight. Unlike `.entry-local-mode-tip` (absolutely positioned with a fixed
    `bottom` so its card shape never collides with the rail-actions row below
    it), this is a normal flex child of `.entry-nav-rail__footer` — the same
-   flow `.entry-rail-actions` already uses (`width: calc(100% - 18px); margin:
+   flow the footer rail uses (`width: calc(100% - 18px); margin:
    0 auto;`). That keeps it clear of the actions row through ordinary flex
    stacking instead of a guessed pixel offset, AND lands its bottom edge
    close to the panel's bottom padding the same way the real account-trigger
@@ -1928,11 +1892,10 @@
 
 /* ============================================================
    Icon-only topbar chips
-   Collapse the Star / Discord / model-switcher / Use-everywhere
+   Collapse the model-switcher / Use-everywhere
    chips to square icon buttons; the full label surfaces as a
    downward hover tooltip. Keeps the entry topbar quiet and tidy.
    ============================================================ */
-.entry-main__topbar-chips--icon-only .entry-discord-badge,
 .entry-main__topbar-chips--icon-only .use-everywhere-chip,
 .entry-main__topbar-chips--icon-only .inline-switcher__chip {
   width: 32px;
@@ -1947,13 +1910,7 @@
      collapsed there's no text, so let the downward tooltip escape. */
   overflow: visible;
 }
-/* Hide every text fragment; keep only the leading icon glyph. The Discord
-   badge also carries a "· {n} online" suffix; collapsed it must hide too,
-   otherwise the separator + count leak out of the 32px square and render as
-   clipped text (e.g. "212 在s"). The full label lives in the hover tooltip. */
-.entry-main__topbar-chips--icon-only .entry-discord-badge__label,
-.entry-main__topbar-chips--icon-only .entry-discord-badge__sep,
-.entry-main__topbar-chips--icon-only .entry-discord-badge__online,
+/* Hide every text fragment; keep only the leading icon glyph. The full label lives in the hover tooltip. */
 .entry-main__topbar-chips--icon-only .use-everywhere-chip__label,
 .entry-main__topbar-chips--icon-only .inline-switcher__chip-text,
 .entry-main__topbar-chips--icon-only .inline-switcher__chip-chevron {
@@ -6135,178 +6092,6 @@
   margin-inline-end: auto;
 }
 
-
-
-/* ============================================================
-   GitHub star pill — sticky top-bar CTA.
-
-   Mirrors the marketing landing-page "Star · <count>" affordance:
-   small chrome, low-emphasis, sits next to the model switcher and
-   settings cog. Hover swaps to the panel-strong palette so the call-
-   to-action still reads as clickable when the topbar is otherwise
-   sparse. The count slot animates in via `data-loading` so the
-   pill never visibly jumps when the API response arrives.
-   ============================================================ */
-.entry-star-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: background-color 120ms var(--ease-out), border-color 120ms var(--ease-out),
-    color 120ms var(--ease-out), transform 120ms var(--ease-out);
-  white-space: nowrap;
-}
-.entry-rail-actions .entry-star-badge,
-.entry-rail-actions .entry-discord-badge,
-.entry-rail-actions .entry-x-badge,
-.entry-rail-actions .entry-mail-badge,
-.entry-rail-actions .use-everywhere-chip {
-  height: 29px;
-  border-color: transparent;
-  border-radius: 8px;
-  background: transparent;
-  box-shadow: none;
-}
-.entry-rail-actions .entry-star-badge {
-  flex: 1 1 0;
-  min-width: 0;
-  justify-content: flex-start;
-  padding: 0 9px;
-}
-.entry-rail-actions .entry-discord-badge,
-.entry-rail-actions .entry-x-badge,
-.entry-rail-actions .entry-mail-badge {
-  flex: 0 0 26px;
-  width: 26px;
-  padding: 0;
-}
-.entry-rail-actions .entry-discord-badge__label,
-.entry-rail-actions .entry-discord-badge__sep,
-.entry-rail-actions .entry-discord-badge__online,
-.entry-rail-actions .entry-x-badge__label,
-.entry-rail-actions .entry-mail-badge__label,
-.entry-rail-actions .entry-star-badge__label,
-.entry-rail-actions .entry-star-badge__sep {
-  display: none;
-}
-.entry-rail-actions .entry-discord-badge__icon,
-.entry-rail-actions .entry-x-badge__icon,
-.entry-rail-actions .entry-mail-badge__icon {
-  margin: 0;
-}
-.entry-rail-actions .entry-star-badge:hover,
-.entry-rail-actions .entry-discord-badge:hover,
-.entry-rail-actions .entry-x-badge:hover,
-.entry-rail-actions .entry-mail-badge:hover,
-.entry-rail-actions .use-everywhere-chip:hover {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--text) 5%, transparent);
-}
-
-.entry-rail-actions .entry-star-badge__label,
-.entry-rail-actions .entry-star-badge__count {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.entry-star-badge:hover {
-  background: var(--bg-subtle);
-  border-color: var(--border-strong);
-  color: var(--text-strong);
-}
-.entry-star-badge:active {
-  transform: scale(0.98);
-}
-.entry-star-badge:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.entry-star-badge__icon {
-  color: var(--text-strong);
-  flex: 0 0 auto;
-}
-.entry-star-badge:hover .entry-star-badge__icon {
-  color: var(--text-strong);
-}
-.entry-star-badge__label {
-  color: var(--text-strong);
-  font-weight: 600;
-}
-.entry-star-badge__sep {
-  color: var(--text-faint);
-}
-.entry-star-badge__count {
-  display: inline-block;
-  min-width: 5ch;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  transition: opacity 160ms var(--ease-out);
-}
-.entry-star-badge__count[data-loading='true'] {
-  opacity: 0.55;
-}
-
-.entry-discord-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: background-color 120ms var(--ease-out), border-color 120ms var(--ease-out),
-    color 120ms var(--ease-out), transform 120ms var(--ease-out);
-  white-space: nowrap;
-}
-.entry-discord-badge:hover {
-  background: var(--bg-subtle);
-  border-color: var(--border-strong);
-  color: var(--text-strong);
-}
-.entry-discord-badge:active {
-  transform: scale(0.98);
-}
-.entry-discord-badge:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.entry-discord-badge__icon {
-  color: #5865f2;
-  flex: 0 0 auto;
-}
-.entry-discord-badge:hover .entry-discord-badge__icon {
-  color: #5865f2;
-}
-.entry-discord-badge__label {
-  white-space: nowrap;
-}
-.entry-discord-badge__sep {
-  color: var(--text-faint);
-}
-.entry-discord-badge__online {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .entry-x-badge {
   display: inline-flex;
   align-items: center;
@@ -6346,62 +6131,6 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
-}
-
-.entry-mail-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg-panel);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: var(--shadow-xs);
-  transition: background-color 120ms var(--ease-out), border-color 120ms var(--ease-out),
-    color 120ms var(--ease-out), transform 120ms var(--ease-out);
-  white-space: nowrap;
-}
-.entry-mail-badge:hover {
-  background: var(--bg-subtle);
-  border-color: var(--border-strong);
-  color: var(--text-strong);
-}
-.entry-mail-badge:active {
-  transform: scale(0.98);
-}
-.entry-mail-badge:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.entry-mail-badge__icon {
-  flex: 0 0 auto;
-  color: var(--text-strong);
-}
-
-@media (max-width: 700px) {
-  .entry-star-badge__label {
-    display: none;
-  }
-  .entry-star-badge__sep {
-    display: none;
-  }
-  .entry-discord-badge {
-    padding: 0 9px;
-  }
-  .entry-discord-badge__label {
-    display: none;
-  }
-  .entry-discord-badge__sep {
-    display: none;
-  }
 }
 
 @media (max-width: 900px) {
@@ -7254,36 +6983,6 @@
    比头像高出一圈). */
 /* Credits and the avatar read as two separate controls (per product): the
    wrapper is a bare flex row — each child paints its own surface. */
-/* Standalone GitHub star chip in the top-right cluster, sitting between the
-   campaign badge and the account capsule. Same pill material as the capsule
-   so the three read as one row of chips. */
-.entry-top-right-github {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  /* Shared cluster row height — see .entry-deepseek-campaign-badge. */
-  min-height: 28px;
-  padding: 0 11px;
-  border: 1px solid var(--material-separator);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
-  box-shadow: var(--shadow-xs);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: var(--text-strong);
-  font-size: var(--font-size-13);
-  font-weight: 600;
-  line-height: 1;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.entry-top-right-github svg {
-  color: var(--text-soft);
-}
-.entry-top-right-github:hover {
-  border-color: var(--border-strong);
-}
-
 /* Hover region + positioning context for the billing panel that hangs under
    the credits / 升级 pill (per product: 黑色卡片在右上角的升级下边显示). The
    anchor wraps the pill AND the panel, so the pointer crossing from one to the

@@ -15,8 +15,10 @@ import {
   parsePreviewObservabilityMessage,
   type PreviewObservabilityMessage,
 } from '@open-design/contracts/runtime/preview-observability';
-import { reportSafetyEvent } from '../analytics/error-tracking';
-import { scrubFilePath } from '../analytics/scrub';
+
+function scrubFilePath(path: string): string {
+  return path;
+}
 
 const LOAD_TIMEOUT_MS = 15000;
 
@@ -200,19 +202,6 @@ export function reportPreviewIframeMessage(
   };
 
   if (message.event === 'white_screen') {
-    reportSafetyEvent('client_preview_white_screen', {
-      ...common,
-      monitoring_kind: 'no_visible_paint_after_timeout',
-      reason: 'no_visible_paint_after_timeout',
-      ready_state: boundedText(message.ready_state, 32),
-      visibility_state: boundedText(message.visibility_state, 32),
-      body_child_count: boundedNumber(message.body_child_count),
-      visible_element_count: boundedNumber(message.visible_element_count),
-      viewport_width: boundedNumber(message.viewport_width),
-      viewport_height: boundedNumber(message.viewport_height),
-      blank_observation_count: boundedNumber(message.blank_observation_count),
-      sample_interval_ms: boundedNumber(message.sample_interval_ms),
-    });
     return true;
   }
 
@@ -221,12 +210,7 @@ export function reportPreviewIframeMessage(
       ...common,
       monitoring_kind: 'stage_scale_collapsed',
       reason: 'stage_scale_collapsed',
-      // Which authored shape collapsed: the canonical `.deck-stage`, a
-      // `<deck-stage>` shadow canvas, or a template `.stage`. Frequency alone
-      // cannot triage this, and the bridge went to some trouble to resolve it.
       stage_kind: boundedText(message.stage_kind, 32),
-      // Restored to the decimal the reader actually thinks in. The wire keeps
-      // it as an integer per-mille only because the shared normalizer rounds.
       stage_scale: decimalFromPermille(message.stage_scale_permille),
       stage_transform: boundedText(message.stage_transform, 32),
       stage_width: boundedNumber(message.stage_width),
@@ -239,32 +223,14 @@ export function reportPreviewIframeMessage(
       visibility_state: boundedText(message.visibility_state, 32),
       elapsed_ms: boundedNumber(message.elapsed_ms),
     };
-    reportSafetyEvent('client_preview_deck_stage_unscaled', measurement);
     logDeckStageMeasurement(measurement);
     return true;
   }
 
   if (message.event === 'resource_error') {
-    reportSafetyEvent('client_preview_resource_error', {
-      ...common,
-      monitoring_kind: previewResourceMonitoringKind(message.resource_tag),
-      resource_tag: boundedText(message.resource_tag, 32),
-      resource_url: sanitizedResourceUrl,
-    });
     return true;
   }
 
-  reportSafetyEvent('client_preview_runtime_error', {
-    ...common,
-    monitoring_kind: message.event,
-    error_origin: message.event,
-    error_name: boundedText(message.name, 120),
-    error_message: sanitizedMessage,
-    error_source_url: sanitizedSourceUrl,
-    error_stack: sanitizedStack,
-    line: boundedNumber(message.line),
-    column: boundedNumber(message.column),
-  });
   return true;
 }
 
@@ -280,51 +246,9 @@ export function reportPreviewIframeMessage(
  * attached; no authored DOM text or source content leaves the client.
  */
 export function reportPreviewTransportRecovery(
-  options: PreviewTransportRecoveryOptions,
+  _options: PreviewTransportRecoveryOptions,
 ): void {
-  let transportStage: string;
-  switch (options.signal) {
-    case 'body_incomplete':
-      transportStage = 'head_bridge_alive_body_tail_missing';
-      break;
-    case 'host_navigation_abort':
-      transportStage = 'active_blob_navigation_aborted';
-      break;
-    case 'reactivation_unverified':
-      transportStage = 'retained_frame_unverified_on_reactivation';
-      break;
-    case 'probe_timeout':
-      transportStage = options.activationAcknowledged
-        ? 'head_bridge_lost_after_eager_ack'
-        : 'no_head_bridge_ack';
-      break;
-  }
-  reportSafetyEvent('client_preview_white_screen', {
-    surface: options.surface,
-    render_mode: options.renderMode,
-    artifact_id: options.artifactId,
-    artifact_kind: options.artifactKind,
-    project_id: options.projectId,
-    monitoring_kind: 'srcdoc_transport_unverified',
-    reason: 'srcdoc_transport_unverified',
-    transport_signal: options.signal,
-    transport_stage: transportStage,
-    activation_acknowledged: options.activationAcknowledged,
-    body_complete: options.signal === 'body_incomplete' ? false : undefined,
-    frame_ready_state: boundedText(options.documentState?.readyState, 32),
-    frame_body_present: options.documentState?.bodyPresent,
-    frame_body_child_count: boundedNumber(options.documentState?.bodyChildCount),
-    frame_document_element_child_count: boundedNumber(
-      options.documentState?.documentElementChildCount,
-    ),
-    recovery_attempted: true,
-    recovery_path: 'lazy_shell_remount',
-    host_visibility_state:
-      typeof document === 'undefined' ? undefined : document.visibilityState,
-    viewport_width: boundedNumber(options.viewportWidth),
-    viewport_height: boundedNumber(options.viewportHeight),
-    timeout_ms: boundedNumber(options.timeoutMs),
-  });
+  // Pure local stub: safety event reporting removed.
 }
 
 function previewResourceMonitoringKind(value: unknown): string {
@@ -383,18 +307,11 @@ export function trackIframeLoad(options: TrackIframeOptions): () => void {
   const startedAt = performance.now();
   let settled = false;
 
-  const settle = (event: string, extras: Record<string, unknown> = {}): void => {
+  const settle = (_event: string, _extras: Record<string, unknown> = {}): void => {
     if (settled) return;
     settled = true;
     clearTimeout(timer);
-    reportSafetyEvent(event, {
-      surface,
-      duration_ms: Math.round(performance.now() - startedAt),
-      artifact_id: options.artifactId,
-      project_id: options.projectId,
-      conversation_id: options.conversationId,
-      ...extras,
-    });
+    // reportSafetyEvent removed
   };
 
   const onLoad = (): void => {

@@ -6,7 +6,6 @@ import { hashJson, hashPath, ToolPackCache } from "./cache/index.js";
 import type { ToolPackConfig } from "./config/index.js";
 import { hashPackageSourcePath } from "./package-source-hash.js";
 import { readRuntimeAppVersion, versionFamilyForAppVersion } from "./versioning/index.js";
-import { processWebSourcemaps } from "./web-sourcemaps.js";
 
 export const WORKSPACE_BUILD_PACKAGES = [
   { directory: "packages/release", name: "@open-design/release" },
@@ -93,8 +92,6 @@ export type WorkspaceBuildRunner = (
   args: string[],
   extraEnv?: NodeJS.ProcessEnv,
 ) => Promise<void>;
-
-export type WorkspaceBuildMaterializer = (config: ToolPackConfig) => Promise<void>;
 
 type WorkspaceBuildMetadata = {
   builtAt: string;
@@ -390,7 +387,6 @@ export async function ensureWorkspaceBuildArtifacts(
   config: ToolPackConfig,
   cache: ToolPackCache,
   runPnpm: WorkspaceBuildRunner,
-  materializeWebSourcemaps: WorkspaceBuildMaterializer = processWebSourcemaps,
 ): Promise<string> {
   const key = await createWorkspaceBuildCacheKey(config);
   const nodeId = `${config.platform}.workspace-build`;
@@ -409,8 +405,8 @@ export async function ensureWorkspaceBuildArtifacts(
       });
   const materialize = artifacts.map((artifact) => ({
     from: artifact.cachePath,
-    // Sourcemap processing removes maps from the workspace copy. Restore the
-    // pristine cached static tree before every materialization-time pass.
+    // The web static tree is always re-copied from the pristine cached copy so
+    // anything that touched the workspace tree can never leak into a package.
     reuse: artifact.workspacePath !== WEB_STATIC_ARTIFACT,
     reuseRequiredPaths: artifact.requiredPathGroups,
     to: join(config.workspaceRoot, artifact.workspacePath),
@@ -451,9 +447,5 @@ export async function ensureWorkspaceBuildArtifacts(
     },
     seedFrom: versionFamilyAlias == null ? [] : [{ aliasKey: versionFamilyAlias, materialize }],
   });
-  // Sourcemap injection/upload depends on release credentials and appVersion,
-  // and upload is a materialization side effect. Keep pristine JS/map pairs in
-  // the internal cache, then process the materialized copy on every hit/miss.
-  await materializeWebSourcemaps(config);
   return key;
 }

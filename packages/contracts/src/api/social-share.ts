@@ -1,6 +1,4 @@
-export const OPEN_DESIGN_GITHUB_REPO_URL = 'https://github.com/nexu-io/open-design';
-
-export type SocialShareTargetKind = 'open-design-repo' | 'project-html';
+export type SocialShareTargetKind = 'project-html';
 
 export type SocialSharePlatform =
   | 'x'
@@ -39,7 +37,6 @@ export interface SocialShareResponse {
   title: string;
   text: string;
   copyText: string;
-  githubRepoUrl: string;
   platforms: SocialSharePlatformTarget[];
 }
 
@@ -156,16 +153,13 @@ function buildPlatformUrl(
 }
 
 export function buildSocialSharePayload(input: SocialShareRequest): SocialShareResponse {
-  const kind = input.kind === 'project-html' ? 'project-html' : 'open-design-repo';
-  const url = normalizeSocialShareUrl(input.url)
-    ?? (kind === 'open-design-repo' ? OPEN_DESIGN_GITHUB_REPO_URL : '');
-  const fallbackTitle = kind === 'project-html' ? 'OpenDesign project' : 'OpenDesign';
+  const kind: SocialShareTargetKind = 'project-html';
+  const url = normalizeSocialShareUrl(input.url) ?? '';
+  const fallbackTitle = 'OpenDesign project';
   const title = cleanText(input.title, fallbackTitle);
-  const fallbackText = kind === 'project-html'
-    ? `Built with OpenDesign: ${title}. OpenDesign repo: ${OPEN_DESIGN_GITHUB_REPO_URL}`
-    : 'OpenDesign is an open-source workspace for creating, editing, deploying, and handing off design artifacts.';
+  const fallbackText = `Built with OpenDesign: ${title}.`;
   const text = cleanText(input.text, fallbackText);
-  const copyText = cleanText(input.copyText, `${text}\n${url}`);
+  const copyText = cleanText(input.copyText, url ? `${text}\n${url}` : text);
   const platforms = PLATFORM_DESCRIPTORS.map((descriptor) => ({
     platform: descriptor.platform,
     mode: descriptor.mode,
@@ -189,7 +183,6 @@ export function buildSocialSharePayload(input: SocialShareRequest): SocialShareR
     title,
     text,
     copyText,
-    githubRepoUrl: OPEN_DESIGN_GITHUB_REPO_URL,
     platforms,
   };
 }

@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { useAnalytics } from '../../analytics/provider';
-import { trackSettingsPetsClick } from '../../analytics/events';
 import { useT } from '../../i18n';
 import { Icon } from '../Icon';
 import type { AppConfig, CodexPetSummary, PetConfig, PetCustom } from '../../types';
@@ -53,8 +51,7 @@ const ACCENT_SWATCHES = [
 
 export function PetSettings({ cfg, setCfg }: Props) {
   const t = useT();
-  const analytics = useAnalytics();
-  const pet: PetConfig = cfg.pet ?? { ...DEFAULT_PET, custom: defaultCustomPet() };
+    const pet: PetConfig = cfg.pet ?? { ...DEFAULT_PET, custom: defaultCustomPet() };
   const customGlyphId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const atlasInputRef = useRef<HTMLInputElement | null>(null);
@@ -133,10 +130,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
   // Atlas previews are produced from a Custom-tab upload; pin the
   // user there so the row picker is visible right after they drop
   // the file in.
-  useEffect(() => {
-    if (atlasPreview) setActiveTab('custom');
-  }, [atlasPreview]);
-
+  
   const refreshCodexPets = useCallback(async () => {
     setCodexPetsLoading(true);
     try {
@@ -576,12 +570,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
               aria-selected={activeTab === 'builtIn'}
               className={activeTab === 'builtIn' ? 'active' : ''}
               onClick={() => {
-                trackSettingsPetsClick(analytics.track, {
-                  page_name: 'settings',
-                  area: 'pets',
-                  element: 'built_in',
-                });
-                setActiveTab('builtIn');
+                                setActiveTab('builtIn');
               }}
             >
               {t('pet.tabBuiltIn')}
@@ -592,12 +581,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
               aria-selected={activeTab === 'custom'}
               className={activeTab === 'custom' ? 'active' : ''}
               onClick={() => {
-                trackSettingsPetsClick(analytics.track, {
-                  page_name: 'settings',
-                  area: 'pets',
-                  element: 'custom',
-                });
-                setActiveTab('custom');
+                                setActiveTab('custom');
               }}
             >
               {t('pet.tabCustom')}
@@ -608,12 +592,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
               aria-selected={activeTab === 'community'}
               className={activeTab === 'community' ? 'active' : ''}
               onClick={() => {
-                trackSettingsPetsClick(analytics.track, {
-                  page_name: 'settings',
-                  area: 'pets',
-                  element: 'community',
-                });
-                setActiveTab('community');
+                                setActiveTab('community');
               }}
             >
               {t('pet.tabCommunity')}
@@ -624,12 +603,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
               type="button"
               className={`seg-btn small${pet.enabled ? ' active' : ''}`}
               onClick={() => {
-                trackSettingsPetsClick(analytics.track, {
-                  page_name: 'settings',
-                  area: 'pets',
-                  element: 'tuck_away',
-                });
-                void togglePetVisibility();
+                                void togglePetVisibility();
               }}
               disabled={!canToggleVisibility || codexAdopting !== null}
               title={pet.enabled ? t('pet.tuckTitle') : t('pet.wakeTitle')}
@@ -682,13 +656,7 @@ export function PetSettings({ cfg, setCfg }: Props) {
             type="button"
             className={`seg-btn small${pet.adopted && pet.petId === CUSTOM_PET_ID ? ' active' : ''}`}
             onClick={() => {
-              trackSettingsPetsClick(analytics.track, {
-                page_name: 'settings',
-                area: 'pets',
-                element: 'adopt',
-                pet_id: CUSTOM_PET_ID,
-              });
-              adopt(CUSTOM_PET_ID);
+                            adopt(CUSTOM_PET_ID);
             }}
           >
             <Icon

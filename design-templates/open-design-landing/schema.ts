@@ -66,9 +66,9 @@ export interface BrandBlock {
   version: string;
   /** SPDX license identifier or short label — `'Apache-2.0'`. */
   license: string;
-  /** Primary CTA URL (Star on GitHub, etc.). */
+  /** Primary CTA URL (the repository link, etc.). */
   primary_url: string;
-  /** Star-button label in the nav. */
+  /** Nav CTA label; replaced by a live `GitHub · <stars>` count when the URL is a GitHub repo. */
   primary_url_label: string;
   /**
    * Optional secondary CTA URL surfaced as a ghost pill in the nav and as

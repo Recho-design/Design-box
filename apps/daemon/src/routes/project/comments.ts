@@ -1,8 +1,7 @@
 import type { Express } from 'express';
 import type { PreviewComment } from '@open-design/contracts';
-import { projectKindFromMetadataToTrackingOrLegacyDefault } from '@open-design/contracts/analytics';
 import type { RouteDeps } from '../../server-context.js';
-import { getProject, isProjectCommentAnchorConversationId } from '../../db.js';
+import { isProjectCommentAnchorConversationId } from '../../db.js';
 
 /**
  * 本地预览评论路由。
@@ -19,10 +18,7 @@ import { getProject, isProjectCommentAnchorConversationId } from '../../db.js';
  * 数据库表结构与既有迁移保持不变（本 fork 不写删表迁移），因此旧库里的
  * 评论数据仍可原样读取。
  */
-export interface RegisterProjectCommentRoutesDeps extends RouteDeps<'db' | 'projectStore' | 'conversations'> {
-  /** Optional in focused CRUD fixtures; production supplies request-scoped analytics. */
-  telemetry?: RouteDeps<'telemetry'>['telemetry'];
-}
+export interface RegisterProjectCommentRoutesDeps extends RouteDeps<'db' | 'projectStore' | 'conversations'> {}
 
 export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectCommentRoutesDeps): void {
   const { db } = ctx;
@@ -88,25 +84,6 @@ export function registerProjectCommentRoutes(app: Express, ctx: RegisterProjectC
         updateProject(db, req.params.id, {});
         return saved;
       })();
-      // Only a genuinely new, successfully persisted comment is counted.
-      // Edits reuse this POST route with an id and must not inflate creation.
-      if (comment && !requestedId) {
-        const project = getProject(db, req.params.id);
-        void ctx.telemetry?.captureProductEvent?.(
-          req,
-          'project_comment_create_result',
-          {
-            page_name: 'artifact',
-            area: 'comments',
-            result: 'success',
-            // 单机模式没有工作区身份，作者与项目归属关系无从判定。
-            target_project_relation: 'unknown',
-            comment_level: 'top_level',
-            project_id: req.params.id,
-            project_kind: projectKindFromMetadataToTrackingOrLegacyDefault(project?.metadata),
-          },
-        );
-      }
       res.json({ comment });
     } catch (err: any) {
       res.status(400).json({ error: String(err?.message || err) });

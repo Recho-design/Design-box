@@ -15,7 +15,6 @@
 // retain a path; every user/external resource is reduced to a route template,
 // tag-derived type, extension, and origin relation.
 
-import { reportSafetyEvent } from '../analytics/error-tracking';
 
 const RESOURCE_TAGS = new Set([
   'SCRIPT',
@@ -201,20 +200,11 @@ export function installResourceErrorObserver(): () => void {
 }
 
 function reportResourceEvent(
-  properties: ResourceEventProperties,
-  eventKind: 'first' | 'repeat_summary',
-  repeatCount: number,
+  _properties: ResourceEventProperties,
+  _eventKind: 'first' | 'repeat_summary',
+  _repeatCount: number,
 ): void {
-  reportSafetyEvent(
-    'client_resource_error',
-    {
-      ...properties,
-      monitoring_kind: `${properties.category}|${eventKind}`,
-      event_kind: eventKind,
-      repeat_count: repeatCount,
-    },
-    { currentUrlOverride: safeCurrentUrl() },
-  );
+  // Pure local stub: safety event reporting removed.
 }
 
 function normalizeResource(rawUrl: string, tag: string): NormalizedResource {

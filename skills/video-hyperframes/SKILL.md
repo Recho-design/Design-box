@@ -23,7 +23,6 @@ od:
   surface: video
   scenario: video
   featured: 0.13
-  upstream: "https://github.com/nexu-io/html-anything"
   preview:
     type: html
     entry: index.html

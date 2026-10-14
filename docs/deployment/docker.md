@@ -10,7 +10,7 @@ This is the easiest self-hosting path for beginners.
 ## Step 1: Open the Deploy Folder
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
+git clone https://github.com/Recho-design/Design-box.git
 cd open-design/deploy
 ```
 

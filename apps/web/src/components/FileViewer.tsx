@@ -1,5 +1,4 @@
 import { useExperienceError } from '../observability/use-experience-error';
-import { daemonErrorCodeProp, failureDetailProps } from '../analytics/failure-detail';
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type CSSProperties, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import type { ArtifactExportFormat } from '../runtime/chat/artifact-export';
 import { AnchoredMenuShell } from './chat/AnchoredMenuShell';
@@ -19,7 +18,6 @@ import {
 } from './comment-send-result';
 import {
   buildSocialSharePayload,
-  OPEN_DESIGN_GITHUB_REPO_URL,
   workspaceContextHasTeamIdentity,
   type CollabCloudMemberDirectoryEntry,
   type CollabMemberRole,
@@ -41,21 +39,6 @@ import {
   workspaceProjectHeaders,
 } from '../collab/workspace-identity';
 import {
-  anonymizeArtifactId,
-  artifactKindToTracking,
-  type ArtifactPublishResultProps,
-  type ArtifactEditResultProps,
-  type TrackingArtifactEditKind,
-  type TrackingFileVersionSource,
-  type TrackingArtifactKind,
-  type TrackingProjectKind,
-  type TrackingDeployProvider,
-} from '@open-design/contracts/analytics';
-import { useAnalytics } from '../analytics/provider';
-import { exportErrorCode } from '../analytics/export-error-code';
-import { deployErrorCode } from '../analytics/deploy-error-code';
-import { publishErrorCode } from '../analytics/publish-error-code';
-import {
   reportPreviewIframeMessage,
   reportPreviewTransportRecovery,
   subscribePreviewIframeMessages,
@@ -63,25 +46,6 @@ import {
   type PreviewTransportDocumentState,
   type PreviewTransportRecoverySignal,
 } from '../observability/iframe-error';
-import {
-  trackArtifactExportResult,
-  trackArtifactEditResult,
-  trackArtifactDeployResult,
-  trackArtifactPublishResult,
-  trackArtifactHeaderClick,
-  trackArtifactToolbarClick,
-  trackCommentPopoverClick,
-  trackDrawToolbarClick,
-  trackFileVersionModalClick,
-  trackFileVersionModalSurfaceView,
-  trackFileVersionRestoreResult,
-  trackPageView,
-  trackPresentPopoverClick,
-  trackDeckViewerSurfaceView,
-  trackDeckViewerClick,
-  trackSpeakerNotesSaveResult,
-  trackShareOptionPopoverClick,
-} from '../analytics/events';
 import { recordFirstLoopStep } from '../onboarding/first-loop';
 import { MarkdownRenderer, artifactRendererRegistry } from '../artifacts/renderer-registry';
 import { renderMarkdownToSafeHtml } from '../artifacts/markdown';
@@ -107,6 +71,29 @@ type PublicFilePublishFailureKey = string;
 const canPublishPublicFile = (_c?: unknown) => false;
 const publicFileManualRevokePublication = (_e?: unknown): any => null;
 const publicFilePublishFailureKey = (_e?: unknown): any => null;
+type TrackingProjectKind = string;
+type TrackingArtifactKind = string;
+type TrackingFileVersionSource = string;
+type TrackingArtifactEditKind = string;
+type TrackingDeployProvider = string;
+type ArtifactPublishResultProps = Record<string, unknown>;
+type ArtifactEditResultProps = {
+  result?: string;
+  error_code?: string;
+  [key: string]: unknown;
+};
+
+function anonymizeArtifactId(opts: { projectId: string; fileName: string }): string {
+  return `${opts.projectId}:${opts.fileName}`;
+}
+function artifactKindToTracking(opts?: { rendererId?: string; fileKind?: string | null }): string {
+  return opts?.rendererId ?? opts?.fileKind ?? 'unknown';
+}
+const publishErrorCode = (_err?: unknown): string => '';
+const daemonErrorCodeProp = (_err?: unknown) => ({});
+const failureDetailProps = (_err?: unknown) => ({});
+const exportErrorCode = (_err?: unknown): string => '';
+const deployErrorCode = (_err?: unknown): string => '';
 import { moveWorkspaceProject } from '../state/projects';
 import { MoveToTeamConfirmDialog, moveConfirmSkipped } from './MoveToTeamConfirmDialog';
 import type { Dict, Locale } from '../i18n/types';
@@ -1863,17 +1850,13 @@ export const FileViewer = memo(function FileViewer({
   // activation funnel can attribute "user opened the produced artifact"
   // even when the sub-viewer below is HtmlViewer / MarkdownViewer / etc.
   // artifact_id is anonymized to satisfy the CSV's no-filename rule.
-  const analytics = useAnalytics();
-  const studioViewKeyRef = useRef<string | null>(null);
+    const studioViewKeyRef = useRef<string | null>(null);
   useEffect(() => {
     if (!workspaceActive) return;
     const key = `${projectId}::${file.name}`;
     if (studioViewKeyRef.current === key) return;
     studioViewKeyRef.current = key;
-    trackPageView(analytics.track, {
-      page_name: 'artifact',
-    });
-  }, [projectId, projectKind, file.name, file.kind, rendererMatch?.renderer.id, analytics.track, workspaceActive]);
+      }, [projectId, projectKind, file.name, file.kind, rendererMatch?.renderer.id, workspaceActive]);
   useEffect(() => {
     if (projectResourceReadAllowed) return;
     invalidateHtmlSourceSnapshotProject(projectId);
@@ -3400,8 +3383,7 @@ function FileVersionManagerModal({
   viewerOnly?: boolean;
 }) {
   const { locale, t } = useI18n();
-  const analytics = useAnalytics();
-  const { workspaceContext } = useProjectCollabContext();
+    const { workspaceContext } = useProjectCollabContext();
   const tRef = useRef(t);
   const [versions, setVersions] = useState<ProjectFileVersion[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -3450,35 +3432,11 @@ function FileVersionManagerModal({
       viewport?: PreviewViewportId;
     },
   ) => {
-    trackFileVersionModalClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'file_version_modal',
-      element,
-      artifact_id: trackingArtifactId,
-      artifact_kind: trackingArtifactKind,
-      project_id: projectId,
-      project_kind: projectKind,
-      version_count: versions.length,
-      ...extra,
-    });
-  };
+      };
   // One impression per modal open. The component unmounts on close, so a
   // fire-once ref is enough — no dependency bookkeeping needed.
   const surfaceViewFiredRef = useRef(false);
-  useEffect(() => {
-    if (surfaceViewFiredRef.current) return;
-    surfaceViewFiredRef.current = true;
-    trackFileVersionModalSurfaceView(analytics.track, {
-      page_name: 'artifact',
-      area: 'file_version_modal',
-      entry_from: entryFrom,
-      artifact_id: trackingArtifactId,
-      artifact_kind: trackingArtifactKind,
-      project_id: projectId,
-      project_kind: projectKind,
-    });
-  }, [analytics.track, entryFrom, projectId, projectKind, trackingArtifactId, trackingArtifactKind]);
-  const versionById = useMemo(() => {
+    const versionById = useMemo(() => {
     const map = new Map<string, ProjectFileVersion>();
     for (const version of versions) map.set(version.id, version);
     return map;
@@ -3538,10 +3496,7 @@ function FileVersionManagerModal({
   }, [file.name, projectId, selectedContent]);
   const frameReady = loadedSrcDoc === srcDoc;
 
-  useEffect(() => {
-    tRef.current = t;
-  }, [t]);
-
+  
   // Fetch a single version's HTML into the cache exactly once. Reused by the
   // selection effect and by hover/focus prefetch so a click lands on warm data.
   const primeVersionContent = useCallback((versionId: string): Promise<void> => {
@@ -3913,21 +3868,7 @@ function FileVersionManagerModal({
     // `versions` is sorted newest-first, so the index is "how many versions
     // back from the newest" the restore target sits.
     const fireRestoreResult = (result: 'success' | 'failed', errorCode?: string) => {
-      trackFileVersionRestoreResult(analytics.track, {
-        page_name: 'artifact',
-        area: 'file_version_modal',
-        artifact_id: trackingArtifactId,
-        artifact_kind: trackingArtifactKind,
-        project_id: projectId,
-        project_kind: projectKind,
-        version_source: fileVersionSourceToTracking(selectedVersion),
-        version_gap: Math.max(0, versions.findIndex((version) => version.id === selectedVersion.id)),
-        version_count: versions.length,
-        result,
-        ...(errorCode ? { error_code: errorCode } : {}),
-        restore_duration_ms: Math.round(performance.now() - restoreStarted),
-      });
-    };
+          };
     try {
       const result = await restoreProjectFileVersion(
         projectId,
@@ -6419,8 +6360,7 @@ function ReactComponentViewer({
   workspaceActive?: boolean;
 }) {
   const t = useT();
-  const analytics = useAnalytics();
-  // `FileWorkspace` keeps a non-active viewer mounted, so an in-flight publish
+    // `FileWorkspace` keeps a non-active viewer mounted, so an in-flight publish
   // can settle after the user has switched away. The ref carries the LIVE value
   // into those continuations; the captured prop would still read the
   // render-time `true`.
@@ -6543,10 +6483,7 @@ function ReactComponentViewer({
 
   // Collapse the nested workspace-access listbox whenever the share popover
   // itself closes, so it never re-opens mid-flight.
-  useEffect(() => {
-    if (!shareMenuOpen) setShareAccessMenuOpen(false);
-  }, [shareMenuOpen]);
-
+  
   useEffect(() => {
     if (!viewerOnly) return;
     setShareMenuOpen(false);
@@ -6616,31 +6553,15 @@ function ReactComponentViewer({
   // publish/unpublish calls themselves stay unconditional.
   const firePublishFlowClick = (element: 'publish_file' | 'copy_publish_link') => {
     if (!workspaceActive) return;
-    trackShareOptionPopoverClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'share_option_popover',
-      element,
-      ...publishTrackingIdentity(),
-    });
-  };
+      };
 
   const firePublishResult = (
-    outcome: Pick<
-      ArtifactPublishResultProps,
-      | 'action' | 'result' | 'error_code' | 'publish_duration_ms' | 'daemon_error_code'
-      | 'failed_stage' | 'failure_reason' | 'upstream_status' | 'upstream_error_code'
-    >,
-    requestId?: string,
+    _outcome?: Record<string, unknown>,
+    _requestId?: string,
   ) => {
     // Read the live ref, not the captured prop: a request can start while this
     // viewer is active and settle after the user switches tabs.
     if (!workspaceActiveRef.current) return;
-    trackArtifactPublishResult(analytics.track, {
-      page_name: 'artifact',
-      area: 'share_option_popover',
-      ...outcome,
-      ...publishTrackingIdentity(),
-    }, requestId ? { requestId } : undefined);
   };
 
   async function publishCurrentFilePublic() {
@@ -6650,7 +6571,7 @@ function ReactComponentViewer({
     const requestSeq = ++publicFileRequestSeqRef.current;
     firePublishFlowClick('publish_file');
     const publishStarted = performance.now();
-    const publishRequestId = analytics.newRequestId();
+    const publishRequestId = undefined;
     setPublishingPublicFile(true);
     setPublishLinkFeedback(null);
     setPublishFailureKey(null);
@@ -6710,7 +6631,7 @@ function ReactComponentViewer({
     const requestSlug = publishedFileSlug;
     const requestSeq = ++publicFileRequestSeqRef.current;
     const unpublishStarted = performance.now();
-    const unpublishRequestId = analytics.newRequestId();
+    const unpublishRequestId = undefined;
     setPublishingPublicFile(true);
     setPublishLinkFeedback(null);
     setPublishFailureKey(null);
@@ -7455,8 +7376,7 @@ function HtmlViewer({
   workspaceActiveRef.current = workspaceActive;
   const filesRefreshPending = filesRefreshKey !== 0
     && appliedFilesRefreshKeyRef.current !== filesRefreshKey;
-  const analytics = useAnalytics();
-  // Team collaboration: resolve comment anchors through the drift ladder when
+    // Team collaboration: resolve comment anchors through the drift ladder when
   // the viewer is a team member of a shared project. Off (exact-match, single
   // user) otherwise. From the ProjectView-provided collab context — no props to
   // thread, no second collab client.
@@ -7516,50 +7436,7 @@ function HtmlViewer({
     context?: HtmlVersionExportContext | null,
   ) => {
     if (!workspaceActive) return;
-    const requestId = analytics.newRequestId();
-    const artifactId = anonymizeArtifactId({ projectId, fileName: file.name });
-    const artifactKind = artifactKindToTracking({ fileKind: file.kind ?? null });
-    const trackingFormat = format;
-    trackShareOptionPopoverClick(
-      analytics.track,
-      {
-        page_name: 'artifact',
-        area: 'share_option_popover',
-        artifact_id: artifactId,
-        artifact_kind: artifactKind,
-        element: trackingFormat,
-        project_id: projectId,
-        project_kind: projectKind,
-      },
-      { requestId },
-    );
-    const started = performance.now();
-    const originPromise = resolveArtifactExportOrigin(context)
-      .catch(() => unknownExportOrigin());
-    const finish = async (result: 'success' | 'failed' | 'cancelled', errorCode?: string) => {
-      const originProps = await originPromise;
-      trackArtifactExportResult(
-        analytics.track,
-        {
-          page_name: 'artifact',
-          area: 'share_option_popover',
-          artifact_id: artifactId,
-          artifact_kind: artifactKind,
-          project_id: projectId,
-          project_kind: projectKind,
-          export_format: trackingFormat,
-          result,
-          ...originProps,
-          ...(errorCode ? { error_code: errorCode } : {}),
-          export_duration_ms: Math.round(performance.now() - started),
-        },
-        { requestId },
-      );
-      // Onboarding first-loop 交付 step (spec §8.3): only a SUCCESSFUL export
-      // closes the loop. Project-scoped — a no-op unless the project was
-      // started from the Home recommendation.
-      if (result === 'success') recordFirstLoopStep(analytics.track, 'delivered', projectId);
-    };
+    const finish = (_result: 'success' | 'failed' | 'cancelled', _errorCode?: string) => {};
     const toastFormats = new Set(['pdf', 'pptx', 'zip', 'html', 'image', 'markdown']);
     // Programmatic exports compute in-browser and can take a while (one render
     // per deck slide), so the loading toast ticks every second with elapsed time
@@ -7667,33 +7544,13 @@ function HtmlViewer({
     entryFrom?: 'toolbar' | 'more_menu',
   ) => {
     if (!workspaceActive) return;
-    trackArtifactToolbarClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'artifact_toolbar',
-      element,
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-      ...(entryFrom ? { entry_from: entryFrom } : {}),
-    });
-  };
+      };
   const fireDrawToolbarClick = (
     element: DrawToolbarElement,
     submitAction?: 'draft' | 'queue' | 'send',
   ) => {
     if (!workspaceActive) return;
-    trackDrawToolbarClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'draw_toolbar',
-      element,
-      ...(submitAction ? { submit_action: submitAction } : {}),
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-    });
-  };
+      };
   const fireArtifactHeaderClick = (
     element:
       | 'back'
@@ -7704,28 +7561,12 @@ function HtmlViewer({
       | 'settings',
   ) => {
     if (!workspaceActive) return;
-    trackArtifactHeaderClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'artifact_header',
-      element,
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-    });
-  };
+      };
   const firePresentPopoverClick = (
     element: 'in_this_tab' | 'fullscreen' | 'new_tab',
   ) => {
     if (!workspaceActive) return;
-    trackPresentPopoverClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'present_popover',
-      element,
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-    });
-  };
+      };
   const fireDeckViewerClick = (
     element:
       | 'slide_prev'
@@ -7741,61 +7582,23 @@ function HtmlViewer({
     },
   ) => {
     if (!workspaceActive) return;
-    trackDeckViewerClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'deck_viewer',
-      element,
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-      ...(extra?.action ? { action: extra.action } : {}),
-      ...(typeof extra?.slide_index === 'number'
-        ? { slide_index: extra.slide_index }
-        : {}),
-      ...(typeof extra?.slide_count === 'number'
-        ? { slide_count: extra.slide_count }
-        : {}),
-    });
-  };
+      };
   const fireCommentPopoverClick = (
     element: 'save_comment' | 'send_to_chat' | 'add_note',
   ) => {
     if (!workspaceActive) return;
-    trackCommentPopoverClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'comment_popover',
-      element,
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-    });
-  };
+      };
   const fireArtifactEditResult = (
-    action: ArtifactEditResultProps['action'],
-    patch: ManualEditPatch,
-    startedAt: number,
-    result: ArtifactEditResultProps['result'],
-    errorCode?: ArtifactEditResultProps['error_code'],
+    _action?: string,
+    _patch?: ManualEditPatch,
+    _startedAt?: number,
+    _result?: string,
+    _errorCode?: string,
   ) => {
     // A retained viewer can become inactive while an edit write is in flight.
     // Read the live ref so the async continuation does not emit from the
     // background tab after it settles.
     if (!workspaceActiveRef.current) return;
-    trackArtifactEditResult(analytics.track, {
-      page_name: 'artifact',
-      area: 'manual_edit',
-      action,
-      edit_kind: manualEditPatchKindToTracking(patch),
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-      result,
-      ...(errorCode ? { error_code: errorCode } : {}),
-      duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
-    });
   };
   const [mode, setMode] = useState<'preview' | 'source'>('preview');
   const sourceSnapshotRefreshKey = htmlSourceSnapshotRefreshKey(file, filesRefreshKey);
@@ -7991,10 +7794,7 @@ function HtmlViewer({
 
   // Collapse the nested workspace-access listbox whenever the unified share
   // popover itself closes, so it never re-opens mid-flight.
-  useEffect(() => {
-    if (!deployMenuOpen) setShareAccessMenuOpen(false);
-  }, [deployMenuOpen]);
-
+  
   useEffect(() => {
     publicFileIdentityRef.current = { projectId, fileName: file.name };
     const requestSeq = ++publicFileRequestSeqRef.current;
@@ -8066,32 +7866,16 @@ function HtmlViewer({
   // gated — the publish/unpublish calls themselves stay unconditional.
   const firePublishFlowClick = (element: 'publish_file' | 'copy_publish_link') => {
     if (!workspaceActive) return;
-    trackShareOptionPopoverClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'share_option_popover',
-      element,
-      ...publishTrackingIdentity(),
-    });
-  };
+      };
 
   const firePublishResult = (
-    outcome: Pick<
-      ArtifactPublishResultProps,
-      | 'action' | 'result' | 'error_code' | 'publish_duration_ms' | 'daemon_error_code'
-      | 'failed_stage' | 'failure_reason' | 'upstream_status' | 'upstream_error_code'
-    >,
-    requestId?: string,
+    _outcome?: Record<string, unknown>,
+    _requestId?: string,
   ) => {
     // Read the live ref, not the captured prop: a publish/unpublish request can
     // start while this viewer is active and settle after the user switches tabs,
     // and the in-flight continuation still holds the render-time `true`.
     if (!workspaceActiveRef.current) return;
-    trackArtifactPublishResult(analytics.track, {
-      page_name: 'artifact',
-      area: 'share_option_popover',
-      ...outcome,
-      ...publishTrackingIdentity(),
-    }, requestId ? { requestId } : undefined);
   };
 
   async function publishCurrentFilePublic() {
@@ -8101,7 +7885,7 @@ function HtmlViewer({
     const requestSeq = ++publicFileRequestSeqRef.current;
     firePublishFlowClick('publish_file');
     const publishStarted = performance.now();
-    const publishRequestId = analytics.newRequestId();
+    const publishRequestId = undefined;
     setPublishingPublicFile(true);
     setPublishLinkFeedback(null);
     setPublishFailureKey(null);
@@ -8161,7 +7945,7 @@ function HtmlViewer({
     const requestSlug = publishedFileSlug;
     const requestSeq = ++publicFileRequestSeqRef.current;
     const unpublishStarted = performance.now();
-    const unpublishRequestId = analytics.newRequestId();
+    const unpublishRequestId = undefined;
     setPublishingPublicFile(true);
     setPublishLinkFeedback(null);
     setPublishFailureKey(null);
@@ -9083,10 +8867,7 @@ function HtmlViewer({
   // If the card unmounts for any other reason while the pointer is still over
   // it (its onMouseLeave never fires), drop the pin so later leaves dismiss
   // normally instead of being swallowed forever.
-  useEffect(() => {
-    if (!hoveredCommentTarget) hoverCardPinnedRef.current = false;
-  }, [hoveredCommentTarget]);
-  // Don't let a pending dismiss outlive the component.
+    // Don't let a pending dismiss outlive the component.
   useEffect(() => cancelHoverCardDismiss, [cancelHoverCardDismiss]);
   const [activePreviewCommentId, setActivePreviewCommentId] = useState<string | null>(null);
   const [liveCommentTargets, setLiveCommentTargets] = useState<Map<string, PreviewCommentSnapshot>>(() => new Map());
@@ -9525,10 +9306,7 @@ function HtmlViewer({
     presenterWindowRef.current = null;
   }, [workspaceActive]);
 
-  useEffect(() => {
-    liveCommentTargetsRef.current = liveCommentTargets;
-  }, [liveCommentTargets]);
-
+  
   const shouldDeferPassivePreviewSource =
     liveHtml === undefined &&
     file.size > HTML_PASSIVE_PREVIEW_FULL_TEXT_LIMIT &&
@@ -9900,19 +9678,10 @@ function HtmlViewer({
     const key = `${projectId}::${file.name}`;
     if (deckSurfaceSeenRef.current === key) return;
     deckSurfaceSeenRef.current = key;
-    trackDeckViewerSurfaceView(analytics.track, {
-      page_name: 'artifact',
-      area: 'deck_viewer',
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-      slide_count: deckSlideTotal,
-    });
-    // deckSlideTotal intentionally omitted from deps: we snapshot it at first
+        // deckSlideTotal intentionally omitted from deps: we snapshot it at first
     // recognition and don't want later count updates to refire the view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analytics.track, effectiveDeck, source, projectId, projectKind, file.name, file.kind]);
+  }, [ effectiveDeck, source, projectId, projectKind, file.name, file.kind]);
   useEffect(() => {
     setSpeakerNotesDraft(activeSpeakerNote);
     setSpeakerNotesEditMode(false);
@@ -9976,12 +9745,7 @@ function HtmlViewer({
   // source rewrite during edit (1.5s debounced set-style patches) stays
   // invisible to the iframe — live updates flow through od-edit-preview-style
   // postMessage instead, so the canvas never has to reload.
-  useEffect(() => {
-    if (manualEditMode && manualEditFrozenSource === null && livePreviewSource != null) {
-      setManualEditFrozenSource(livePreviewSource);
-    }
-  }, [manualEditMode, manualEditFrozenSource, livePreviewSource]);
-  // Capture / release the annotation snapshot at mode entry / exit, and keep
+    // Capture / release the annotation snapshot at mode entry / exit, and keep
   // it following SETTLED content versions while the mode stays open.
   //
   // Two different "background changes" hit this freeze and they need opposite
@@ -10003,23 +9767,7 @@ function HtmlViewer({
   //
   // Cleared on exit so `previewSource` falls back to the latest live source
   // and any still-deferred streaming update lands in one clean render.
-  useEffect(() => {
-    if (annotationFreezeActive) {
-      if (annotationFrozenSource === null && livePreviewSource != null) {
-        setAnnotationFrozenSource(livePreviewSource);
-      } else if (
-        annotationFrozenSource !== null &&
-        liveHtml === undefined &&
-        livePreviewSource != null &&
-        livePreviewSource !== annotationFrozenSource
-      ) {
-        setAnnotationFrozenSource(livePreviewSource);
-      }
-    } else if (annotationFrozenSource !== null) {
-      setAnnotationFrozenSource(null);
-    }
-  }, [annotationFreezeActive, annotationFrozenSource, livePreviewSource, liveHtml]);
-  const previewSource = (manualEditMode && manualEditFrozenSource !== null)
+    const previewSource = (manualEditMode && manualEditFrozenSource !== null)
     ? manualEditFrozenSource
     : (annotationFreezeActive && annotationFrozenSource !== null)
       ? annotationFrozenSource
@@ -10564,10 +10312,7 @@ function HtmlViewer({
     setUrlSelectionBridgeReady(false);
   }, [effectiveBasePreviewSrcUrl, filesRefreshPending, previewSrcCarriesCurrentRefresh]);
   const previewObservabilitySeenRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    previewObservabilitySeenRef.current = new Set();
-  }, [projectId, file.name, reloadKey]);
-  useEffect(() => {
+    useEffect(() => {
     if (mode !== 'preview') return undefined;
     return subscribePreviewIframeMessages(({ source: messageSource, data }) => {
       if (!workspaceActiveRef.current) return;
@@ -10920,13 +10665,7 @@ function HtmlViewer({
     generation: string;
     activationEpoch: number;
   } | null>(null);
-  useEffect(() => {
-    if (workspaceActive && !previousSrcDocTransportWorkspaceActiveRef.current) {
-      srcDocTransportActivationEpochRef.current += 1;
-    }
-    previousSrcDocTransportWorkspaceActiveRef.current = workspaceActive;
-  }, [workspaceActive]);
-  const clearSrcDocTransportTimeouts = useCallback(() => {
+    const clearSrcDocTransportTimeouts = useCallback(() => {
     for (const timeout of srcDocTransportTimeoutsRef.current) {
       window.clearTimeout(timeout);
     }
@@ -10966,15 +10705,7 @@ function HtmlViewer({
     invalidateSrcDocTransportActivation,
     srcDocTransportGeneration,
   ]);
-  useEffect(() => {
-    // Hidden viewers keep their committed-document witness, but any in-flight
-    // challenge timer belongs to the visible activation that started it. Pause
-    // those timers so Code mode and retained project/file tabs cannot trigger
-    // a background recovery; an unverified frame is challenged again when it
-    // becomes visible, while an already verified frame needs no new work.
-    if (!workspaceActive || mode !== 'preview') cancelPendingSrcDocTransport();
-  }, [cancelPendingSrcDocTransport, mode, workspaceActive]);
-  const postPreviewObservabilityHostState = useCallback((target: HTMLIFrameElement | null) => {
+    const postPreviewObservabilityHostState = useCallback((target: HTMLIFrameElement | null) => {
     const win = target?.contentWindow;
     if (!win) return;
     win.postMessage({
@@ -11089,10 +10820,7 @@ function HtmlViewer({
   // edits) never invalidate the memoized rail; the ref always calls the
   // freshest goToSlide closure.
   const goToSlideRef = useRef<(index: number) => void>(() => {});
-  useEffect(() => {
-    goToSlideRef.current = goToSlide;
-  });
-  const handleDeckThumbnailSelect = useCallback((index: number) => {
+    const handleDeckThumbnailSelect = useCallback((index: number) => {
     goToSlideRef.current(index);
   }, []);
   // document.open/write cannot change an existing browsing context's compat
@@ -11666,10 +11394,7 @@ function HtmlViewer({
   // while invisible, which left it stuck blank (the white-on-enter bug). Doing
   // it on first visible entry means the one materialization paints correctly,
   // and the sticky flag keeps it warm for every subsequent toggle.
-  useEffect(() => {
-    if (!useUrlLoadPreview && !srcDocMaterialized) setSrcDocMaterialized(true);
-  }, [useUrlLoadPreview, srcDocMaterialized]);
-  // When the srcDoc switch is driven ONLY by Draw/annotation mode — an
+    // When the srcDoc switch is driven ONLY by Draw/annotation mode — an
   // artifact that would otherwise URL-load — keep the URL-load iframe warm
   // instead of parking it at about:blank. Draw is a quick "mark → screenshot →
   // close" round-trip; parking forces a full artifact re-fetch the moment the
@@ -12313,13 +12038,7 @@ function HtmlViewer({
   }, [file.name]);
 
   // Selecting a new file or turning inspect/comment-inspect off resets the panel target.
-  useEffect(() => {
-    if (!inspectMode && !(boardMode && boardTool === 'inspect')) {
-      setActiveInspectTarget(null);
-      setInspectError(null);
-    }
-  }, [inspectMode, boardMode, boardTool]);
-
+  
   // Hydrate the host-authoritative override map from the artifact source
   // synchronously, *before* React commits a render that carries a new
   // `srcDoc` to the iframe. A `useEffect([source])` would commit the new
@@ -12350,10 +12069,7 @@ function HtmlViewer({
     ));
   }, [source]);
 
-  useEffect(() => {
-    selectedManualEditTargetIdRef.current = selectedManualEditTarget?.id ?? null;
-  }, [selectedManualEditTarget?.id]);
-
+  
   useEffect(() => {
     if (!workspaceActive || !boardMode) {
       setCommentCreateMode(false);
@@ -13655,20 +13371,7 @@ function HtmlViewer({
     hasContent: boolean,
     errorCode?: string,
   ) {
-    trackSpeakerNotesSaveResult(analytics.track, {
-      page_name: 'artifact',
-      area: 'deck_viewer',
-      edit_surface: editSurface,
-      artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-      project_id: projectId,
-      project_kind: projectKind,
-      slide_count: deckSlideTotal,
-      has_content: hasContent,
-      result,
-      ...(errorCode ? { error_code: errorCode } : {}),
-    });
-  }
+      }
 
   async function saveSpeakerNotes(
     nextNotes: readonly string[],
@@ -14181,27 +13884,6 @@ function HtmlViewer({
   // from the same artifact output surface as files.
   function openSaveAsTemplateModal() {
     setDeployMenuOpen(false);
-    // Start the template click→result correlation; the result fires later from
-    // handleSaveAsTemplate once the save actually resolves.
-    const requestId = analytics.newRequestId();
-    templateExportRequestIdRef.current = requestId;
-    templateExportStartedRef.current = performance.now();
-    templateExportOriginPromiseRef.current = resolveArtifactExportOrigin()
-      .catch(() => unknownExportOrigin());
-    templateExportResolvedRef.current = false;
-    trackShareOptionPopoverClick(
-      analytics.track,
-      {
-        page_name: 'artifact',
-        area: 'share_option_popover',
-        artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-        artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-        element: 'template',
-        project_id: projectId,
-        project_kind: projectKind,
-      },
-      { requestId },
-    );
     const defaultName =
       file.name.replace(/\.html?$/i, '') || t('fileViewer.templateNameDefault');
     setTemplateName(defaultName);
@@ -14213,38 +13895,9 @@ function HtmlViewer({
   // Component-scoped so both the save flow and the modal Cancel button emit
   // the one terminal result for a template export session.
   const fireTemplateExportResult = (
-    result: 'success' | 'failed' | 'cancelled',
-    errorCode?: string,
-  ) => {
-    if (templateExportResolvedRef.current) return;
-    templateExportResolvedRef.current = true;
-    const requestId = templateExportRequestIdRef.current ?? analytics.newRequestId();
-    const started = templateExportStartedRef.current || performance.now();
-    const originPromise = templateExportOriginPromiseRef.current
-      ?? resolveArtifactExportOrigin().catch(() => unknownExportOrigin());
-    void originPromise.then((originProps) => {
-      trackArtifactExportResult(
-        analytics.track,
-        {
-          page_name: 'artifact',
-          area: 'share_option_popover',
-          artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-          artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-          export_format: 'template',
-          result,
-          ...originProps,
-          ...(errorCode ? { error_code: errorCode } : {}),
-          export_duration_ms: Math.round(performance.now() - started),
-          project_id: projectId,
-          project_kind: projectKind,
-        },
-        { requestId },
-      );
-    });
-    // Onboarding first-loop 交付 step (spec §8.3): only a SUCCESSFUL template
-    // export closes the loop. Project-scoped no-op unless started from Home.
-    if (result === 'success') recordFirstLoopStep(analytics.track, 'delivered', projectId);
-  };
+    _result: 'success' | 'failed' | 'cancelled',
+    _errorCode?: string,
+  ) => {};
 
   async function handleSaveAsTemplate() {
     const name = templateName.trim();
@@ -14368,32 +14021,13 @@ function HtmlViewer({
     // Real-deploy analytics: report success only after the provider actually
     // accepts the publish, failed on any hard error / missing config. This is
     // distinct from the share-popover "opened" signal (artifact_export_result).
-    const deployStarted = performance.now();
-    const deployRequestId = analytics.newRequestId();
-    const providerForTracking: TrackingDeployProvider =
-      deployProviderId === CLOUDFLARE_PAGES_PROVIDER_ID ? 'cloudflare_pages' : 'vercel';
-    const firstConfigure = !deployConfig?.configured;
+    const deployRequestId = undefined;
     let savedNewToken = false;
     const fireDeployResult = (
-      result: 'success' | 'failed' | 'cancelled',
-      errorCode?: string,
-      error?: unknown,
+      _result: 'success' | 'failed' | 'cancelled',
+      _errorCode?: string,
+      _error?: unknown,
     ) => {
-      trackArtifactDeployResult(analytics.track, {
-        page_name: 'artifact',
-        area: 'deploy_modal',
-        artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-        artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-        provider: providerForTracking,
-        result,
-        saved_new_token: savedNewToken,
-        first_configure: firstConfigure,
-        ...(errorCode ? { error_code: errorCode } : {}),
-        deploy_duration_ms: Math.round(performance.now() - deployStarted),
-        project_id: projectId,
-        project_kind: projectKind,
-        ...failureDetailProps(error),
-      }, { requestId: deployRequestId });
     };
     try {
       const cloudflarePagesSelection = buildCloudflarePagesDeploySelection();
@@ -15488,27 +15122,6 @@ function HtmlViewer({
     flushSync(() => {
       setDeployMenuOpen(false);
     });
-    // Start the image export's own click→result correlation (separate modal
-    // flow, so it can't ride fireShareExport).
-    const requestId = analytics.newRequestId();
-    imageExportRequestIdRef.current = requestId;
-    imageExportStartedRef.current = performance.now();
-    imageExportOriginPromiseRef.current = resolveArtifactExportOrigin(context)
-      .catch(() => unknownExportOrigin());
-    imageExportResolvedRef.current = false;
-    trackShareOptionPopoverClick(
-      analytics.track,
-      {
-        page_name: 'artifact',
-        area: 'share_option_popover',
-        artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-        artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-        element: 'image',
-        project_id: projectId,
-        project_kind: projectKind,
-      },
-      { requestId },
-    );
     setImageExportError(null);
     imageExportSnapshotDataUrlRef.current = null;
     setImageExportContext(context ?? null);
@@ -15606,37 +15219,9 @@ function HtmlViewer({
   const captureFailureStageRef = useRef<string | null>(null);
 
   const fireImageExportResult = (
-    result: 'success' | 'failed' | 'cancelled',
-    errorCode?: string,
+    _result: 'success' | 'failed' | 'cancelled',
+    _errorCode?: string,
   ) => {
-    if (imageExportResolvedRef.current) return;
-    imageExportResolvedRef.current = true;
-    const requestId = imageExportRequestIdRef.current ?? analytics.newRequestId();
-    const started = imageExportStartedRef.current || performance.now();
-    const originPromise = imageExportOriginPromiseRef.current
-      ?? resolveArtifactExportOrigin().catch(() => unknownExportOrigin());
-    void originPromise.then((originProps) => {
-      trackArtifactExportResult(
-        analytics.track,
-        {
-          page_name: 'artifact',
-          area: 'share_option_popover',
-          artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-          artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
-          export_format: 'image',
-          result,
-          ...originProps,
-          ...(errorCode ? { error_code: errorCode } : {}),
-          export_duration_ms: Math.round(performance.now() - started),
-          project_id: projectId,
-          project_kind: projectKind,
-        },
-        { requestId },
-      );
-    });
-    // Onboarding first-loop 交付 step (spec §8.3): only a SUCCESSFUL image
-    // export closes the loop. Project-scoped no-op unless started from Home.
-    if (result === 'success') recordFirstLoopStep(analytics.track, 'delivered', projectId);
   };
 
   async function handleImageExportSave() {
@@ -15870,7 +15455,6 @@ function HtmlViewer({
     const title = t('socialShare.projectTitle', { title: exportTitle });
     const text = t('socialShare.projectText', {
       title: exportTitle,
-      repo: OPEN_DESIGN_GITHUB_REPO_URL,
     });
     return {
       kind: 'project-html',
@@ -15881,7 +15465,6 @@ function HtmlViewer({
       copyText: t('socialShare.projectCopyText', {
         title: exportTitle,
         url: socialShareDisplayUrl,
-        repo: OPEN_DESIGN_GITHUB_REPO_URL,
       }),
     };
   }, [exportTitle, locale, socialShareDisplayUrl, t]);
@@ -19692,10 +19275,7 @@ function MarkdownViewer({
 
   // The cached editor block offsets become stale whenever the source text
   // changes (line positions move) — drop them so the next sync remeasures.
-  useEffect(() => {
-    editorBlockOffsetsRef.current = null;
-  }, [text]);
-
+  
   useEffect(() => {
     if (!baseHtml) {
       setHighlightedHtml(null);

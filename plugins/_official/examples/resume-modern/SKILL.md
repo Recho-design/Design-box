@@ -21,7 +21,6 @@ od:
   surface: web
   platform: desktop
   scenario: personal
-  upstream: "https://github.com/nexu-io/html-anything"
   preview:
     type: html
     entry: index.html

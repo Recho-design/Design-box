@@ -729,10 +729,10 @@ const REVEAL_AND_NAV_SCRIPT = `
   })();
 </script>`;
 
-const STAR_SCRIPT_TEMPLATE = (repo: string) => `
+const GITHUB_CTA_SCRIPT_TEMPLATE = (repo: string) => `
 <script>
   /*
-   * GitHub star count — pulls live count and replaces the placeholder
+   * GitHub repo stats — pulls the live star count and replaces the placeholder
    * text in the nav CTA. Failures fall back silently.
    */
   (function () {
@@ -750,8 +750,8 @@ const STAR_SCRIPT_TEMPLATE = (repo: string) => `
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data || typeof data.stargazers_count !== 'number') return;
-        cta.textContent = 'Star · ' + format(data.stargazers_count);
-        cta.setAttribute('aria-label', 'Star on GitHub — ' + format(data.stargazers_count) + ' stars');
+        cta.textContent = 'GitHub · ' + format(data.stargazers_count);
+        cta.setAttribute('aria-label', 'Open the repository on GitHub — ' + format(data.stargazers_count) + ' stars');
       })
       .catch(function () { /* leave placeholder on failure */ });
   })();
@@ -768,7 +768,7 @@ function repoFromUrl(url: string): string | null {
 
 export function renderPage(inputs: EditorialCollageInputs, css: string): string {
   const repo = repoFromUrl(inputs.brand.primary_url);
-  const starScript = repo ? STAR_SCRIPT_TEMPLATE(repo) : '';
+  const githubCtaScript = repo ? GITHUB_CTA_SCRIPT_TEMPLATE(repo) : '';
   return [
     `<!DOCTYPE html>`,
     `<html lang='${inputs.brand.locale ?? 'en'}'>`,
@@ -790,7 +790,7 @@ export function renderPage(inputs: EditorialCollageInputs, css: string): string 
     renderFooter(inputs),
     `</div>`,
     REVEAL_AND_NAV_SCRIPT,
-    starScript,
+    githubCtaScript,
     `</body>`,
     `</html>`,
     ``,

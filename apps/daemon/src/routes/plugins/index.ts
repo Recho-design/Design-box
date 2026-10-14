@@ -165,7 +165,7 @@ interface PluginRouteHelpers {
   requireLocalDaemonRequest: RequestHandler;
   handleAppliedPluginExport(req: Request, res: Response): Promise<unknown>;
   handleProjectInstallFolder(req: Request, res: Response): Promise<unknown>;
-  handleProjectPluginCli(req: Request, res: Response, action: PluginShareAction): Promise<unknown>;
+  handleProjectPluginCli(req: Request, res: Response): Promise<unknown>;
   getProject(db: SqliteDbLike, id: string): unknown;
   sendApiError(res: Response, status: number, code: string, message: string): unknown;
   isLocalSameOrigin(req: Request, port: number | null | undefined): boolean;
@@ -840,7 +840,7 @@ export function registerProjectPluginRoutes(app: Express, deps: RegisterPluginRo
     return helpers.handleProjectInstallFolder(req, res);
   });
   app.post('/api/projects/:id/plugins/publish-github', async (req, res) => {
-    return helpers.handleProjectPluginCli(req, res, 'publish-github');
+    return helpers.handleProjectPluginCli(req, res);
   });
   app.get('/api/projects/:id/plugin-candidates', async (req, res) => {
     try {
@@ -878,9 +878,6 @@ export function registerProjectPluginRoutes(app: Express, deps: RegisterPluginRo
   });
   app.post('/api/projects/:id/plugin-candidates/:candidateId/share-tasks', async (req, res) => {
     return helpers.handleCandidateShareTask(req, res);
-  });
-  app.post('/api/projects/:id/plugins/contribute-open-design', async (req, res) => {
-    return helpers.handleProjectPluginCli(req, res, 'contribute-open-design');
   });
   app.post('/api/projects/:id/plugins/share-tasks', async (req, res) => {
     return helpers.handleProjectShareTask(req, res);

@@ -80,17 +80,6 @@ import {
 export { deckPreviewSrcDoc } from '../lib/project-cover-pipeline';
 import { useInView } from './plugins-home/useInView';
 import { workspaceIdentityCacheKey } from '../collab/workspace-identity';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackProjectCollectionClick,
-  trackWorkspaceProjectActionResult,
-  trackWorkspaceSharedProjectOpenResult,
-} from '../analytics/events';
-import {
-  countBucket,
-  workspaceAnalyticsDimensions,
-} from '../analytics/workspace';
-import type { ProjectCollectionClickProps } from '@open-design/contracts/analytics';
 
 /** Which project space this strip renders. Drives the per-card 共享 badge
  *  (hidden in the all-shared team space) and the "{creator}创建" line: 'recent'
@@ -387,8 +376,7 @@ export function RecentProjectsStrip({
   isActive = true,
 }: Props) {
   const t = useT();
-  const analytics = useAnalytics();
-  const analyticsPage = space === 'drafts' ? 'drafts' : space === 'team' ? 'all_projects' : 'home';
+    const analyticsPage = space === 'drafts' ? 'drafts' : space === 'team' ? 'all_projects' : 'home';
   const rowRef = useRef<HTMLDivElement | null>(null);
   // Real creator resolution (replaces the demo's mock 李娜/张伟 roster): the
   // member directory turns an ownerMemberId into a display name, while the
@@ -407,19 +395,11 @@ export function RecentProjectsStrip({
   workspaceContextLoadingRef.current = workspaceContextLoading;
   const workspaceIdentity = workspaceIdentityCacheKey(workspaceContext);
   const workspaceBilling = useWorkspaceBilling();
-  const workspaceDimensions = workspaceAnalyticsDimensions(workspaceContext);
   function trackCollection(
-    element: ProjectCollectionClickProps['element'],
-    properties: Partial<Omit<ProjectCollectionClickProps, 'page_name' | 'area' | 'element'>> = {},
-    requestId?: string,
+    _element: string,
+    _properties: Record<string, unknown> = {},
+    _requestId?: string,
   ) {
-    trackProjectCollectionClick(analytics.track, {
-      page_name: analyticsPage,
-      area: 'project_collection',
-      element,
-      ...workspaceDimensions,
-      ...properties,
-    }, requestId ? { requestId } : undefined);
   }
   const selfMemberId = workspaceContext?.workspaceMemberId ?? null;
   // `canShareProjects` alone is a ROLE permission ("could this member share IF
@@ -476,11 +456,7 @@ export function RecentProjectsStrip({
     !workspaceContextLoading &&
     !teamCollectionAvailable &&
     collection === 'teamProjects';
-  useEffect(() => {
-    if (collectionUnavailable) selectCollection('recent');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionUnavailable]);
-  const [view, setView] = useState<'grid' | 'list'>('grid');
+    const [view, setView] = useState<'grid' | 'list'>('grid');
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
   const [kindFilter, setKindFilter] = useState<ProjectKindFilter>('all');
   const [sort, setSort] = useState<ProjectSort>('updatedDesc');
@@ -657,11 +633,7 @@ export function RecentProjectsStrip({
     }
   });
   function requestMove(project: Project, action: 'to-team' | 'to-personal') {
-    trackCollection(action === 'to-team' ? 'move_to_team' : 'move_to_personal', {
-      project_key: project.id,
-      project_relation: resolveCreator(project.id).ownedBySelf ? 'self' : 'other',
-    });
-    if (moveDontRemind) {
+        if (moveDontRemind) {
       void (action === 'to-team' ? handleShareToTeam(project) : handleUnshareFromTeam(project));
       return;
     }
@@ -1031,11 +1003,7 @@ export function RecentProjectsStrip({
   function startRename(project: Project) {
     const creator = resolveCreator(project.id);
     if (!creator.ownedBySelf) return;
-    trackCollection('rename', {
-      project_key: project.id,
-      project_relation: 'self',
-    });
-    setMenuOpenId(null);
+        setMenuOpenId(null);
     setRenameTarget({ id: project.id, original: project.name });
     setRenameInput(project.name);
   }
@@ -1057,11 +1025,7 @@ export function RecentProjectsStrip({
   function requestDelete(project: Project) {
     const creator = resolveCreator(project.id);
     if (!creator.ownedBySelf) return;
-    trackCollection('delete', {
-      project_key: project.id,
-      project_relation: 'self',
-    });
-    setMenuOpenId(null);
+        setMenuOpenId(null);
     deleteFlow.request(project);
   }
 
@@ -1083,11 +1047,7 @@ export function RecentProjectsStrip({
     // own defense-in-depth check.
     const creator = resolveCreator(project.id);
     if (!creator.ownedBySelf) return;
-    trackCollection('duplicate', {
-      project_key: project.id,
-      project_relation: 'self',
-    });
-    setMenuOpenId(null);
+        setMenuOpenId(null);
     void duplicateFlow.duplicate(project);
   }
 
@@ -1128,10 +1088,7 @@ export function RecentProjectsStrip({
 
   function requestBulkMove(action: 'to-team' | 'to-personal') {
     if (bulkMutationDisabled) return;
-    trackCollection(action === 'to-team' ? 'bulk_move_to_team' : 'bulk_move_to_personal', {
-      selection_count_bucket: countBucket(selectedCount),
-    });
-    if (moveDontRemind) {
+        if (moveDontRemind) {
       void commitBulkMove(action);
       return;
     }
@@ -1169,19 +1126,7 @@ export function RecentProjectsStrip({
     }
     if (succeeded.length > 0) notifyTeamProjectsChanged();
     const failedCount = ids.length - succeeded.length;
-    trackWorkspaceProjectActionResult(analytics.track, {
-      page_name: analyticsPage,
-      area: 'project_collection',
-      action: action === 'to-team' ? 'bulk_move_to_team' : 'bulk_move_to_personal',
-      result: failedCount === 0 ? 'success' : succeeded.length > 0 ? 'partial_success' : 'failed',
-      requested_count: ids.length,
-      succeeded_count: succeeded.length,
-      failed_count: failedCount,
-      duration_ms: Math.round(performance.now() - startedAt),
-      ...(failedCount > 0 ? { error_code: 'one_or_more_failed' } : {}),
-      ...workspaceDimensions,
-    });
-  }
+      }
 
   async function commitBulkDelete() {
     const ids = selectedProjects.map(({ project }) => project.id);
@@ -1202,19 +1147,7 @@ export function RecentProjectsStrip({
     );
     const succeededCount = deleted.filter((id): id is string => id !== null).length;
     const failedCount = ids.length - succeededCount;
-    trackWorkspaceProjectActionResult(analytics.track, {
-      page_name: analyticsPage,
-      area: 'project_collection',
-      action: 'bulk_delete',
-      result: failedCount === 0 ? 'success' : succeededCount > 0 ? 'partial_success' : 'failed',
-      requested_count: ids.length,
-      succeeded_count: succeededCount,
-      failed_count: failedCount,
-      duration_ms: Math.round(performance.now() - startedAt),
-      ...(failedCount > 0 ? { error_code: 'one_or_more_failed' } : {}),
-      ...workspaceDimensions,
-    });
-  }
+      }
 
   return (
     <section className="recent-projects" data-testid="recent-projects-strip">
@@ -1260,8 +1193,7 @@ export function RecentProjectsStrip({
                 type="button"
                 className="recent-projects__invite"
                 onClick={() => {
-                  trackCollection('invite_teammates');
-                  if (inviteTarget.kind === 'external') {
+                                    if (inviteTarget.kind === 'external') {
                     window.open(inviteTarget.url, '_blank', 'noopener,noreferrer');
                   } else if (inviteTarget.kind === 'local') {
                     setInviteOpen(true);
@@ -1277,10 +1209,7 @@ export function RecentProjectsStrip({
                 className={`recent-projects__select-toggle${selectionMode ? ' is-active' : ''}`}
                 aria-pressed={selectionMode}
                 onClick={() => {
-                  trackCollection('multi_select_toggle', {
-                    selection_count_bucket: countBucket(selectedCount),
-                  });
-                  setSelectionMode((current) => !current);
+                                    setSelectionMode((current) => !current);
                   setSelectedProjectIds(new Set());
                   setMenuOpenId(null);
                 }}
@@ -1308,11 +1237,7 @@ export function RecentProjectsStrip({
                         type="button"
                         className={ownerFilter === option.id ? 'is-active' : undefined}
                         onClick={() => {
-                          trackCollection('filter', {
-                            filter_type: 'owner',
-                            filter_value: option.id,
-                          });
-                          setOwnerFilter(option.id);
+                                                    setOwnerFilter(option.id);
                           setOpenHeaderMenu(null);
                         }}
                       >
@@ -1345,11 +1270,7 @@ export function RecentProjectsStrip({
                       type="button"
                       className={kindFilter === option.id ? 'is-active' : undefined}
                       onClick={() => {
-                        trackCollection('filter', {
-                          filter_type: 'project_type',
-                          filter_value: option.id,
-                        });
-                        setKindFilter(option.id);
+                                                setKindFilter(option.id);
                         setOpenHeaderMenu(null);
                       }}
                     >
@@ -1403,15 +1324,7 @@ export function RecentProjectsStrip({
                         aria-checked={sort === option.id}
                         className={sort === option.id ? 'is-active' : undefined}
                         onClick={() => {
-                          trackCollection('sort', {
-                            sort_value:
-                              option.id === 'updatedAsc'
-                                ? 'updated_asc'
-                                : option.id === 'nameAsc'
-                                  ? 'name_asc'
-                                  : 'updated_desc',
-                          });
-                          setSort(option.id);
+                                                    setSort(option.id);
                           setOpenHeaderMenu(null);
                         }}
                       >
@@ -1439,8 +1352,7 @@ export function RecentProjectsStrip({
                         className={view === option.id ? 'is-active' : undefined}
                         onClick={() => {
                           if (view !== option.id) {
-                            trackCollection('view_toggle', { view_value: option.id });
-                            setView(option.id);
+                                                        setView(option.id);
                           }
                           setOpenHeaderMenu(null);
                         }}
@@ -1510,10 +1422,7 @@ export function RecentProjectsStrip({
                 disabled={bulkMutationDisabled}
                 title={bulkMutationTitle}
                 onClick={() => {
-                  trackCollection('bulk_delete', {
-                    selection_count_bucket: countBucket(selectedCount),
-                  });
-                  setBulkDeleteOpen(true);
+                                    setBulkDeleteOpen(true);
                 }}
               >
                 <Icon name="trash" size={14} /> {t('designs.deleteSelected')}
@@ -1605,28 +1514,6 @@ export function RecentProjectsStrip({
                     return;
                   }
                   if (opening) return;
-                  const openStartedAt = performance.now();
-                  const openRequestId = analytics.newRequestId();
-                  const projectRelation = creator.ownedBySelf ? 'self' : 'other';
-                  const materialization =
-                    project.metadata?.sharedProjectPlaceholderAt != null ? 'required' : 'warm';
-                  trackCollection('project_open', {
-                    project_key: project.id,
-                    project_relation: projectRelation,
-                  }, openRequestId);
-                  const trackSharedOpenResult = (opened: boolean) => {
-                    if (!shared && space !== 'team') return;
-                    trackWorkspaceSharedProjectOpenResult(analytics.track, {
-                      page_name: analyticsPage,
-                      area: 'project_collection',
-                      result: opened ? 'success' : 'failed',
-                      project_relation: projectRelation,
-                      materialization,
-                      duration_ms: Math.round(performance.now() - openStartedAt),
-                      ...(!opened ? { error_code: 'open_failed' } : {}),
-                      ...workspaceDimensions,
-                    }, { requestId: openRequestId });
-                  };
                   // Release every background cover slot before the project view
                   // starts its foreground files/content reads. Waiting for the
                   // entry shell to unmount is too late: navigation itself needs
@@ -1641,23 +1528,18 @@ export function RecentProjectsStrip({
                     if (result && typeof result === 'object' && 'then' in result) {
                       void Promise.resolve(result).then(
                         (opened) => {
-                          trackSharedOpenResult(opened !== false);
-                          if (opened === false) resumeBackgroundCoverRequests();
+                                                    if (opened === false) resumeBackgroundCoverRequests();
                         },
                         () => {
-                          trackSharedOpenResult(false);
-                          resumeBackgroundCoverRequests();
+                                                    resumeBackgroundCoverRequests();
                         },
                       );
                     } else if (result === false) {
-                      trackSharedOpenResult(false);
-                      resumeBackgroundCoverRequests();
+                                            resumeBackgroundCoverRequests();
                     } else {
-                      trackSharedOpenResult(true);
-                    }
+                                          }
                   } catch {
-                    trackSharedOpenResult(false);
-                    resumeBackgroundCoverRequests();
+                                        resumeBackgroundCoverRequests();
                   }
                 }}
                 aria-busy={opening ? true : undefined}
@@ -1794,11 +1676,7 @@ export function RecentProjectsStrip({
                   aria-expanded={menuOpenId === project.id}
                     onClick={(event) => {
                       event.stopPropagation();
-                      trackCollection('more_menu', {
-                        project_key: project.id,
-                        project_relation: creator.ownedBySelf ? 'self' : 'other',
-                      });
-                      moveFlow.clearError();
+                                            moveFlow.clearError();
                       setMenuOpenId((current) => current === project.id ? null : project.id);
                     }}
                   >

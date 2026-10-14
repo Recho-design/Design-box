@@ -5,7 +5,6 @@ import type { Dict } from '../../i18n/types';
 import { Icon, type IconName } from '../Icon';
 import type { ProjectFile, ProjectFileKind } from '../../types';
 import type { WorkspaceContextItem } from '@open-design/contracts';
-import type { TabLauncherClickProps } from '@open-design/contracts/analytics';
 import type { LauncherAction, LauncherContext } from './tab-launcher';
 import styles from './TabLauncherMenu.module.css';
 
@@ -22,10 +21,7 @@ const ACTION_ICON_COLORS = [
 
 // Page/area/project_id are filled by the host (FileWorkspace); the menu only
 // supplies the event-specific fields.
-export type TabLauncherTrackInput = Omit<
-  TabLauncherClickProps,
-  'page_name' | 'area' | 'project_id'
->;
+export type TabLauncherTrackInput = { element?: string; action?: string; item_id?: string | null; query_length?: number; [key: string]: unknown };
 
 interface Props {
   /** The "+" button the menu is anchored to (for fixed positioning). */

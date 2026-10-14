@@ -34,7 +34,7 @@ od:
   capabilities_required:
     - shell
     - file_write
-  example_prompt: "Build a GitHub dashboard for nexu-io/open-design — stars, forks, contributors, issues, PRs, recent activity, and top contributors."
+  example_prompt: "Build a GitHub dashboard for Recho-design/Design-box — stars, forks, contributors, issues, PRs, recent activity, and top contributors."
 ---
 
 # GitHub Dashboard Skill

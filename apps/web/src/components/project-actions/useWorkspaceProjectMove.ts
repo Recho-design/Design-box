@@ -1,10 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { WorkspaceCollabContext, WorkspaceProjectSummary } from '@open-design/contracts';
-import type { TrackingProjectCollectionPage } from '@open-design/contracts/analytics';
 
-import { useAnalytics } from '../../analytics/provider';
-import { trackWorkspaceProjectActionResult } from '../../analytics/events';
-import { workspaceAnalyticsDimensions } from '../../analytics/workspace';
 import { notifyTeamProjectsChanged } from '../../collab/useWorkspaceContext';
 import { moveWorkspaceProject, workspaceProjectMoveErrorCode } from '../../state/projects';
 import type { Project } from '../../types';
@@ -35,7 +31,7 @@ export interface ProjectMoveError {
  */
 export function useWorkspaceProjectMove(input: {
   workspaceContext: WorkspaceCollabContext | null | undefined;
-  analyticsPage: TrackingProjectCollectionPage;
+  analyticsPage?: string;
   onProjectShared?: (project: WorkspaceProjectSummary) => void;
   onProjectShareFailed?: (projectId: string) => void;
   onProjectUnshared?: (projectId: string) => void;
@@ -53,16 +49,13 @@ export function useWorkspaceProjectMove(input: {
     onMoveStart,
     onMoveSettled,
   } = input;
-  const analytics = useAnalytics();
-  const [sharingId, setSharingId] = useState<string | null>(null);
+    const [sharingId, setSharingId] = useState<string | null>(null);
   const [unsharingId, setUnsharingId] = useState<string | null>(null);
   const [error, setError] = useState<ProjectMoveError | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
 
   const shareToTeam = useCallback(async (project: Project): Promise<boolean> => {
-    const startedAt = performance.now();
-    const workspaceDimensions = workspaceAnalyticsDimensions(workspaceContext);
     setError(null);
     onMoveStart?.(project, 'to-team');
     setSharingId(project.id);
@@ -74,18 +67,7 @@ export function useWorkspaceProjectMove(input: {
       });
       onProjectShared?.(movedProject);
       notifyTeamProjectsChanged();
-      trackWorkspaceProjectActionResult(analytics.track, {
-        page_name: analyticsPage,
-        area: 'project_collection',
-        action: 'move_to_team',
-        result: 'success',
-        requested_count: 1,
-        succeeded_count: 1,
-        failed_count: 0,
-        duration_ms: Math.round(performance.now() - startedAt),
-        ...workspaceDimensions,
-      });
-      onMoveSettled?.(project, 'to-team', true);
+            onMoveSettled?.(project, 'to-team', true);
       return true;
     } catch (err) {
       onProjectShareFailed?.(project.id);
@@ -96,28 +78,14 @@ export function useWorkspaceProjectMove(input: {
           ? 'owner-conflict'
           : 'share',
       });
-      trackWorkspaceProjectActionResult(analytics.track, {
-        page_name: analyticsPage,
-        area: 'project_collection',
-        action: 'move_to_team',
-        result: 'failed',
-        requested_count: 1,
-        succeeded_count: 0,
-        failed_count: 1,
-        duration_ms: Math.round(performance.now() - startedAt),
-        error_code: workspaceProjectMoveErrorCode(err) ?? 'request_failed',
-        ...workspaceDimensions,
-      });
-      onMoveSettled?.(project, 'to-team', false);
+            onMoveSettled?.(project, 'to-team', false);
       return false;
     } finally {
       setSharingId(null);
     }
-  }, [analytics.track, analyticsPage, onMoveSettled, onMoveStart, onProjectShareFailed, onProjectShared, workspaceContext]);
+  }, [ analyticsPage, onMoveSettled, onMoveStart, onProjectShareFailed, onProjectShared, workspaceContext]);
 
   const unshareFromTeam = useCallback(async (project: Project): Promise<boolean> => {
-    const startedAt = performance.now();
-    const workspaceDimensions = workspaceAnalyticsDimensions(workspaceContext);
     setError(null);
     onMoveStart?.(project, 'to-personal');
     setUnsharingId(project.id);
@@ -129,40 +97,17 @@ export function useWorkspaceProjectMove(input: {
       });
       onProjectUnshared?.(project.id);
       notifyTeamProjectsChanged();
-      trackWorkspaceProjectActionResult(analytics.track, {
-        page_name: analyticsPage,
-        area: 'project_collection',
-        action: 'move_to_personal',
-        result: 'success',
-        requested_count: 1,
-        succeeded_count: 1,
-        failed_count: 0,
-        duration_ms: Math.round(performance.now() - startedAt),
-        ...workspaceDimensions,
-      });
-      onMoveSettled?.(project, 'to-personal', true);
+            onMoveSettled?.(project, 'to-personal', true);
       return true;
     } catch (err) {
       console.warn('[useWorkspaceProjectMove] unshare project from team failed:', err);
       setError({ projectId: project.id, kind: 'unshare' });
-      trackWorkspaceProjectActionResult(analytics.track, {
-        page_name: analyticsPage,
-        area: 'project_collection',
-        action: 'move_to_personal',
-        result: 'failed',
-        requested_count: 1,
-        succeeded_count: 0,
-        failed_count: 1,
-        duration_ms: Math.round(performance.now() - startedAt),
-        error_code: workspaceProjectMoveErrorCode(err) ?? 'request_failed',
-        ...workspaceDimensions,
-      });
-      onMoveSettled?.(project, 'to-personal', false);
+            onMoveSettled?.(project, 'to-personal', false);
       return false;
     } finally {
       setUnsharingId(null);
     }
-  }, [analytics.track, analyticsPage, onMoveSettled, onMoveStart, onProjectUnshared, workspaceContext]);
+  }, [ analyticsPage, onMoveSettled, onMoveStart, onProjectUnshared, workspaceContext]);
 
   const move = useCallback(
     (project: Project, action: ProjectMoveAction) =>

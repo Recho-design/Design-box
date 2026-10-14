@@ -4,7 +4,12 @@ import {
   type PublicFileManualRevokeRequiredData,
   type PublicProjectFilePublication,
 } from '@open-design/contracts';
-import { boundedRequestErrorCode } from '../analytics/workspace';
+import {
+  boundedRequestErrorCode,
+  clientRequestIdHeaders,
+  GENERIC_DEPLOY_ENVELOPE_CODES,
+  withDaemonFailure,
+} from '../runtime/error-codes';
 import type {
   ConnectorAuthConfigPrepareResponse,
   ConnectorDetail,
@@ -18,7 +23,6 @@ import type {
   ImportGitHubDesignSystemResponse,
   ImportShadcnDesignSystemRequest,
   ImportShadcnDesignSystemResponse,
-  OpenDesignGithubLatestReleaseResponse,
   ImportLocalDesignSystemRequest,
   ImportLocalDesignSystemResponse,
   ReplaceProjectWorkingDirResponse,
@@ -84,7 +88,6 @@ import type {
   UpdateDeployConfigRequest,
 } from '../types';
 import type { ArtifactManifest } from '../artifacts/types';
-import { GENERIC_DEPLOY_ENVELOPE_CODES } from '../analytics/deploy-error-code';
 import {
   isOpenDesignHostAvailable,
   openHostExternalUrl,
@@ -117,7 +120,6 @@ export class PublicFilePublishError extends Error {
     this.name = 'PublicFilePublishError';
   }
 }
-import { clientRequestIdHeaders, withDaemonFailure } from '../analytics/failure-detail';
 
 /**
  * `coalescedGet` ttl for reads that may only JOIN a request still on the wire.
@@ -1712,28 +1714,6 @@ export async function fetchAppVersionInfo(): Promise<AppVersionInfo | null> {
     if (!resp.ok) return null;
     const json = (await resp.json()) as Partial<AppVersionResponse>;
     return isAppVersionInfo(json?.version) ? json.version : null;
-  } catch {
-    return null;
-  }
-}
-
-export type LatestGithubReleaseInfo = {
-  tagName: string;
-  htmlUrl: string;
-  stale: boolean;
-};
-
-export async function fetchLatestGithubReleaseInfo(): Promise<LatestGithubReleaseInfo | null> {
-  try {
-    const resp = await fetch('/api/github/open-design/releases/latest');
-    if (!resp.ok) return null;
-    const json = (await resp.json()) as Partial<OpenDesignGithubLatestReleaseResponse>;
-    if (typeof json.tag_name !== 'string' || typeof json.html_url !== 'string') return null;
-    return {
-      tagName: json.tag_name,
-      htmlUrl: json.html_url,
-      stale: json.stale === true,
-    };
   } catch {
     return null;
   }

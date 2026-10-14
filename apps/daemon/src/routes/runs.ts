@@ -18,28 +18,9 @@ import {
   type ProjectMetadata as ContractProjectMetadata,
   type RunResultPackageResponse,
 } from '@open-design/contracts';
-import {
-  buildRunCreatedV4Aliases,
-  buildRunFinishedV4Aliases,
-  deriveConfigureGlobals,
-  harnessAnalyticsFromRolloutDecision,
-  modelIdForTracking,
-  sessionModeToTracking,
-  type TrackingDesignSystemSource,
-  type TrackingDesignSystemKind,
-  type TrackingDesignSystemEditSurface,
-  type RunTaskLineageProps,
-  type TrackingRunRecoveryActionType,
-} from '@open-design/contracts/analytics';
 import type { OdNativeEvent } from '@open-design/agui-adapter';
-import { newInsertId, readAnalyticsContext } from '../analytics.js';
-import type { AnalyticsContext } from '../analytics.js';
 import { spawnEnvForAgent } from '../agents.js';
 import { agentCliEnvForAgent, readAppConfig } from '../app-config.js';
-import {
-  codexSessionIdFromRunEvents,
-  readCodexRolloutFirstCall,
-} from '../codex-rollout-usage.js';
 import type { ConnectorService } from '../connectors/service.js';
 import {
   conversationTurnIndexForRun,
@@ -61,10 +42,6 @@ import {
   resolveBundledOdNextRuntimeCapability,
 } from '../runtimes/od-next-capability-gate.js';
 import { mintRunDoneKey } from '../runtimes/run-done-key.js';
-import {
-  deriveLangfuseDeliveryState,
-  readTelemetrySinkConfig,
-} from '../langfuse-trace.js';
 import { parseMediaExecutionPolicyInput } from '../media/policy.js';
 import { isManagedProjectCwd } from '../mcp-config.js';
 import {
@@ -187,7 +164,6 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '../runtimes/runs.js';
 import {
-  deriveActivationMilestones,
   runAskedUserQuestion,
 } from '../runtimes/run-artifacts.js';
 import { type RunWorkspaceScope } from '../runtimes/chat-run-records.js';
@@ -201,7 +177,7 @@ import {
   normalizeCommentAttachments,
   UPLOAD_DIR,
 } from '../runtimes/chat-prompt-inputs.js';
-import { createRunAnalyticsLifecycle } from '../services/run-analytics-lifecycle.js';
+import { installRunProjectEnrichment } from '../services/run-project-enrichment.js';
 import {
   runTouchedArtifactPaths,
   validateChatProjectDeliverable,
@@ -210,10 +186,6 @@ import {
   validateChatRunDeliverable,
   type ChatRun,
   type JsonRecord,
-  type RunArtifactBaselines,
-  type RunCreatedFallbackInput,
-  type RunProjectKindInput,
-  type RunRetryAnalyticsEvent,
   type ProjectMetadata,
   type ProjectRecord,
   type RunEventRecord,
@@ -458,31 +430,14 @@ interface ChatRunService {
   persistState(run: ChatRun): void;
   isTerminal(status: ChatRunStatus): boolean;
   emit?(run: ChatRun, event: string, data: unknown): RunEventRecord;
-  setAnalyticsRecovery?(run: ChatRun, recovery: {
-    context: AnalyticsContext;
-    properties: Record<string, unknown>;
-    insertId: string;
-  }): void;
-  markAnalyticsCompleted?(run: ChatRun): void;
   setDeliverableValidation?(
     run: ChatRun,
     result: RunDeliverableValidationResult,
   ): void;
 }
 
-interface AnalyticsService {
-  capture(input: {
-    eventName: string;
-    context: AnalyticsContext;
-    appVersion: string;
-    properties: Record<string, unknown>;
-    insertId: string;
-  }): void | Promise<void>;
-}
-
 interface RunRoutesDesignService {
   runs: ChatRunService;
-  analytics: AnalyticsService;
   getAppVersion(): string;
 }
 
@@ -648,12 +603,6 @@ export interface RegisterRunRoutesDeps {
       res: ApiResponse,
       pluginId: string,
     ) => Promise<boolean>;
-  };
-  telemetry: {
-    reportRunCompletionTelemetryFallback: (input: RunCreatedFallbackInput) => void;
-    resolveRunProjectKindForAnalytics: (input: RunProjectKindInput) => string | null;
-    runArtifactBaselines: RunArtifactBaselines;
-    runRetryEventsForAnalytics: (events: RunEventRecord[]) => RunRetryAnalyticsEvent[];
   };
   messages: {
     pinAssistantMessageOnRunCreate: (
@@ -899,12 +848,6 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
     renderPluginBriefTemplate,
   } = ctx.plugins;
   const {
-    reportRunCompletionTelemetryFallback,
-    resolveRunProjectKindForAnalytics,
-    runArtifactBaselines,
-    runRetryEventsForAnalytics,
-  } = ctx.telemetry;
-  const {
     pinAssistantMessageOnRunCreate,
     reconcileAssistantMessageOnRunEnd,
   } = ctx.messages;
@@ -912,13 +855,13 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
     runs: design.runs,
     claimAssistantMessage: (run, options) =>
       pinAssistantMessageOnRunCreate(db, run, options),
-    analyticsLifecycle: createRunAnalyticsLifecycle({
-      db,
-      design,
-      paths: { PROJECTS_DIR, RUNTIME_DATA_DIR },
-      agents: { detectAgents },
-      telemetry: ctx.telemetry,
-    }),
+    runStartObserver: {
+      install: ({ run, body }) => installRunProjectEnrichment({
+        deps: { db, runs: design.runs },
+        run,
+        facts: { body },
+      }),
+    },
   });
   const runMatchesTaskImmutableOwner = (
     run: ChatRun,
@@ -1373,7 +1316,6 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
       return sendApiError(res, 503, 'UPSTREAM_UNAVAILABLE', 'daemon is shutting down');
     }
     const requestBody = toJsonRecord(req.body);
-    const requestAnalyticsContext = readAnalyticsContext(req);
     const mediaExecution = parseMediaExecutionPolicyInput(requestBody.mediaExecution);
     if (!mediaExecution.ok) {
       return sendApiError(res, 400, 'BAD_REQUEST', mediaExecution.message);
@@ -2021,7 +1963,11 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
         normalizedExternalPluginHints =
           normalizeExternalPluginRunAnalyticsHints(requestAnalyticsHints, {
             clientRequestId: meta.clientRequestId,
-            analyticsContext: requestAnalyticsContext,
+            // The request-scoped analytics identity that used to upgrade
+            // self-reported attribution to `session_correlated` is gone with the
+            // analytics pipeline, so every external plugin run stays
+            // self-reported — the same verdict an unreadable identity produced.
+            analyticsContext: null,
           });
       } catch (error) {
         return sendApiError(
@@ -2764,7 +2710,7 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
     }
     const resumed = preparedRun.resumed;
     const declaredClient = String(req.get('x-od-client') ?? '').toLowerCase();
-    if (requestAnalyticsContext?.clientType === 'external_mcp') {
+    if (declaredClient === 'external_mcp') {
       run.clientType = 'external_mcp';
     } else if (declaredClient === 'desktop' || declaredClient === 'web') {
       run.clientType = declaredClient;
@@ -2860,17 +2806,6 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
       run,
       {
         body: requestBody,
-        requestAnalyticsContext,
-        snapshot: resolvedSnapshot,
-        // The decision this request evaluated, not the one stamped on the Run:
-        // an idempotent retry reuses a Run that already carries an earlier
-        // decision, and `run_created`'s rollout dimensions have always
-        // described the request. See `harnessAnalyticsFromRolloutDecision`,
-        // which deliberately reads the Run instead.
-        rolloutDecision: strategyRolloutDecision,
-        creationKind: preparedRun.creationKind,
-        resumed,
-        attributionMismatch: analyticsAttributionMismatch,
       },
       () => startChatRun(executionMeta, run),
     );
@@ -3635,7 +3570,7 @@ export function registerRunRoutes(app: Express, ctx: RegisterRunRoutesDeps) {
     };
     internalRuns.start(
       run,
-      { body: requestBody, requestAnalyticsContext: readAnalyticsContext(req) },
+      { body: requestBody },
       () => startChatRun(executionMeta, run),
     );
   });

@@ -1,5 +1,5 @@
 import type { RunTelemetryTimestamps } from './run-analytics-observability.js';
-import type { TrackingFirstModelEventType } from '@open-design/contracts/analytics';
+import type { FirstModelEventType } from './runtimes/run-failure-vocabulary.js';
 
 export type RunLifecycleMark =
   | 'start_requested'
@@ -43,7 +43,7 @@ export interface RunWithLifecycleTelemetry {
 }
 
 export interface RunLifecycleStreamEventMarkers {
-  firstModelEventType?: TrackingFirstModelEventType;
+  firstModelEventType?: FirstModelEventType;
   // When the producer says this event's work actually began, on the daemon's
   // clock. Present when a payload carries `startedAt`, which ACP does: it
   // accumulates tool_call frames and emits the canonical `tool_use` only once
@@ -139,7 +139,7 @@ export function runLifecycleMarkersForStreamEvent(
 export function createRunLifecycleTracer(run: RunWithLifecycleTelemetry): {
   mark(mark: RunLifecycleMark, timestamp?: number): void;
   markFirstModelEvent(
-    type: TrackingFirstModelEventType,
+    type: FirstModelEventType,
     producerStartedAt?: number,
   ): void;
   resetForAttempt(attemptIndex: number, timestamp?: number): void;
@@ -157,7 +157,7 @@ export function createRunLifecycleTracer(run: RunWithLifecycleTelemetry): {
   return {
     mark,
     markFirstModelEvent(
-      type: TrackingFirstModelEventType,
+      type: FirstModelEventType,
       producerStartedAt?: number,
     ) {
       const arrivedAt = Date.now();

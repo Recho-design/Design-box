@@ -3,7 +3,7 @@
  *
  * `docs/whats-new.json` is the source of truth that
  * `.github/workflows/whats-new-publish.yml` uploads to the R2 object the
- * daemon reads (`DEFAULT_WHATS_NEW_URL`). The daemon parses that document
+ * daemon reads (the configured what's-new URL). The daemon parses that document
  * fail-safe: anything missing or malformed resolves to "no highlight"
  * rather than an error, so a typo does not fail a request — it silently
  * removes the card from every user's Home. A successful upload therefore

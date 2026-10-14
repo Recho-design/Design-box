@@ -742,6 +742,16 @@ export function createDesktopUpdater(
       if (restored?.state === DESKTOP_UPDATE_STATES.ERROR) return restored;
       if (installFrozen || installResult != null) return snapshot();
     }
+    // No release source configured (this fork ships none by default; packaged
+    // builds get `OD_UPDATE_METADATA_URL` baked in). Report "no update
+    // available" and skip the network entirely — an empty URL would otherwise
+    // fail the fetch and park the UI in an error state on every poll.
+    if (config.metadataUrl.length === 0) {
+      logUpdateEvent("check-skipped-no-release-source");
+      return setState(
+        activeRelease == null ? DESKTOP_UPDATE_STATES.NOT_AVAILABLE : DESKTOP_UPDATE_STATES.DOWNLOADED,
+      );
+    }
     const keepDownloadedVisible = activeRelease != null;
     if (!keepDownloadedVisible) setState(DESKTOP_UPDATE_STATES.CHECKING);
     try {
@@ -1356,7 +1366,9 @@ export function createDesktopUpdater(
     },
     installUpdate: () => serialized(installUpdate),
     recordLifecycle: (event) => recordUpdateLifecycle(installResult != null ? observationHandle : null, event),
-    shouldAutoCheck: () => config.enabled && config.autoCheck,
+    // A build with no release source must not start the auto-check timer: every
+    // tick would be a no-op check with nothing to fetch.
+    shouldAutoCheck: () => config.enabled && config.autoCheck && config.metadataUrl.length > 0,
     snapshot,
     async status() {
       const unsupported = unsupportedStatus();

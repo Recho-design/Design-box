@@ -462,11 +462,12 @@ function acpToolNameFromTitle(title: string): string | null {
 }
 
 /**
- * Execute-family names that Langfuse treats as partial-redact only (secret+path
+ * Execute-family names that only ever get partial redaction (secret+path
  * lexical masking, not full payload replacement). Custom `kind:other` tools must
  * never inherit these labels — a malicious or misconfigured MCP adapter can
  * otherwise place private content in `rawInput` and bypass fail-closed redaction.
- * Keep in sync with `PARTIAL_REDACT_TOOL_NAMES_LOWER` in langfuse-trace.ts.
+ * This is the single local list: the trace exporter that used to mirror it has
+ * been removed, so nothing else has to be kept in sync.
  */
 const ACP_PARTIAL_REDACT_TOOL_NAMES_LOWER: ReadonlySet<string> = new Set([
   'bash',
@@ -475,7 +476,7 @@ const ACP_PARTIAL_REDACT_TOOL_NAMES_LOWER: ReadonlySet<string> = new Set([
   'terminal',
 ]);
 
-/** True when a tool name would enter Langfuse's Bash-like partial-redact allowlist. */
+/** True when a tool name would enter the Bash-like partial-redact allowlist. */
 export function isAcpPartialRedactToolName(toolName: string): boolean {
   const normalized = toolName.trim().toLowerCase();
   if (!normalized) return false;
@@ -487,10 +488,9 @@ export function isAcpPartialRedactToolName(toolName: string): boolean {
  *
  * Kind `other` tools may ship free-text `name` values that embed paths, URLs,
  * tokens, or other user-specific strings. Those names flow into tool_use events
- * and then into Langfuse span labels / toolName metadata (even when content
+ * and from there into span labels / toolName metadata (even when content
  * telemetry is off). Only identifier-like names are kept; everything else
- * collapses to the opaque family label `Other`. Langfuse additionally
- * canonicalizes non-allowlisted names at the telemetry boundary.
+ * collapses to the opaque family label `Other`.
  *
  * Callers that resolve names without a recognized execute-family kind
  * (missing kind, kind:other, unknown kinds) must also reject Bash-like
@@ -522,8 +522,8 @@ export function sanitizeAcpCustomToolName(raw: string): string {
  *
  * Adapters may embed user paths or secrets in toolCallId (for example
  * `read:/home/alice/.env`, `sk-proj-…`, `ghp_…`, or a JWT). Those values
- * would otherwise flow into tool_use/tool_result events, then into Langfuse
- * span ids and `metadata.toolCallId`. Every non-empty adapter id is replaced
+ * would otherwise flow into tool_use/tool_result events, then into any
+ * downstream span id and `metadata.toolCallId`. Every non-empty adapter id is replaced
  * with a stable opaque hash so identifier-shaped secrets cannot leak even
  * when they contain no path characters. Session-local maps may still key
  * off the raw id for frame correlation.
@@ -539,17 +539,17 @@ export function acpTelemetryToolCallId(raw: string): string {
  * Trusted ACP `kind` wins over both explicit `name` and title heuristics when
  * the kind is a known tool family (so `kind: read` + `name: read_file` or
  * title "update …" stays Read). That keeps content-tool redaction and analytics
- * families aligned with Langfuse's canonical name set. Kind `other` is the
+ * families aligned with the canonical name set. Kind `other` is the
  * exception: it is recognized for stickiness but is not a family, so an
  * explicit identifier-like name still wins there for UI/transcript — except
  * Bash-like partial-redact labels, which collapse to `Other` so custom MCP
- * tools cannot bypass Langfuse fail-closed payload redaction. The same rule
+ * tools cannot bypass fail-closed payload redaction. The same rule
  * applies when `kind` is missing: a bare `name: "Bash"` (or Bash-like title)
  * must not unlock partial redaction without a recognized execute-family kind.
  * Untrusted free-text names (paths, tokens, titles) are collapsed to `Other`
- * before the event is emitted so Langfuse span labels cannot carry
- * user-specific strings. Payloads for unknown tools still fail closed in
- * Langfuse (`shouldFullyRedactToolPayload`). Write-label override to Write/Edit
+ * before the event is emitted so span labels cannot carry
+ * user-specific strings. Payloads for unknown tools still fail closed
+ * (`shouldFullyRedactToolPayload`). Write-label override to Write/Edit
  * applies only when there is no recognized non-write kind, so
  * `countNewArtifacts` keeps working for title-only write frames.
  */
@@ -587,7 +587,7 @@ export function acpToolName(update: JsonObject): string {
     // Canonical kind wins over explicit noncanonical names (read_file, etc.).
     // Content-tool redaction keys off stable Claude-shaped families; keeping
     // adapter-local names would skip the known-content path (unknown names
-    // still fail closed in Langfuse, but canonical families stay precise).
+    // still fail closed, but canonical families stay precise).
     // Execute-family kinds are the only path that may emit Bash (partial-redact).
     name = kindName;
   } else if (typeof update.name === 'string' && update.name.trim()) {
@@ -596,7 +596,7 @@ export function acpToolName(update: JsonObject): string {
     // the event is emitted.
     name = sanitizeAcpCustomToolName(update.name);
     // Fail closed: without a recognized execute-family kind, never claim
-    // Bash/shell/execute/terminal. Those names unlock Langfuse partial-redact
+    // Bash/shell/execute/terminal. Those names unlock partial-redact
     // (lexical masking only); unclassified custom tools (no kind, kind:other)
     // can put arbitrary private content in rawInput.
     if (isAcpPartialRedactToolName(name)) {
@@ -735,12 +735,12 @@ export function isAcpExecuteToolName(toolName: string): boolean {
 /**
  * Sanitizes ACP tool_result content for the canonical agent transcript.
  *
- * Content tools (Read/Write/…) keep full bodies so the local UI and Langfuse
+ * Content tools (Read/Write/…) keep full bodies so the local UI and the
  * content-tool redactor can each do their job. Execute/Bash is different:
- * Langfuse only applies lexical secret+path masking to Bash, and ACP only
+ * Bash results only ever get lexical secret+path masking, and ACP only
  * started forwarding execute results with the full-transcript change — so a
- * `cat .env` body would ship to telemetry almost intact. Replace raw stdout
- * with a length summary before emit.
+ * `cat .env` body would ship almost intact to any downstream sink. Replace raw
+ * stdout with a length summary before emit.
  */
 export function acpSafeToolResultContent(toolName: string, content: string): string {
   if (!content) return content;

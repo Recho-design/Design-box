@@ -1,12 +1,34 @@
 import { createHash } from 'node:crypto';
 
-import type {
-  AnalyticsAttributionQuality,
-  AnalyticsDistributionMechanism,
-  AnalyticsEntrySurface,
-  AnalyticsHostProduct,
-  AnalyticsPublisherClass,
-} from '@open-design/contracts/analytics';
+// Local vocabulary for the external-plugin attribution contract.
+//
+// These unions used to live in `@open-design/contracts/analytics`, the wire
+// schema for the removed product-analytics pipeline. The values themselves are
+// not telemetry: the plugin contract rejects a malformed
+// `externalPluginContext`, and the daemon persists the accepted attribution on
+// the Run, so the daemon owns its own copy instead of depending on a contract
+// module that no longer exists.
+//
+// Keep this file free of I/O and of any delivery concern.
+type AnalyticsEntrySurface = 'open_design_ui' | 'od_cli' | 'external_mcp';
+type AnalyticsHostProduct =
+  | 'codex_desktop'
+  | 'codex_cli'
+  | 'codex_unknown'
+  | 'claude_code'
+  | 'unknown';
+type AnalyticsDistributionMechanism =
+  | 'git_marketplace'
+  | 'local_repo'
+  | 'manual'
+  | 'unknown';
+type AnalyticsPublisherClass =
+  | 'open_design_first_party'
+  | 'third_party'
+  | 'unknown';
+type AnalyticsAttributionQuality =
+  | 'self_reported'
+  | 'session_correlated';
 
 export const OPEN_DESIGN_PLUGIN_ID = 'open-design';
 export const PLUGIN_TELEMETRY_SCHEMA_VERSION = 3;

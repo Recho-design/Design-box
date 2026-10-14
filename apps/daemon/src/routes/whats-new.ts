@@ -12,7 +12,7 @@ export function registerWhatsNewRoutes(app: Express, ctx: RegisterWhatsNewRoutes
 
   app.get('/api/whats-new', async (_req, res) => {
     const versionInfo = await readCurrentAppVersionInfo();
-    const result = await whatsNew.readWhatsNew(versionInfo.channel);
+    const result = await whatsNew.readWhatsNew();
     const payload: WhatsNewResponse = {
       version: versionInfo.version,
       id: result.id,

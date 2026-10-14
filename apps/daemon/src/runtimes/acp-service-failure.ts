@@ -23,11 +23,11 @@
  * ## What it deliberately does NOT do
  *
  * - **It does not touch the record.** `message`, `retryable`, and `details` are
- *   carried through untouched, so `run.error`, events.jsonl, SQLite, the
- *   `stderrTail`, and the Langfuse report all keep the agent's own line
+ *   carried through untouched, so `run.error`, events.jsonl, SQLite, and the
+ *   `stderrTail` all keep the agent's own line
  *   verbatim. That line is both what the details block shows and what
  *   `run-failure-classification.ts` reads; rewriting it would degrade the
- *   telemetry shape while changing nothing a user can act on. Classification
+ *   run record's fidelity while changing nothing a user can act on. Classification
  *   changed; the record did not.
  * - **It does not word anything.** The daemon has no locale. The failure
  *   travels as a code and the client resolves the sentence.

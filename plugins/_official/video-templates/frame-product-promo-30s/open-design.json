@@ -52,8 +52,8 @@
     "engine": "hyperframes",
     "preview": {
       "type": "video",
-      "poster": "https://cdn.jsdelivr.net/gh/nexu-io/open-design@main/plugins/_official/video-templates/frame-product-promo-30s/preview.png",
-      "video": "https://cdn.jsdelivr.net/gh/nexu-io/open-design@main/plugins/_official/video-templates/frame-product-promo-30s/preview.mp4"
+      "poster": "https://cdn.jsdelivr.net/gh/Recho-design/Design-box@main/plugins/_official/video-templates/frame-product-promo-30s/preview.png",
+      "video": "https://cdn.jsdelivr.net/gh/Recho-design/Design-box@main/plugins/_official/video-templates/frame-product-promo-30s/preview.mp4"
     },
     "useCase": {
       "query": {

@@ -14,8 +14,6 @@ import { navigate } from '../router';
 import { useT } from '../i18n';
 import { localizeRunFailureReason } from '../i18n/runErrors';
 import type { Dict } from '../i18n/types';
-import { useAnalytics } from '../analytics/provider';
-import { trackAutomationsClick } from '../analytics/events';
 import { useWorkspaceContext } from '../collab/useWorkspaceContext';
 import { workspaceProjectHeaders } from '../collab/workspace-identity';
 import { listProjects } from '../state/projects';
@@ -498,8 +496,7 @@ function RunHistory({
 
 export function RoutinesSection({ onClose }: RoutinesSectionProps) {
   const t = useT();
-  const analytics = useAnalytics();
-  // Attaches the same workspace identity headers project reads already carry,
+    // Attaches the same workspace identity headers project reads already carry,
   // so the daemon's `GET /api/workspaces/:id/projects` returns the caller's
   // team projects instead of falling back to the no-scope `GET /api/projects`
   // catalog (spec 04 §10), which now only lists never-claimed projects.
@@ -514,8 +511,7 @@ export function RoutinesSection({ onClose }: RoutinesSectionProps) {
   // view choice made project-browsing routes).
   const { context: routinesWorkspaceContext } = useWorkspaceContext();
   const fireAutomation = (element: 'new_automation' | 'create' | 'save' | 'cancel' | 'run_now' | 'edit' | 'pause' | 'resume' | 'delete' | 'history') => {
-    trackAutomationsClick(analytics.track, { page_name: 'automations', area: 'automations', element });
-  };
+      };
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);

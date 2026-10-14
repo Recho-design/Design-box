@@ -119,7 +119,6 @@ import {
 import { auditDesignSystemPackage } from '../../tools-connectors-cli.js';
 import { parseOrchestratorWorkspace } from '../../workspace-contract.js';
 import { registerProjectConversationRoutes } from './conversations.js';
-import { workspaceProjectGroupCountProperties } from './analytics.js';
 /**
  * 阶段2 摘除 vela-team-projects.ts 后，将团队项目同步纯函数与类型内联迁移至此。
  */
@@ -548,7 +547,7 @@ function assertProjectCreatePreparationWithinDeadline(
   }
 }
 
-export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'telemetry' | 'appConfig' | 'agents' | 'validation'> {
+export interface RegisterProjectRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'paths' | 'projectStore' | 'projectFiles' | 'conversations' | 'templates' | 'status' | 'events' | 'ids' | 'appConfig' | 'agents' | 'validation'> {
   /**
    * Request-wide deadline for the read-only preparation POST /api/projects
    * runs before its transaction. Production keeps the 15s default; tests and
@@ -2393,7 +2392,6 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     && ctx.projectCreatePreparationTimeoutMs > 0
       ? ctx.projectCreatePreparationTimeoutMs
       : DEFAULT_PROJECT_CREATE_PREPARATION_TIMEOUT_MS;
-  const projectTelemetry = ctx.telemetry;
   const { sendApiError, createSseResponse } = ctx.http;
   const { DESIGN_SYSTEMS_DIR, PROJECTS_DIR, SKILLS_DIR, BRANDS_DIR, USER_DESIGN_SYSTEMS_DIR } = ctx.paths;
   const { readAppConfig, writeAppConfig } = ctx.appConfig;
@@ -3686,19 +3684,6 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
           if (owner === 'others' && createdByCurrentMember) return false;
           return true;
         });
-      const groupCountProperties = workspaceProjectGroupCountProperties({
-        view,
-        owner,
-        visibility,
-        projectCount: projects.length,
-      });
-      if (groupCountProperties) {
-        void projectTelemetry.identifyWorkspaceGroup?.(
-          req,
-          ctx.workspaceId,
-          groupCountProperties,
-        );
-      }
       /** @type {import('@open-design/contracts').WorkspaceProjectsResponse} */
       const body = { projects };
       res.json(body);

@@ -48,7 +48,6 @@ import { assistantMessageNeverHadARun } from '../runtime/chat/host-authored-mess
 import { resolveRecoveryActionBlockReason } from '../runtime/chat/recovery-gating';
 import { canRetainSuccessfulRunForBlockedStrategy } from '../runtime/blocked-strategy-result';
 import { loadConversationTranscript } from '../state/load-conversation-transcript';
-import { normalizeCustomReason } from '@open-design/contracts/analytics';
 import {
   deletePreviewComment,
   fetchConnectorStatuses,
@@ -67,12 +66,12 @@ import {
   writeProjectTextFile,
 } from '../providers/registry';
 import { useProjectFileEvents, type ProjectEvent } from '../providers/project-events';
-import { claimProjectTurnIndex, claimRunTurnIndex } from '../analytics/identity';
+import { claimProjectTurnIndex, claimRunTurnIndex } from '../runtime/run-turn-index';
 import {
   buildInitialTaskAnalytics,
   buildRecoveryTaskAnalytics,
   runAgentProviderId,
-} from '../analytics/run-task';
+} from '../runtime/run-task';
 import { useCoalescedCallback } from '../hooks/useCoalescedCallback';
 import {
   resolveQuestionFormStrategyTaskExecutionId,
@@ -91,45 +90,7 @@ import {
   type ChatTaskExecutionAnalytics,
   type ProjectWorkspaceScope,
 } from '@open-design/contracts';
-import {
-  anonymizeArtifactId,
-  artifactKindToTracking,
-  byokProtocolToTracking,
-  executionModeToTracking,
-  projectKindFromMetadataToTracking,
-  projectKindFromMetadataToTrackingOrLegacyDefault,
-  projectKindToTracking,
-  sessionModeToTracking,
-} from '@open-design/contracts/analytics';
-import type {
-  TrackingArtifactKind,
-  TrackingConversationForkErrorCode,
-  TrackingConversationForkPoint,
-  TrackingDesignSystemApplyTargetKind,
-  TrackingDesignSystemOrigin,
-  TrackingDesignSystemStatusValue,
-  TrackingRunRecoveryActionType,
-} from '@open-design/contracts/analytics';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackByokPreflightBlocked,
-  trackComposerBarClick,
-  trackConversationForkClick,
-  trackConversationForkResult,
-  trackDesignSystemApplyResult,
-  trackDesignSystemEnrichClick,
-  trackPageView,
-  trackOnboardingPromptPrefilled,
-  trackOnboardingFirstPromptSent,
-  trackOnboardingFirstGenerationCompleted,
-  trackRunRecoveryActionClick,
-  trackRunStartBlockedSurfaceView,
-} from '../analytics/events';
 import { byokPreflightBlockReason } from './byok/preflight';
-import {
-  clearOnboardingSessionId,
-  peekOnboardingSessionId,
-} from '../analytics/onboarding-session';
 import { navigate } from '../router';
 import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
 import { isMacPlatform } from '../utils/platform';
@@ -163,7 +124,6 @@ import {
 import { RESUME_CONTINUE_PROMPT } from '../runtime/resume';
 import { markHistoryReplayLanded } from './chat/useCharReveal';
 import { workspaceAutoRechargeUrl, workspaceUpgradeUrl } from './EntryNavRail';
-import { getResolvedDeviceId } from '../analytics/client';
 import {
   cancelBrandExtraction,
   continueBrandExtraction,
@@ -437,32 +397,9 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function conversationForkErrorCode(error: unknown): TrackingConversationForkErrorCode {
-  if (error instanceof ProjectConversationsHttpError) {
-    if (error.status === 400) return 'bad_request';
-    if (error.status === 401 || error.status === 403) return 'permission_denied';
-    if (error.status === 404) return 'fork_source_not_found';
-    if (error.status === 413) return 'payload_too_large';
-    if (error.status >= 500) return 'server_error';
-    return 'http_error';
-  }
-  if (error instanceof TypeError) return 'network_error';
-  return 'unknown_error';
-}
-
-function conversationForkPoint(
-  messages: ChatMessage[],
-  assistantMessageId: string,
-  forkIndex: number,
-): TrackingConversationForkPoint {
-  if (forkIndex < 0) return 'unknown';
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== 'assistant') continue;
-    return message.id === assistantMessageId ? 'latest' : 'historical';
-  }
-  return 'unknown';
-}
+type TrackingRunRecoveryActionType = string;
+type TrackingArtifactKind = string;
+type TrackingProjectKind = string;
 
 export async function listConversationsWithRetry(
   projectId: string,
@@ -2064,8 +2001,7 @@ export function ProjectView({
       }
     };
   }, [projectAuthorizationKey]);
-  const analytics = useAnalytics();
-  const ambientWorkspaceContextState = useWorkspaceContext();
+    const ambientWorkspaceContextState = useWorkspaceContext();
   const workspaceContextState = workspaceContextOverride !== undefined
     ? {
         context: workspaceContextOverride,
@@ -2358,38 +2294,9 @@ export function ProjectView({
     trackedTimeoutsRef.current.delete(timer);
   }, []);
 
-  useEffect(() => {
-    if (chatPanelPageViewFiredRef.current === project.id) return;
-    chatPanelPageViewFiredRef.current = project.id;
-    trackPageView(analytics.track, { page_name: 'chat_panel' });
-    // Onboarding's 4th step ("生成进度页") fires here, not in
-    // `DesignSystemDetailView`: the Generate path navigates
-    // straight to the project's chat_panel, not to the design
-    // system detail surface. If an onboarding session id is still
-    // in sessionStorage we stamp the funnel's last row here and
-    // clear so any later DS visit doesn't inherit the attribution.
-    // E2E (2026-05-21) confirmed this is the only path users
-    // actually take — observed: page_view chat_panel fires, but
-    // page_view design_system_project never did because that
-    // route isn't visited from the embedded onboarding generate.
-    const onboardingSessionId = peekOnboardingSessionId();
-    if (onboardingSessionId) {
-      trackPageView(analytics.track, {
-        page_name: 'onboarding',
-        area: 'generation_progress',
-        step_index: 'progress',
-        step_name: 'generation',
-        onboarding_session_id: onboardingSessionId,
-      });
-      clearOnboardingSessionId();
-    }
-  }, [analytics.track, project.id]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const conversationsRef = useRef<Conversation[]>([]);
-  useEffect(() => {
-    conversationsRef.current = conversations;
-  }, [conversations]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
   );
   const activeConversationIdRef = useRef(activeConversationId);
@@ -2477,10 +2384,7 @@ export function ProjectView({
   // Mirror so the send-now interrupt path can read the current statuses
   // synchronously without re-creating its callback on every comment change.
   const previewCommentsRef = useRef<PreviewComment[]>([]);
-  useEffect(() => {
-    previewCommentsRef.current = previewComments;
-  }, [previewComments]);
-  const [attachedComments, setAttachedComments] = useState<PreviewComment[]>([]);
+    const [attachedComments, setAttachedComments] = useState<PreviewComment[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamingConversationId, setStreamingConversationId] = useState<string | null>(null);
   const [paneError, setPaneError] = useState<{
@@ -2640,27 +2544,7 @@ export function ProjectView({
     : null;
   const [brandExtractionStatusOverride, setBrandExtractionStatusOverride] =
     useState<{ brandId: string; status: BrandStatus } | null>(null);
-  useEffect(() => {
-    if (!currentBrandExtractionId) {
-      setBrandExtractionStatusOverride(null);
-      return;
-    }
-    if (
-      brandExtractionStatusOverride &&
-      brandExtractionStatusOverride.brandId !== currentBrandExtractionId
-    ) {
-      setBrandExtractionStatusOverride(null);
-      return;
-    }
-    if (
-      brandExtractionStatusOverride &&
-      brandExtractionStatusOverride.brandId === currentBrandExtractionId &&
-      brandExtractionAllowsEditing(polledBrandExtractionStatus)
-    ) {
-      setBrandExtractionStatusOverride(null);
-    }
-  }, [brandExtractionStatusOverride, currentBrandExtractionId, polledBrandExtractionStatus]);
-  const effectiveBrandExtractionStatus =
+    const effectiveBrandExtractionStatus =
     brandExtractionStatusOverride?.brandId === currentBrandExtractionId
       ? brandExtractionStatusOverride.status
       : polledBrandExtractionStatus;
@@ -2742,7 +2626,7 @@ export function ProjectView({
   // the same dimensions. Undefined on non-file tabs (e.g. the file list).
   const headerArtifact = useMemo<{
     artifact_id?: string;
-    artifact_kind?: TrackingArtifactKind;
+    artifact_kind?: string;
   }>(() => {
     const activeName = openTabsState.active;
     const file = activeName
@@ -2750,10 +2634,10 @@ export function ProjectView({
       : null;
     if (!file) return {};
     return {
-      artifact_id: anonymizeArtifactId({ projectId: project.id, fileName: file.name }),
-      artifact_kind: artifactKindToTracking({ fileKind: file.kind ?? null }),
+      artifact_id: file.name,
+      artifact_kind: file.kind ?? undefined,
     };
-  }, [openTabsState.active, projectFiles, project.id]);
+  }, [openTabsState.active, projectFiles]);
   const routeFileNameRef = useRef(routeFileName);
   routeFileNameRef.current = routeFileName;
   const [activeWorkspaceContext, setActiveWorkspaceContext] =
@@ -2995,10 +2879,7 @@ export function ProjectView({
   // projects while the refetch is in flight — the existing project-load
   // effects use the same kind of cancellation guard.
   const projectIdRef = useRef(project.id);
-  useEffect(() => {
-    projectIdRef.current = project.id;
-  }, [project.id]);
-  const projectRunAuthorityKeyRef = useRef(projectRunAuthorityKey);
+    const projectRunAuthorityKeyRef = useRef(projectRunAuthorityKey);
   projectRunAuthorityKeyRef.current = projectRunAuthorityKey;
   const conversationsLoadedProjectIdRef = useRef<string | null>(null);
   // Live mirror of the full project prop, for async handlers whose useCallback
@@ -3006,13 +2887,7 @@ export function ProjectView({
   // comparing a re-fetched record against a stale closure copy would
   // mis-detect changes after a rename.
   const projectRef = useRef(project);
-  useEffect(() => {
-    projectRef.current = project;
-  }, [project]);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-  useEffect(() => {
+      useEffect(() => {
     setChatSeed(null);
     setAutoAuditRepairSeed(null);
     const restored = loadQueuedChatSends(project.id);
@@ -3892,15 +3767,7 @@ export function ProjectView({
   // Revocation can arrive without another tab interaction. Discard a queued
   // write immediately instead of letting its old authority fire after the
   // project has become read-only.
-  useEffect(() => {
-    if (projectTabsCanPersistToDaemon) return;
-    if (tabsDaemonSaveTimerRef.current != null) {
-      clearTimeout(tabsDaemonSaveTimerRef.current);
-      tabsDaemonSaveTimerRef.current = null;
-    }
-    pendingDaemonTabsRef.current = null;
-  }, [projectTabsCanPersistToDaemon]);
-
+  
   // Flush any pending tab write when the project changes or the view unmounts,
   // so a fast project switch / close doesn't leave the daemon a debounce behind.
   useEffect(
@@ -3967,10 +3834,7 @@ export function ProjectView({
     return next;
   }, [project.id, projectRunAuthorityKey]);
 
-  useEffect(() => {
-    projectFilesRef.current = projectFiles;
-  }, [projectFiles]);
-
+  
   // Cache HTML file contents so the auto-open module check (issue #2744) does
   // not re-fetch unchanged entries on every Write. Keyed by file name with the
   // mtime stored alongside, so a rewrite REPLACES the file's single entry
@@ -4473,13 +4337,7 @@ export function ProjectView({
   // loop (spec §8.3). Recorded once per project; a no-op for any project not
   // started from a recommendation.
   const firstLoopViewedRef = useRef(false);
-  useEffect(() => {
-    if (!hasPreviewableArtifact || firstLoopViewedRef.current) return;
-    if (!onboardingEntryRef.current) return;
-    firstLoopViewedRef.current = true;
-    recordFirstLoopStep(analytics.track, 'artifact_viewed', project.id);
-  }, [hasPreviewableArtifact, analytics.track, project.id]);
-  const activeProjectFileName = useMemo(
+    const activeProjectFileName = useMemo(
     () => (
       openTabsState.active && projectFileNames.has(openTabsState.active)
         ? openTabsState.active
@@ -5436,7 +5294,7 @@ export function ProjectView({
           rating: change.rating,
           reasonCodes: change.reasonCodes ?? [],
           hasCustomReason: !!change.customReason,
-          customReason: normalizeCustomReason(change.customReason),
+          customReason: change.customReason?.trim() || '',
         }, projectRunWorkspaceContext);
       }
     },
@@ -5878,12 +5736,7 @@ export function ProjectView({
   // reset inside the reattach effect (which also depends on recoveryTick and
   // messages) would zero the counts every time the timer-driven recoveryTick
   // bumped, preventing attempts >= MAX_TRANSIENT_RETRIES from ever holding.
-  useEffect(() => {
-    transientFailedRetriesRef.current = new Map();
-    genericDisconnectRetriesRef.current = new Map();
-    genericDisconnectBackoffUntilRef.current = new Map();
-  }, [activeConversationId, daemonLive]);
-
+  
   // 组件 22 · 重连 · S29:换项目 / 离开这一屏,本地就不再跟着那条流了,
   // 掉线那一行不该跟着走。会话之间的隔离由渲染前的
   // `reconnectViewForConversation` 负责;这里管的是整屏的收尾。
@@ -7898,23 +7751,7 @@ export function ProjectView({
           requestKey: blockedRequestKey,
           taskAnalytics,
         };
-        trackByokPreflightBlocked(analytics.track, {
-          source: 'run',
-          reason: blockReason,
-          provider_id: byokProtocolToTracking(config.apiProtocol) ?? 'unknown',
-          active_execution_mode: executionModeToTracking(config.mode),
-        });
-        trackRunStartBlockedSurfaceView(analytics.track, {
-          page_name: 'chat_panel',
-          area: 'chat_composer',
-          element: 'run_start_blocked',
-          task_execution_id: taskAnalytics.taskExecutionId,
-          recovery_action_instance_id: recoveryActionInstanceId,
-          block_reason: blockReason,
-          agent_provider_id: byokProtocolToTracking(config.apiProtocol) ?? 'unknown',
-          model_id: config.model?.trim() || 'default',
-        });
-        setError(BYOK_PROVIDER_REQUIRED_MESSAGE);
+                        setError(BYOK_PROVIDER_REQUIRED_MESSAGE);
         onOpenSettings('execution');
         return false;
       }
@@ -8122,18 +7959,7 @@ export function ProjectView({
       ) {
         markFirstOnboardingPromptSent(project.id);
         const entry = onboardingEntryRef.current;
-        trackOnboardingFirstPromptSent(analytics.track, {
-          entry_source: entry.source,
-          product_type: entry.productType,
-          recommendation_id: entry.recommendationId,
-          // True only when the user sent the prefilled suggestion unmodified;
-          // an edited, cleared, replaced, or starter-swapped prompt (or an
-          // attachments-only send) reports false so the send-through split
-          // stays honest.
-          has_prefilled_prompt: sentPrefilledPrompt(onboardingSeedPromptRef.current, prompt),
-        });
-        recordFirstLoopStep(analytics.track, 'prompt_sent', project.id);
-      }
+                      }
       activeCompletionNotificationRunsRef.current.add(assistantId);
       updateConversationLatestRun(config.mode === 'daemon' ? 'running' : 'queued');
       setArtifact(null);
@@ -8860,13 +8686,7 @@ export function ProjectView({
               ) {
                 markFirstOnboardingGenerationCompleted(project.id);
                 const entry = onboardingEntryRef.current;
-                trackOnboardingFirstGenerationCompleted(analytics.track, {
-                  entry_source: entry.source,
-                  product_type: entry.productType,
-                  recommendation_id: entry.recommendationId,
-                });
-                recordFirstLoopStep(analytics.track, 'generated', project.id);
-              }
+                                              }
               const traceObjectFiles = computeTraceObjectFiles(
                 beforeFileNames,
                 ownedFiles,
@@ -10351,7 +10171,7 @@ export function ProjectView({
         return { message: outcome.message };
       }
       const conversationId = activeConversationId;
-      const shareAction = action === 'publish' ? 'publish-github' : 'contribute-open-design';
+      const shareAction = 'publish-github';
       setActivePluginActionPaths((prev) => new Set(prev).add(relativePath));
       let taskStart;
       try {
@@ -10942,8 +10762,6 @@ export function ProjectView({
   const handleForkFromMessage = useCallback(
     async (assistantMessage: ChatMessage) => {
       if (!activeConversationId || forkingMessageId || projectMutationReadOnly) return;
-      const requestId = analytics.newRequestId();
-      const startedAt = Date.now();
       /*
        * `assistantMessage` 是**渲染**出来的那一格 —— 一条 OD Next Full Plan 回合的
        * 几个物理 run 被 `foldStrategyTaskTurns` 折成一条,折出来那条带的是头一个 run
@@ -10953,25 +10771,6 @@ export function ProjectView({
       const forkIndex = forkBoundaryMessageIndex(messages, assistantMessage.id);
       const forkBoundaryMessage = forkIndex < 0 ? undefined : messages[forkIndex];
       const forkAfterMessageId = forkBoundaryMessage?.id ?? assistantMessage.id;
-      const forkContext = {
-        page_name: 'chat_panel' as const,
-        area: 'chat_panel' as const,
-        element: 'assistant_fork_button' as const,
-        action: 'fork_conversation' as const,
-        project_id: project.id,
-        project_kind: projectKindFromMetadataToTracking(project.metadata),
-        conversation_id: activeConversationId,
-        assistant_message_id: assistantMessage.id,
-        source_run_id: assistantMessage.runId ?? null,
-        source_agent_id: assistantMessage.agentId ?? 'unknown',
-        agent_provider_id: runAgentProviderId(assistantMessage.agentId ?? 'unknown'),
-        session_mode: sessionModeToTracking(activeSessionMode),
-        fork_point: conversationForkPoint(messages, forkAfterMessageId, forkIndex),
-        seed_message_count: forkIndex < 0 ? null : forkIndex + 1,
-        conversation_message_count: messages.length,
-        messages_after_fork_count: forkIndex < 0 ? null : messages.length - forkIndex - 1,
-      };
-      trackConversationForkClick(analytics.track, forkContext, { requestId });
       setForkingMessageId(assistantMessage.id);
       setConversationLoadFailure(null);
       let emptyResponse = false;
@@ -11011,17 +10810,7 @@ export function ProjectView({
           emptyResponse = true;
           throw new Error(t('chat.forkConversationFailed'));
         }
-        trackConversationForkResult(
-          analytics.track,
-          {
-            ...forkContext,
-            target_conversation_id: fresh.id,
-            result: 'success',
-            duration_ms: Math.max(0, Date.now() - startedAt),
-          },
-          { requestId },
-        );
-        /*
+                /*
          * 分界线**不落在源会话**(2026-08-26 用户裁决:「要在新的 fork 里出现,
          * 而不是旧会话里出现啊」)。
          *
@@ -11059,18 +10848,7 @@ export function ProjectView({
         onProjectsRefresh();
         setError(null);
       } catch (err) {
-        trackConversationForkResult(
-          analytics.track,
-          {
-            ...forkContext,
-            target_conversation_id: null,
-            result: 'failed',
-            error_code: emptyResponse ? 'empty_response' : conversationForkErrorCode(err),
-            duration_ms: Math.max(0, Date.now() - startedAt),
-          },
-          { requestId },
-        );
-        const message = err instanceof Error ? err.message : t('chat.forkConversationFailed');
+                const message = err instanceof Error ? err.message : t('chat.forkConversationFailed');
         setConversationLoadFailure({ message, source: 'create' });
         setError(message);
       } finally {
@@ -11081,7 +10859,7 @@ export function ProjectView({
       activeConversationId,
       activeConversation?.title,
       activeSessionMode,
-      analytics,
+      
       commitPreviewComments,
       forkingMessageId,
       messages,
@@ -11155,70 +10933,6 @@ export function ProjectView({
     (nextId: string | null) => {
       if (projectMutationReadOnly) return;
       if ((projectDesignSystemId ?? null) === nextId) return;
-      // `design_system_apply_result` studio variant. The existing
-      // NewProjectPanel picker fires the same event under
-      // `page_name=home`; this in-project header picker fires under
-      // `page_name=studio` so the funnel sees applies from both
-      // surfaces. `target_project_kind` derives from
-      // `project.metadata.kind`.
-      const target =
-        // NOTE: `target_project_kind` uses the narrower
-        // `TrackingDesignSystemApplyTargetKind` enum, which intentionally does
-        // NOT carry the prototype subtypes (wireframe/mobile) or `document`.
-        // Derive the coarse kind here (subtypes collapse back to `prototype`)
-        // so a Home-created Wireframe/Mobile/Document project never emits a
-        // value outside this field's schema. The fine-grained split only
-        // belongs on `project_kind` (create/run events).
-        (projectKindToTracking(project.metadata?.kind ?? null, project.metadata?.videoModel) ?? 'unknown') as TrackingDesignSystemApplyTargetKind;
-      const picked = nextId
-        ? designSystems.find((d) => d.id === nextId)
-        : null;
-      const origin: TrackingDesignSystemOrigin | undefined = picked
-        ? picked.source === 'user'
-          ? 'manual_create'
-          : picked.source === 'built-in'
-            ? 'official_preset'
-            : picked.source === 'installed'
-              ? 'template'
-              : 'unknown'
-        : undefined;
-      const status: TrackingDesignSystemStatusValue | undefined = picked
-        ? picked.status === 'draft' || picked.status === 'published'
-          ? picked.status
-          : 'unknown'
-        : undefined;
-      if (nextId === null) {
-        trackDesignSystemApplyResult(analytics.track, {
-          page_name: 'studio',
-          area: 'design_system_picker',
-          action: 'clear_selection',
-          result: 'success',
-          target_project_kind: target,
-          design_system_applied: false,
-          design_system_selection_mode: 'none',
-          is_default: false,
-          is_auto_selected: false,
-          available_design_system_count: designSystems.length,
-          duration_ms: 0,
-        });
-      } else {
-        trackDesignSystemApplyResult(analytics.track, {
-          page_name: 'studio',
-          area: 'design_system_picker',
-          action: 'select_design_system',
-          result: 'success',
-          target_project_kind: target,
-          design_system_id: nextId,
-          design_system_source: origin,
-          design_system_status: status,
-          design_system_applied: true,
-          design_system_selection_mode: 'manual',
-          is_default: false,
-          is_auto_selected: false,
-          available_design_system_count: designSystems.length,
-          duration_ms: 0,
-        });
-      }
       const updated: Project = {
         ...project,
         designSystemId: nextId,
@@ -11232,7 +10946,7 @@ export function ProjectView({
       projectDesignSystemId,
       onProjectChange,
       designSystems,
-      analytics.track,
+      
       projectMutationReadOnly,
       projectRunWorkspaceContext,
     ],
@@ -11535,10 +11249,7 @@ export function ProjectView({
   // redundant. `projectSplitStyle` (the JSX `style` prop below) is the only
   // other writer, and it already re-renders whenever `chatPanelWidth` changes.
 
-  useEffect(() => {
-    chatPanelMaxWidthRef.current = chatPanelMaxWidth;
-  }, [chatPanelMaxWidth]);
-
+  
   useLayoutEffect(() => {
     const split = splitRef.current;
     if (!split) return undefined;
@@ -11808,14 +11519,7 @@ export function ProjectView({
     if (!entry || onboardingPrefilledFiredRef.current) return;
     if (typeof chatInitialDraft !== 'string' || chatInitialDraft.trim().length === 0) return;
     onboardingPrefilledFiredRef.current = true;
-    trackOnboardingPromptPrefilled(analytics.track, {
-      entry_source: entry.source,
-      product_type: entry.productType,
-      recommendation_id: entry.recommendationId,
-      ...(entry.role ? { role: entry.role } : {}),
-      ...(entry.useCases && entry.useCases.length > 0 ? { use_cases: entry.useCases } : {}),
-    });
-  }, [chatInitialDraft, analytics.track]);
+      }, [chatInitialDraft]);
   const brandEnrichmentPromptSeed =
     project.pendingPrompt?.trim() ||
     (initialDraft?.projectId === project.id ? initialDraft.value.trim() : '');
@@ -11829,12 +11533,7 @@ export function ProjectView({
   const [brandCreateDesignStarting, setBrandCreateDesignStarting] = useState(false);
   const [projectDesignSystemCreateStarting, setProjectDesignSystemCreateStarting] = useState(false);
   const [projectDuplicateStarting, setProjectDuplicateStarting] = useState(false);
-  useEffect(() => {
-    if (brandEnrichmentPromptSeed) {
-      setBrandEnrichmentPromptSeedCache(brandEnrichmentPromptSeed);
-    }
-  }, [brandEnrichmentPromptSeed]);
-
+  
   const handleContinueBrandExtraction = useCallback(() => {
     if (brandProgrammaticContinueStartingRef.current) return;
     const brandId = currentProject.metadata?.brandId?.trim();
@@ -12084,14 +11783,7 @@ export function ProjectView({
     if (config.mode !== 'daemon') return;
     const system = designSystemProject ?? activeDesignSystemSummary;
     const skillIds = installedBrandEnrichmentSkillIds(skills);
-    trackDesignSystemEnrichClick(analytics.track, {
-      page_name: 'design_system_project',
-      area: 'design_system_enrich',
-      element: 'ai_optimize',
-      design_system_id: projectDesignSystemId ?? undefined,
-      project_kind: 'design_system',
-    });
-    setBrandEnrichmentStarting(true);
+        setBrandEnrichmentStarting(true);
     return handleSend(
       buildBrandEnrichmentPrompt(brandEnrichmentPromptSeed || brandEnrichmentPromptSeedCache, {
         metadata: currentProject.metadata,
@@ -12105,7 +11797,7 @@ export function ProjectView({
     ).finally(() => setBrandEnrichmentStarting(false));
   }, [
     activeDesignSystemSummary,
-    analytics,
+    
     brandEnrichmentPromptSeed,
     brandEnrichmentPromptSeedCache,
     config.mode,
@@ -12260,12 +11952,7 @@ export function ProjectView({
   // user sent it earlier but onClearPendingPrompt did not get a chance
   // to patch the server before the page reloaded). Drop the seed so the
   // textarea does not echo a prompt the user already submitted.
-  useEffect(() => {
-    if (initialDraft && messages.length > 0) {
-      setInitialDraft(undefined);
-    }
-  }, [initialDraft, messages.length]);
-
+  
   // §8.4 — when the project was created with a plugin pinned (the
   // PluginLoopHome → POST /api/projects path), fetch the immutable
   // snapshot once so ChatPane can render the active plugin as a
@@ -12336,15 +12023,7 @@ export function ProjectView({
   // Lift finalize errors into the shared project-actions toast so the
   // user sees both the daemon's category message and any upstream
   // detail (per #450 verification commitment).
-  useEffect(() => {
-    if (finalize.error) {
-      setProjectActionsToast({
-        message: finalize.error.message,
-        details: finalize.error.details,
-      });
-    }
-  }, [finalize.error]);
-
+  
   // ⌘+Shift+K (mac) / Ctrl+Shift+K (others) → Continue in CLI. Mirrors
   // the capture-phase, platform-gated pattern from FileWorkspace's
   // Quick Switcher shortcut. ⌘+Shift+K is free (⌘+P is the only
@@ -12547,33 +12226,12 @@ export function ProjectView({
         daemonLive={daemonLive}
         onModeChange={onModeChange}
         onOpen={() => {
-          trackComposerBarClick(analytics.track, {
-            page_name: 'chat_panel',
-            area: 'chat_composer',
-            element: 'agent_selector_open',
-            ...(project?.id ? { project_id: project.id } : {}),
-          });
-        }}
+                  }}
         onAgentChange={(id) => {
-          trackComposerBarClick(analytics.track, {
-            page_name: 'chat_panel',
-            area: 'chat_composer',
-            element: 'agent_select',
-            agent_id: id,
-            ...(project?.id ? { project_id: project.id } : {}),
-          });
-          onAgentChange(id);
+                    onAgentChange(id);
         }}
         onAgentModelChange={(agentId, choice) => {
-          trackComposerBarClick(analytics.track, {
-            page_name: 'chat_panel',
-            area: 'chat_composer',
-            element: 'agent_model_select',
-            agent_id: agentId,
-            ...(choice?.model ? { model_id: choice.model } : {}),
-            ...(project?.id ? { project_id: project.id } : {}),
-          });
-          onAgentModelChange(agentId, choice);
+                    onAgentModelChange(agentId, choice);
           /*
            * 「选完自动重跑」的那一半。只有确实是从报错卡那颗〔更换模型〕进来的
            * 才会有待重跑的那一轮 —— 平时手动换模型不该无端重发。
@@ -12583,14 +12241,7 @@ export function ProjectView({
           if (pending) handleRetry(pending, 'switch_model_retry');
         }}
         onApiModelChange={(model) => {
-          trackComposerBarClick(analytics.track, {
-            page_name: 'chat_panel',
-            area: 'chat_composer',
-            element: 'agent_model_select',
-            model_id: model,
-            ...(project?.id ? { project_id: project.id } : {}),
-          });
-          onApiModelChange?.(model);
+                    onApiModelChange?.(model);
         }}
         onOpenSettings={onOpenSettings}
         onRefreshAgents={onRefreshAgents}
@@ -12711,7 +12362,7 @@ export function ProjectView({
               projectId={project.id}
               sessionMode={activeSessionMode}
               onSessionModeChange={handleActiveConversationSessionModeChange}
-              projectKindForTracking={projectKindFromMetadataToTracking(currentProject.metadata)}
+              projectKindForTracking={currentProject.metadata?.kind ?? null}
               projectFiles={projectFiles}
               activeProjectFileName={activeProjectFileName}
               hasActiveDesignSystem={!!projectDesignSystemId}
@@ -12791,22 +12442,7 @@ export function ProjectView({
                     )
                   : undefined;
                 if (sourceAssistant && questionTaskAnalytics) {
-                  trackRunRecoveryActionClick(analytics.track, {
-                    page_name: 'chat_panel',
-                    area: 'chat_panel',
-                    element: 'run_recovery_action',
-                    task_execution_id: questionTaskAnalytics.taskExecutionId,
-                    recovery_action_instance_id:
-                      questionTaskAnalytics.recoveryActionInstanceId!,
-                    recovery_action_type: 'question_answer',
-                    ...(questionTaskAnalytics.sourceRunId
-                      ? { source_run_id: questionTaskAnalytics.sourceRunId }
-                      : {}),
-                    ...(sourceAssistant.agentId
-                      ? { source_agent_provider_id: runAgentProviderId(sourceAssistant.agentId) }
-                      : {}),
-                  });
-                }
+                                  }
                 return handleSend(text, attachments, [], {
                   entryFrom: 'question_answer',
                   ...questionFormAnswerIdentity(sourceAssistantMessageId, formId),
@@ -12987,7 +12623,7 @@ export function ProjectView({
               : readonlyNoticeText
           }
           fileSyncBadge={fileSyncBadge}
-          projectKind={projectKindFromMetadataToTrackingOrLegacyDefault(currentProject.metadata)}
+          projectKind={currentProject.metadata?.kind ?? 'prototype'}
           rootDirName={(() => {
             const baseDir = currentProject.metadata?.baseDir;
             return typeof baseDir === 'string'
@@ -13061,8 +12697,6 @@ export function ProjectView({
           handoffAgents={agents}
           handoffArtifactId={headerArtifact.artifact_id}
           handoffArtifactKind={headerArtifact.artifact_kind}
-          metricsConsent={config.telemetry?.metrics === true}
-          installationId={config.installationId}
           chatLocale={locale}
           conversations={conversations}
           activeConversationId={activeConversationId}
@@ -13685,29 +13319,19 @@ function latestDesignSystemActivityEvents(messages: ChatMessage[]): AgentEvent[]
 }
 
 function pluginWorkflowTitle(action: PluginFolderAgentAction): string {
-  return action === 'publish' ? 'Publish repo' : 'OpenDesign PR';
+  return 'Publish repo';
 }
 
 function pluginWorkflowCliCommand(action: PluginFolderAgentAction, relativePath: string): string {
-  return action === 'publish'
-    ? `od plugin publish-repo ${relativePath}`
-    : `od plugin open-design-pr ${relativePath}`;
+  return `od plugin publish-repo ${relativePath}`;
 }
 
 function pluginWorkflowPlannedSteps(action: PluginFolderAgentAction): string[] {
-  if (action === 'publish') {
-    return [
-      'Resolve GitHub owner and validate plugin metadata',
-      'Create or update the GitHub repository',
-      'Push plugin files and tags',
-      'Return the repository URL',
-    ];
-  }
   return [
-    'Ensure the OpenDesign fork exists',
-    'Clone the fork and prepare a branch',
-    'Copy the plugin into plugins/community',
-    'Push the branch and open the PR form',
+    'Resolve GitHub owner and validate plugin metadata',
+    'Create or update the GitHub repository',
+    'Push plugin files and tags',
+    'Return the repository URL',
   ];
 }
 

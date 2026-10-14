@@ -34,33 +34,8 @@ import {
   type WorkspaceProjectSummary,
 } from '@open-design/contracts';
 import type { OpenDesignHostProjectImportSuccess } from '@open-design/host';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackHomeNavClick,
-  trackOnboardingClick,
-  trackOnboardingCompleteResult,
-  trackOnboardingRuntimeScanResult,
-  trackPageView,
-} from '../analytics/events';
-import { getResolvedDeviceId } from '../analytics/client';
 
 
-import {
-  clearOnboardingSessionId,
-  getOrCreateOnboardingSessionId,
-} from '../analytics/onboarding-session';
-import type {
-  TrackingOnboardingArea,
-  TrackingOnboardingStepIndex,
-  TrackingOnboardingStepName,
-  TrackingOnboardingClickElement,
-  TrackingOnboardingClickAction,
-  TrackingOnboardingRuntimeType,
-  TrackingOnboardingCompletionResult,
-  TrackingOnboardingCompletionType,
-  TrackingCliProviderId,
-} from '@open-design/contracts/analytics';
-import { agentIdToTracking } from '@open-design/contracts/analytics';
 import { useI18n, useT } from '../i18n';
 import { navigate, useRoute } from '../router';
 import type {
@@ -226,7 +201,7 @@ type OnboardingRuntimeTestState =
   | { status: 'running'; inputKey: string }
   | { status: 'done'; inputKey: string; result: ConnectionTestResponse };
 
-// The topbar chips (GitHub star, model switcher, Use everywhere)
+// The topbar chips (model switcher, Use everywhere)
 // collapse into the settings dropdown when the viewport gets
 // narrow. The transition is driven entirely by CSS @media queries
 // in `entry-layout.css` so server and client render identical
@@ -858,14 +833,7 @@ export function EntryShell({
   // view is a deep link to the 团队项目 tab; every other entry keeps whatever
   // tab the user last picked.
   const [projectsCollection, setProjectsCollection] = useState<ProjectCollectionScope>('recent');
-  useEffect(() => {
-    // Entering the page from the rail opens 最近浏览过 (the Demo's strip
-    // remounts on every visit, so it never carries a tab over); the legacy
-    // `/all-projects` view is the one deep link that lands on 团队项目.
-    if (view === 'all-projects') setProjectsCollection('teamProjects');
-    else if (view === 'drafts') setProjectsCollection('recent');
-  }, [view]);
-  async function handleOpenAllProjects(id: string): Promise<boolean> {
+    async function handleOpenAllProjects(id: string): Promise<boolean> {
     // The grid already reconciled the local row with the authoritative team
     // catalog (notably the owner's current project name). Carry its title and
     // provenance into App before navigation. Passing only the id made App reopen its local
@@ -977,13 +945,7 @@ export function EntryShell({
     view === 'members' ||
     view === 'board' ||
     view === 'workspace-settings';
-  useEffect(() => {
-    if (workspaceLoading) return;
-    if (isWorkspaceOnlyView && !hasWorkspaceContext) {
-      navigate({ kind: 'home', view: 'home' }, { replace: true });
-    }
-  }, [workspaceLoading, isWorkspaceOnlyView, hasWorkspaceContext]);
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
+    const [newProjectOpen, setNewProjectOpen] = useState(false);
   // Home has NO low-balance surface, and since T66 (product 2026-09-07) neither
   // does anywhere else: a positive balance produces nothing at all and the run
   // just starts. Home reached that end state first — ruling 2026-09-06 (T53),
@@ -1090,27 +1052,17 @@ export function EntryShell({
     if (!scrollContainer) return;
     scrollContainer.scrollTop = 0;
   }, [view]);
-  const analytics = useAnalytics();
-  function changeView(next: EntryViewKind) {
+    function changeView(next: EntryViewKind) {
     const navElement = navElementForView(next);
     if (navElement) {
-      trackHomeNavClick(analytics.track, {
-        page_name: 'home',
-        area: 'nav',
-        element: navElement,
-      });
-    }
+          }
     navigate({ kind: 'home', view: next });
   }
 
   // Project collection surfaces have no legacy page-level tracker. Community
   // is conditionally mounted and tracks its own visit; always-mounted library
   // surfaces receive an explicit isActive prop below.
-  useEffect(() => {
-    if (view === 'drafts') trackPageView(analytics.track, { page_name: 'drafts' });
-    else if (view === 'all-projects') trackPageView(analytics.track, { page_name: 'all_projects' });
-  }, [analytics.track, view]);
-
+  
   function startPluginAuthoring(goal?: string) {
     setHomePromptHandoff(
       createPluginAuthoringHandoff(Date.now(), goal),
@@ -1371,9 +1323,7 @@ export function EntryShell({
     changeView('home');
   }
 
-  // #5517: the GitHub/Discord/X/mail badges and the settings chip leave the
-  // rail footer. Socials live in the account menu, while settings stays
-  // reachable through either the account menu or the signed-out rail item.
+  // Settings stays reachable through either the account menu or the signed-out rail item.
   //
   // The updater host has no topbar to live in any more (the rail toggle is the
   // pinned Home tab in the workspace tabs bar), so the rail owns it: it rides
@@ -1480,12 +1430,7 @@ export function EntryShell({
           view={view}
           onViewChange={changeView}
           onNewProject={() => {
-            trackHomeNavClick(analytics.track, {
-              page_name: 'home',
-              area: 'nav',
-              element: 'new_project_plus',
-            });
-            openNewProject();
+                        openNewProject();
           }}
           onOpenSearch={() => setProjectSearchOpen(true)}
           open={railOpen}
@@ -1880,8 +1825,7 @@ function OnboardingView({
   onFinish: () => void;
 }) {
   const t = useT();
-  const analytics = useAnalytics();
-  const [step, setStep] = useState(1);
+    const [step, setStep] = useState(1);
   const [runtime, setRuntime] = useState<'local' | 'byok' | null>(null);
   
   const [modelSource, setModelSource] = useState<'local' | 'byok'>('local');
@@ -2083,7 +2027,7 @@ function OnboardingView({
         result: 'success',
         detected: agents.length,
         available: currentAvailableAgents.length,
-        selectedCliId: selectedCliAgent ? agentIdToTracking(selectedCliAgent.id) : undefined,
+        selectedCliId: selectedCliAgent ? selectedCliAgent.id : undefined,
       });
       return;
     }
@@ -2098,105 +2042,32 @@ function OnboardingView({
     }
   }, [agents, agentsLoading, cliScanStatus, config.agentId, runtime]);
 
-  
-
-
-  
-
-  
-
-  // Onboarding step exposure for identity, source choice, and optional setup.
-  //
-  // We do NOT clear on unmount: route changes can remount the shell
-  // during first-run setup. Completion clears inline; abandoned sessions
-  // clear on sessionStorage tab close.
-  const onboardingSessionIdRef = useRef<string>('');
-  if (!onboardingSessionIdRef.current && config.onboardingCompleted !== true) {
-    onboardingSessionIdRef.current = getOrCreateOnboardingSessionId();
-  }
-  useEffect(() => {
-    const onboardingSessionId = onboardingSessionIdRef.current;
-    if (!onboardingSessionId) return;
-    const info = stepInfo(step);
-    trackPageView(analytics.track, {
-      page_name: 'onboarding',
-      area: info.area,
-      step_index: info.stepIndex,
-      step_name: info.stepName,
-      onboarding_session_id: onboardingSessionId,
-    });
-  }, [analytics.track, step]);
-
-  // Onboarding analytics helpers. Wall-clock start so the lifecycle
-  // result event can carry `duration_ms`; `runtime` state is the user's
-  // current pick at click time so `runtime_type` rides along on every
-  // click. The lifecycle guard keeps rapid repeated completion actions from
-  // double-firing the terminal event.
-  const onboardingStartedAtRef = useRef<number>(Date.now());
-  const lifecycleReportedRef = useRef(false);
-  function currentRuntimeType(): TrackingOnboardingRuntimeType {
+  function currentRuntimeType(): string {
     if (runtime === 'local') return 'local_cli';
     if (runtime === 'byok') return 'byok';
     return 'none';
   }
   function stepInfo(stepIdx: number): {
-    area: TrackingOnboardingArea;
-    stepIndex: TrackingOnboardingStepIndex;
-    stepName: TrackingOnboardingStepName;
+    area: string;
+    stepIndex: string;
+    stepName: string;
   } {
     if (stepIdx <= 1) return { area: 'model_source', stepIndex: '2', stepName: 'model_source' };
     return { area: 'runtime_setup', stepIndex: '3', stepName: 'runtime_setup' };
   }
   function emitOnboardingClick(
-    element: TrackingOnboardingClickElement,
-    action: TrackingOnboardingClickAction,
-    extra: Partial<Omit<
-      Parameters<typeof trackOnboardingClick>[1],
-      'page_name' | 'area' | 'element' | 'action' | 'step_index' | 'step_name' | 'onboarding_session_id'
-    >> = {},
-  ): void {
-    const onboardingSessionId = onboardingSessionIdRef.current;
-    if (!onboardingSessionId) return;
-    const info = stepInfo(step);
-    trackOnboardingClick(analytics.track, {
-      page_name: 'onboarding',
-      area: info.area,
-      element,
-      action,
-      step_index: info.stepIndex,
-      step_name: info.stepName,
-      onboarding_session_id: onboardingSessionId,
-      ...extra,
-    });
-  }
+    _element: string,
+    _action: string,
+    _extra: Record<string, unknown> = {},
+  ): void {}
   function emitOnboardingComplete(
-    result: TrackingOnboardingCompletionResult,
-    completionType: TrackingOnboardingCompletionType,
-    extra: {
+    _result: string,
+    _completionType: string,
+    _extra: {
       errorCode?: string;
-      runtimeType?: TrackingOnboardingRuntimeType;
+      runtimeType?: string;
     } = {},
-  ): void {
-    if (lifecycleReportedRef.current) return;
-    const onboardingSessionId = onboardingSessionIdRef.current;
-    if (!onboardingSessionId) return;
-    lifecycleReportedRef.current = true;
-    const info = stepInfo(step);
-    trackOnboardingCompleteResult(analytics.track, {
-      page_name: 'onboarding',
-      area: 'onboarding',
-      result,
-      exit_step_name: info.stepName,
-      completion_type: completionType,
-      runtime_type: extra.runtimeType ?? currentRuntimeType(),
-      has_about_you: false,
-      has_design_system_request: false,
-      source_count: 0,
-      ...(extra.errorCode ? { error_code: extra.errorCode } : {}),
-      duration_ms: Math.max(0, Date.now() - onboardingStartedAtRef.current),
-      onboarding_session_id: onboardingSessionId,
-    });
-  }
+  ): void {}
   const protocolProviders = KNOWN_PROVIDERS.filter((provider) => provider.protocol === apiProtocol);
   const byokProviderOptions = [
     { value: '', label: t('settings.customProvider') },
@@ -2323,31 +2194,15 @@ function OnboardingView({
   }
 
   function emitPendingCliScanResult(
-    token: number,
-    args: {
+    _token: number,
+    _args: {
       result: 'success' | 'failed';
       detected: number;
       available: number;
-      selectedCliId?: TrackingCliProviderId;
+      selectedCliId?: string;
       errorCode?: string;
     },
-  ): void {
-    const telemetry = cliScanTelemetryRef.current;
-    if (!telemetry || telemetry.token !== token) return;
-    cliScanTelemetryRef.current = null;
-    trackOnboardingRuntimeScanResult(analytics.track, {
-      page_name: 'onboarding',
-      area: 'runtime',
-      runtime_type: 'local_cli',
-      result: args.result,
-      detected_cli_count: args.detected,
-      available_cli_count: args.available,
-      ...(args.selectedCliId ? { selected_cli_id: args.selectedCliId } : {}),
-      ...(args.errorCode ? { error_code: args.errorCode } : {}),
-      duration_ms: Math.max(0, Date.now() - telemetry.startedAt),
-      onboarding_session_id: telemetry.onboardingSessionId,
-    });
-  }
+  ): void {}
 
   function beginCliScan(options: { clearVisible: boolean }): number {
     const scanToken = cliScanTokenRef.current + 1;
@@ -2357,14 +2212,6 @@ function OnboardingView({
     onModeChange('daemon');
     setCliScanStatus('scanning');
     if (options.clearVisible) setVisibleAgentIds([]);
-    const onboardingSessionId = onboardingSessionIdRef.current;
-    cliScanTelemetryRef.current = onboardingSessionId
-      ? {
-          token: scanToken,
-          startedAt: Date.now(),
-          onboardingSessionId,
-        }
-      : null;
     return scanToken;
   }
 
@@ -2404,13 +2251,12 @@ function OnboardingView({
   }
 
   function completeStreamlinedOnboarding(
-    runtimeType: TrackingOnboardingRuntimeType,
+    runtimeType: string,
   ): void {
     emitOnboardingComplete('completed', 'completed_without_design_system', {
       runtimeType,
     });
-    clearOnboardingSessionId();
-    onFinish();
+        onFinish();
   }
 
 
@@ -2564,7 +2410,7 @@ function OnboardingView({
         result: 'success',
         detected: agents.length,
         available: currentAvailableAgents.length,
-        selectedCliId: selectedCliAgent ? agentIdToTracking(selectedCliAgent.id) : undefined,
+        selectedCliId: selectedCliAgent ? selectedCliAgent.id : undefined,
       });
       return currentAvailableAgents;
     }
@@ -2602,7 +2448,7 @@ function OnboardingView({
         detected: nextAgents.length,
         available: availableAgents.length,
         ...(selectedCliAgent
-          ? { selectedCliId: agentIdToTracking(selectedCliAgent.id) }
+          ? { selectedCliId: selectedCliAgent.id }
           : {}),
       });
       showCliAgents(scanToken, candidateAgents, { stagger: true });
@@ -3729,12 +3575,7 @@ export function OnboardingDropdown(props: OnboardingDropdownProps) {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) {
-      setQuery('');
-    }
-  }, [open]);
-
+  
   useEffect(() => {
     function handlePeerOpen(event: Event) {
       if ((event as CustomEvent<string>).detail !== dropdownIdRef.current) {

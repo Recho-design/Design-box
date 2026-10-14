@@ -2,7 +2,6 @@ import type { Express } from 'express';
 import type { SkillInfo } from './skills.js';
 import type { DesignSystemSummary } from './design-systems/index.js';
 import type { RoutineRoutesService } from './routes/routine.js';
-import type { OpenDesignPublicMetadataService } from './services/open-design-public-metadata.js';
 
 export interface HttpDeps {
   createSseResponse: (...args: any[]) => any;
@@ -131,50 +130,6 @@ export interface ProjectPreviewScopeDeps {
   ) => { workspaceId: string; workspaceMemberId: string } | null | undefined;
 }
 
-export interface TelemetryDeps {
-  reportFinalizedMessage: (
-    saved: any,
-    body?: any,
-    options?: {
-      analyticsContext?: any;
-      projectId?: string;
-      conversationId?: string;
-      reportTrigger?: 'final_message' | 'terminal_fallback';
-    },
-  ) => void;
-  /**
-   * Best-effort Langfuse score emission for assistant-turn user ratings.
-   * Returns the categorical outcome so the API surface in chat-routes can
-   * report back to the web client whether the report was accepted or
-   * skipped (consent off / no sink). The handler must not await this in
-   * the request hot path — fire-and-forget.
-   */
-  reportFeedback?: (req: {
-    runId: string;
-    rating: 'positive' | 'negative';
-    reasonCodes: string[];
-    hasCustomReason: boolean;
-    customReason: string;
-    scoreMetadata?: Record<string, unknown>;
-  }) => Promise<{ status: 'accepted' | 'skipped_consent' | 'skipped_no_sink' }>;
-  reportRunCompletionTelemetryFallback: (...args: any[]) => any;
-  resolveRunProjectKindForAnalytics: (...args: any[]) => any;
-  runArtifactBaselines: any;
-  runRetryEventsForAnalytics: (...args: any[]) => any;
-  /** Product-result capture for request-scoped, consented analytics. */
-  captureProductEvent?: (
-    req: any,
-    eventName: string,
-    properties: Record<string, unknown>,
-  ) => Promise<void> | void;
-  /** Update one PostHog Workspace group from an authoritative read. */
-  identifyWorkspaceGroup?: (
-    req: any,
-    workspaceId: string,
-    properties: Record<string, unknown>,
-  ) => Promise<void> | void;
-}
-
 export interface ServerContext {
   db: any;
   design: any;
@@ -210,7 +165,6 @@ export interface ServerContext {
   resources: ResourceDeps;
   routines: RoutineDeps;
   projectPreviewScopes: ProjectPreviewScopeDeps;
-  telemetry: TelemetryDeps;
   validation: any;
   finalize: any;
   handoff: any;
@@ -218,7 +172,6 @@ export interface ServerContext {
   messages: any;
   agents: any;
   critique: any;
-  openDesignPublicMetadata: OpenDesignPublicMetadataService;
   lifecycle: {
     isDaemonShuttingDown: () => boolean;
   };

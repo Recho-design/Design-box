@@ -1007,8 +1007,6 @@ function printRootHelp() {
       Discover, install, and apply plugins through the local daemon.
   od plugin publish-repo <folder>
       Create/update the author's GitHub repo for a local plugin folder.
-  od plugin open-design-pr <folder>
-      Push a community-catalog branch and open the OpenDesign PR form.
 
   od automation <list|get|create|update|run|runs|pause|resume|delete> [args]
       Drive the Automations surface headlessly. Same store as the UI's
@@ -1019,9 +1017,9 @@ function printRootHelp() {
   od memory tree <list|view|edit|move> [args]
       Inspect and edit the memory tree that is injected into agent prompts.
 
-  od share <open-design|url> [options]
-      Build localized social-share targets for the OpenDesign repo or a
-      deployed project URL. Use --json for scripted integrations.
+  od share url --url <https-url> [options]
+      Build localized social-share targets for a deployed project URL.
+      Use --json for scripted integrations.
 
   od ui <list|show|respond|revoke|prefill> [args]
       Read and answer GenUI surfaces (form / choice / confirmation / oauth-prompt) headlessly.
@@ -2907,7 +2905,6 @@ async function runPlugin(args) {
     case 'export':   return runPluginExport(rest);
     case 'publish':  return runPluginPublish(rest);
     case 'publish-repo': return runPluginPublishRepo(rest);
-    case 'open-design-pr': return runPluginOpenDesignPr(rest);
     case 'yank':     return runPluginYank(rest);
     default:
       console.error(`unknown subcommand: od plugin ${sub}`);
@@ -5168,7 +5165,7 @@ async function runPluginPublish(rest) {
   });
   if (rest.length === 0 || flags.help || flags.h) {
     console.log(`Usage:
-  od plugin publish <pluginId> --to open-design|anthropics-skills|awesome-agent-skills|clawhub|skills-sh
+  od plugin publish <pluginId> --to anthropics-skills|awesome-agent-skills|clawhub|skills-sh
                     [--repo <github-url>] [--snapshot-id <id>] [--open] [--json]
   od plugin publish <pluginId> --to marketplace-json --catalog ./open-design-marketplace.json --repo <github-url>
 
@@ -5187,7 +5184,7 @@ publish from a frozen run snapshot rather than the live installed copy.`);
     process.exit(2);
   }
   if (!target) {
-    console.error('--to <catalog> is required (one of: open-design, anthropics-skills, awesome-agent-skills, clawhub, skills-sh)');
+    console.error('--to <catalog> is required (one of: anthropics-skills, awesome-agent-skills, clawhub, skills-sh)');
     process.exit(2);
   }
   const base = (await pluginDaemonUrl(flags)).replace(/\/$/, '');
@@ -5441,126 +5438,6 @@ GitHub API as a last resort. It never publishes to placeholder owners.`);
   });
 }
 
-async function runPluginOpenDesignPr(rest) {
-  const flags = parseFlags(rest, {
-    string: new Set(['host', 'owner']),
-    boolean: new Set(['help', 'h', 'json', 'dry-run']),
-  });
-  if (rest.length === 0 || flags.help || flags.h) {
-    console.log(`Usage:
-  od plugin open-design-pr <folder> [--host github.com] [--owner github-login-or-fork-owner] [--dry-run] [--json]
-
-Copies a local plugin folder into plugins/community/<name>/ on the author's
-fork of nexu-io/open-design, pushes a branch, and opens the PR form with --web.`);
-    process.exit(rest.length === 0 ? 2 : 0);
-  }
-  const folder = rest.find((a) => !a.startsWith('-') && a !== flags.host && a !== flags.owner);
-  if (!folder) {
-    console.error('Usage: od plugin open-design-pr <folder>');
-    process.exit(2);
-  }
-  const [{ resolve, join }, fsp, os] = await Promise.all([
-    import('node:path'),
-    import('node:fs/promises'),
-    import('node:os'),
-  ]);
-  const absFolder = resolve(process.cwd(), folder);
-  const manifestPath = resolve(absFolder, 'open-design.json');
-  const manifest = JSON.parse(await fsp.readFile(manifestPath, 'utf8'));
-  const host = typeof flags.host === 'string' ? flags.host : 'github.com';
-  const target = await resolvePluginGithubTarget({ host, owner: flags.owner, manifest, purpose: 'open-design-pr' });
-  const name = String(manifest.name ?? '').trim();
-  if (!name) {
-    console.error('[open-design-pr] manifest.name is required');
-    process.exit(2);
-  }
-  const title = String(manifest.title ?? name).trim();
-  const branch = `plugin/${name}-${Math.floor(Date.now() / 1000)}`;
-  const tmpRoot = await fsp.mkdtemp(join(os.tmpdir(), 'od-open-design-pr-'));
-  const checkout = join(tmpRoot, 'open-design');
-  const steps = [];
-  const run = async (label, command, args, opts = {}) => {
-    steps.push({ label, command: [command, ...args].join(' ') });
-    if (flags['dry-run']) return { ok: true, stdout: '', stderr: '' };
-    const result = await (command === 'gh'
-      ? execGhBuffered(args, { cwd: opts.cwd ?? process.cwd(), timeout: opts.timeout ?? 180_000 })
-      : execFileBuffered(command, args, { cwd: opts.cwd ?? process.cwd(), timeout: opts.timeout ?? 180_000 }));
-    steps[steps.length - 1].ok = result.ok;
-    steps[steps.length - 1].stdout = result.stdout;
-    steps[steps.length - 1].stderr = result.stderr;
-    if (!result.ok && !opts.tolerate?.(result)) {
-      emitPluginWorkflowResult(flags, {
-        ok: false,
-        action: 'open-design-pr',
-        folder: absFolder,
-        login: target.login,
-        owner: target.owner,
-        ownerSource: target.ownerSource,
-        apiRateLimited: target.apiRateLimited,
-        branch,
-        steps,
-        error: { label, stdout: result.stdout, stderr: result.stderr, code: result.code },
-      });
-      process.exit(1);
-    }
-    return result;
-  };
-
-  await run('fork', 'gh', ['repo', 'fork', 'nexu-io/open-design'], {
-    tolerate: (r) => /already exists|existing fork/i.test(`${r.stdout}\n${r.stderr}`),
-  });
-  await run('clone fork', 'git', [
-    'clone',
-    '--depth', '1',
-    '--single-branch',
-    '--branch', 'main',
-    '--filter=blob:none',
-    '--sparse',
-    `https://github.com/${target.owner}/open-design.git`,
-    checkout,
-  ], { timeout: 240_000 });
-  await run('sparse checkout', 'git', ['sparse-checkout', 'set', 'plugins/community'], { cwd: checkout });
-  await run('checkout branch', 'git', ['checkout', '-b', branch], { cwd: checkout });
-  const dest = join(checkout, 'plugins', 'community', name);
-  if (!flags['dry-run']) {
-    await fsp.rm(dest, { recursive: true, force: true });
-    await fsp.mkdir(dest, { recursive: true });
-    await fsp.cp(absFolder, dest, { recursive: true, force: true, filter: (src) => !src.includes(`${absFolder}/.git`) });
-  }
-  await run('git add', 'git', ['add', `plugins/community/${name}`], { cwd: checkout });
-  await run('git commit', 'git', ['commit', '-m', `Add ${title} plugin`], { cwd: checkout });
-  await run('git push branch', 'git', ['push', '-u', 'origin', branch], { cwd: checkout });
-  const body = [
-    `Add ${title} (${name}) plugin.`,
-    '',
-    `Version: ${manifest.version ?? '0.0.0'}`,
-    manifest.description ? `Description: ${manifest.description}` : '',
-  ].filter(Boolean).join('\n');
-  const pr = await run('open PR form', 'gh', [
-    'pr', 'create',
-    '--repo', 'nexu-io/open-design',
-    '--head', `${target.owner}:${branch}`,
-    '--base', 'main',
-    '--title', `Add ${title} plugin`,
-    '--body', body,
-    '--web',
-  ], { cwd: checkout });
-  const prUrl = extractFirstUrl(pr.stdout || pr.stderr) ?? `https://github.com/${target.owner}/open-design/pull/new/${branch}`;
-  emitPluginWorkflowResult(flags, {
-    ok: true,
-    action: 'open-design-pr',
-    folder: absFolder,
-    login: target.login,
-    owner: target.owner,
-    ownerSource: target.ownerSource,
-    apiRateLimited: target.apiRateLimited,
-    branch,
-    prUrl,
-    checkout,
-    steps,
-  });
-}
-
 async function publishToMarketplaceJson({ catalogPath, meta }) {
   const [{ dirname, resolve }, { mkdir, readFile, writeFile }, { PublishError, upsertMarketplaceJsonEntry }] = await Promise.all([
     import('node:path'),
@@ -5644,14 +5521,12 @@ async function resolvePluginGithubTarget({ host = 'github.com', owner, manifest,
     console.error(`[plugin github] could not resolve the GitHub owner for ${purpose}.`);
     if (apiError?.stderr || apiError?.stdout) console.error(apiError.stderr || apiError.stdout);
     if (apiError && isGhApiRateLimit(apiError)) {
-      const ownerHint = purpose === 'open-design-pr' ? '<github-login-or-fork-owner>' : '<github-login-or-org>';
+      const ownerHint = '<github-login-or-org>';
       console.error(`GitHub API is rate limited. Re-run with --owner ${ownerHint}, or authenticate/refresh gh and retry.`);
     } else {
       console.error('Run: gh auth refresh -h github.com -s repo,workflow');
       console.error('Or:  gh auth login -h github.com -s repo,workflow');
-      console.error(purpose === 'open-design-pr'
-        ? 'If the fork owner differs from your auth login, pass --owner <github-login-or-fork-owner>.'
-        : 'If this is an org-owned plugin, pass --owner <github-org>.');
+      console.error('If this is an org-owned plugin, pass --owner <github-org>.');
     }
     process.exit(1);
   }
@@ -5778,22 +5653,11 @@ function emitPluginWorkflowResult(flags, payload) {
     if (payload.manifestRewritten) console.log('[publish-repo] manifest repo fields were normalized before publishing.');
     return;
   }
-  if (payload.action === 'open-design-pr') {
-    if (payload.ownerSource) console.log(`[open-design-pr] owner resolved from ${payload.ownerSource}: ${payload.owner}`);
-    if (payload.apiRateLimited) console.log('[open-design-pr] GitHub API was rate limited; continued with the locally resolved owner.');
-    console.log(`Open this URL and click Create to file the PR: ${payload.prUrl}`);
-    return;
-  }
   console.log(JSON.stringify(payload, null, 2));
 }
 
 function safeJson(raw) {
   try { return JSON.parse(raw); } catch { return null; }
-}
-
-function extractFirstUrl(text) {
-  const match = /https?:\/\/\S+/i.exec(String(text ?? ''));
-  return match ? match[0].replace(/[)\].,]+$/, '') : null;
 }
 
 async function runPluginYank(rest) {
@@ -5803,7 +5667,7 @@ async function runPluginYank(rest) {
   });
   if (rest.length === 0 || flags.help || flags.h) {
     console.log(`Usage:
-  od plugin yank <vendor/plugin-name>@<version> --reason "<why>" [--to open-design] [--json]
+  od plugin yank <vendor/plugin-name>@<version> --reason "<why>" --to <owner>/<repo> [--json]
 
 Yanking never deletes metadata or bytes. It opens the registry review flow that
 marks a version unresolvable for new installs while preserving lockfile replay.`);
@@ -5820,9 +5684,16 @@ marks a version unresolvable for new installs while preserving lockfile replay.`
     console.error('--reason is required for yanking');
     process.exit(2);
   }
-  const target = flags.to ?? 'open-design';
-  if (target !== 'open-design') {
-    console.error('Only --to open-design is supported in this v1 GitHub-backed yank flow.');
+  // `--to` names the registry repository that owns the catalog, as
+  // `<owner>/<repo>`. The previous build hard-coded one upstream monorepo;
+  // a fork must be able to point its authors at whichever registry it uses.
+  const target = typeof flags.to === 'string' ? flags.to.trim() : '';
+  if (!target) {
+    console.error('--to <owner>/<repo> is required for the GitHub-backed yank flow.');
+    process.exit(2);
+  }
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(target)) {
+    console.error('--to must name a GitHub repository as <owner>/<repo>.');
     process.exit(2);
   }
   const title = `Yank ${parsed.name}@${parsed.range}`;
@@ -5846,11 +5717,11 @@ marks a version unresolvable for new installs while preserving lockfile replay.`
   ].join('\n');
   const params = new URLSearchParams({ title, body });
   const payload = {
-    catalog: 'open-design',
+    catalog: target,
     name: parsed.name,
     version: parsed.range,
     reason,
-    url: `https://github.com/nexu-io/open-design/issues/new?${params.toString()}`,
+    url: `https://github.com/${target}/issues/new?${params.toString()}`,
     body,
   };
   if (flags.json) {
@@ -6320,9 +6191,7 @@ function printPluginHelp() {
                                           List persisted skill-to-plugin candidates.
   od plugin publish-repo <folder>         Create/update the author's public
                                           GitHub repo for a plugin folder.
-  od plugin open-design-pr <folder>       Push a community-catalog branch and
-                                          open the nexu-io/open-design PR form.
-  od plugin publish <folder> --to open-design|anthropics-skills|awesome-agent-skills|clawhub|skills-sh
+  od plugin publish <folder> --to anthropics-skills|awesome-agent-skills|clawhub|skills-sh
                                           Prepare a registry submission link.
   od plugin login [--host github.com]      Authenticate registry publishing via gh.
   od plugin whoami [--host github.com]     Show the gh account used for publishing.
@@ -6352,7 +6221,6 @@ async function projectDaemonUrl(flags) {
 
 function printShareUsage() {
   console.log(`Usage:
-  od share open-design [--locale <locale>] [--platform <id>] [--json]
   od share url --url <https-url> [--title <title>] [--text <text>]
                [--copy-text <text>] [--locale <locale>] [--platform <id>] [--json]
 
@@ -6374,7 +6242,7 @@ async function runShare(args) {
     process.exit(args.length === 0 ? 2 : 0);
   }
 
-  const sub = args[0] && !args[0].startsWith('-') ? args[0] : 'open-design';
+  const sub = args[0] && !args[0].startsWith('-') ? args[0] : 'url';
   const rest = sub === args[0] ? args.slice(1) : args;
   const flags = parseFlags(rest, {
     string: SHARE_STRING_FLAGS,
@@ -6383,29 +6251,21 @@ async function runShare(args) {
   const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
   const positional = positionalArgs(rest, SHARE_STRING_FLAGS);
   const url = flags.url ?? positional[0];
-  const body = sub === 'url'
-    ? {
-        kind: 'project-html',
-        url,
-        title: flags.title,
-        text: flags.text,
-        copyText: flags['copy-text'],
-        locale: flags.locale,
-      }
-    : {
-        kind: 'open-design-repo',
-        title: flags.title,
-        text: flags.text,
-        copyText: flags['copy-text'],
-        locale: flags.locale,
-      };
-
-  if (sub !== 'open-design' && sub !== 'url') {
+  if (sub !== 'url') {
     console.error(`unknown share target: ${sub}`);
     printShareUsage();
     process.exit(2);
   }
-  if (body.kind === 'project-html' && !body.url) {
+  const body = {
+    kind: 'project-html',
+    url,
+    title: flags.title,
+    text: flags.text,
+    copyText: flags['copy-text'],
+    locale: flags.locale,
+  };
+
+  if (!body.url) {
     console.error('Usage: od share url --url <https-url>');
     process.exit(2);
   }

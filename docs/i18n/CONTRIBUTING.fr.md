@@ -25,7 +25,7 @@ une PR doit atteindre avant d’être mergée.
 | Améliorer la doc, porter une section en Français / Deutsch / 中文, corriger une faute | documentation | `README.md`, `docs/i18n/README.fr.md`, `docs/i18n/README.de.md`, `docs/i18n/README.zh-CN.md`, `docs/`, `QUICKSTART.md` | une PR |
 
 Si vous ne savez pas dans quelle catégorie tombe votre idée, [ouvrez d'abord
-une discussion ou une issue](https://github.com/nexu-io/open-design/issues/new)
+une discussion ou une issue](https://github.com/Recho-design/Design-box/issues/new)
 et nous vous orienterons vers la bonne surface.
 
 ---
@@ -36,8 +36,8 @@ Le setup complet en une page se trouve dans [`QUICKSTART.fr.md`](QUICKSTART.fr.m
 TL;DR pour contribuer :
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
-cd open-design
+git clone https://github.com/Recho-design/Design-box.git
+cd Design-box
 corepack enable           # sélectionne la version de pnpm définie par packageManager
 pnpm install
 pnpm tools-dev run web    # boucle daemon + web au premier plan
@@ -303,7 +303,6 @@ Les PR de localisation doivent traduire les éléments d'interface, la documenta
 Lors de l'ajout ou du renommage d'un skill, d'un système de design ou d'un modèle de prompt, mettez à jour les métadonnées d'affichage allemandes et lancez `pnpm typecheck` (le dépôt ne comporte plus de suite de tests ; les écarts de métadonnées d'affichage sont interceptés au typecheck). Les erreurs du daemon, les noms de fichiers exportés et les textes d'artefacts générés par les agents restent des limites connues, sauf si une PR les inclut explicitement.
 
 Pour les étapes détaillées d'ajout d'une locale (dictionnaire UI, README,
-language switcher, terminologie régionale), voir [`TRANSLATIONS.md`](../../TRANSLATIONS.md).
 
 ---
 
@@ -383,12 +382,8 @@ afin de voir si la violation vient du modèle ou du prompt.
 
 ## Poser des questions
 
-- Question d'architecture, question de design, "bug ou mauvaise utilisation ?" →
-  [GitHub Discussions](https://github.com/nexu-io/open-design/discussions)
-  (préféré, car searchable pour la personne suivante).
-- "Comment écrire un Skill qui fait X ?" → ouvrez une discussion. Nous y
-  répondrons et transformerons la réponse en ajout dans
-  [`docs/skills-protocol.md`](../../docs/skills-protocol.md) si c'est un pattern manquant.
+- Question d'architecture, question de design, « est-ce un bug ou un mauvais usage » → ouvrez une issue dans ce dépôt en décrivant ce que vous avez lancé et ce que vous attendiez.
+- "Comment écrire un Skill qui fait X ?" → ouvrez une issue. Nous y répondrons et transformerons la réponse en ajout dans [`docs/skills-protocol.md`](../../docs/skills-protocol.md) si c'est un pattern manquant.
 
 ---
 
@@ -419,35 +414,6 @@ discussion avant d'écrire le code.
 ---
 
 <!-- Machine-translated section; native-speaker review welcome via PR. -->
-## Devenir Mainteneur
-
-Si vous contribuez régulièrement et que vous souhaitez savoir à quoi
-ressemble le chemin pour devenir Mainteneur, les règles se trouvent dans
-**[`MAINTAINERS.md`](../../MAINTAINERS.md)**. La version courte :
-
-- Un Mainteneur peut examiner, approuver et fermer des issues. Le bouton
-  de merge reste à la Core Team — votre approbation compte tout de même
-  comme l'approbation requise pour le merge.
-- Le seuil est de **≥ 20 merged PRs** plus une vérification publiée de la
-  qualité du compte (anti-bot, anti-sock-puppet) plus un jugement de la
-  Core Team sur la qualité des contributions. Il n'y a pas de formulaire
-  de candidature ; la Core Team identifie les candidats en interne et
-  prend contact.
-- Il n'y a **aucun quota, aucun SLA, et aucun mandat fixe.** Se retirer
-  est facile et réversible (Emeritus → retour quand la vie se calme).
-- Tous les seuils, le flux de nomination, les règles de retrait et la
-  dérogation pour les projets en phase initiale se trouvent dans
-  [`MAINTAINERS.md`](../../MAINTAINERS.md). Lisez ce document si l'un des
-  points ci-dessus vous intéresse.
-
-Le tl;dr : livrez de bonnes PR, faites des reviews réfléchies, traînez
-dans les [Discussions][discussions] / sur [Discord][discord], et le reste
-se fait tout seul.
-
-[discussions]: https://github.com/nexu-io/open-design/discussions
-[discord]: https://discord.gg/mHAjSMV6gz
-
----
 
 ## Licence
 

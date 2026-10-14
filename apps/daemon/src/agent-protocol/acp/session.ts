@@ -76,7 +76,7 @@ const NON_DISPLAYABLE_ACP_SESSION_UPDATES = new Set([
  *
  * Deliberately NOT part of the event payload: this says where the emission came
  * from, not what it contains, and it must not reach the persisted transcript,
- * the SSE wire, or Langfuse metadata.
+ * the SSE wire, or any downstream metadata.
  *
  * `hostSynthesized` marks an event the daemon manufactured while closing its own
  * books — the terminal `tool_use`/`tool_result` pair `flushOpenAcpTools` writes
@@ -397,7 +397,7 @@ export function attachAcpSession({
       origin === 'host_flush' ? { hostSynthesized: true } : undefined;
     // Raw ACP toolCallId stays as the local Map key for frame correlation; the
     // transcript/telemetry id is always an opaque hash so adapter-supplied
-    // ids (paths, tokens, JWTs) never leak into Langfuse span ids or
+    // ids (paths, tokens, JWTs) never leak into a telemetry span id or
     // metadata.toolCallId.
     const telemetryToolCallId = acpTelemetryToolCallId(toolCallId);
     send('agent', withAcpEmissionProvenance({
@@ -412,8 +412,8 @@ export function attachAcpSession({
     send('agent', withAcpEmissionProvenance({
       type: 'tool_result',
       toolUseId: telemetryToolCallId,
-      // Bash/execute stdout can dump private files (cat .env). Langfuse only
-      // lexically masks Bash, so redact before the canonical transcript ships.
+      // Bash/execute stdout can dump private files (cat .env). Only lexical
+      // masking would apply to Bash, so redact before the canonical transcript ships.
       content: acpSafeToolResultContent(st.name, st.resultContent),
       isError: isError || st.failed,
     }, meta), meta);
@@ -421,7 +421,7 @@ export function attachAcpSession({
 
   // Flush tools that never received a terminal `tool_call_update`. Clean
   // completion preserves accumulated tool failures; fail paths use
-  // isError=true so Langfuse/PostHog and the persisted transcript keep the
+  // isError=true so the persisted transcript and any recorded run metrics keep the
   // open tool as an errored result instead of dropping it entirely.
   //
   // Do not clear the map after flush. Emitted entries must stay until the
@@ -819,7 +819,7 @@ export function attachAcpSession({
   };
 
   // Best-effort: emit provider usage before terminal fail/success so failed
-  // ACP runs still contribute token fields to PostHog/Langfuse when the agent
+  // ACP runs still contribute token fields to the run record when the agent
   // returned a usage object on the prompt result.
   const emitUsageIfPresent = (usageSource?: unknown) => {
     const usage = formatUsage(usageSource);
@@ -1081,7 +1081,7 @@ export function attachAcpSession({
           acpArtifactWriteToolCallIds.add(toolCallId);
         }
         // Full ACP tool transcript → canonical tool_use/tool_result events for
-        // Langfuse/PostHog and `countNewArtifacts` (run-artifacts.ts). Every
+        // the run record and `countNewArtifacts` (run-artifacts.ts). Every
         // non-think tool is mirrored once at terminal status (accumulate
         // partial frames first). Write tools keep Claude-shaped Write/Edit
         // names and a real `file_path` when present. Never use toolCallId as
@@ -1351,7 +1351,7 @@ export function attachAcpSession({
       // Flush deferred tool pairs as errored before terminal cancel. Tools are
       // held until a terminal tool_call_update; without this flush, user cancel
       // (runs.ts → acpSession.abort) drops in-progress tools from the transcript
-      // and from Langfuse/PostHog — unlike timeout and child-exit fail paths.
+      // and from the recorded transcript — unlike timeout and child-exit fail paths.
       flushOpenAcpTools(true);
       aborted = true;
       finished = true;

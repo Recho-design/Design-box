@@ -31,22 +31,13 @@
 // make "chat input latency" untrue, and the file viewer has its own
 // observability surface.
 
-import type { ChatInteractionLatencyProps } from '@open-design/contracts/analytics';
-
-import { reportSafetyEvent } from '../analytics/error-tracking';
 import { chatCorrelation } from './chat-context';
 
-/**
- * 200 ms. The RAIL "user notices" boundary is 100 ms, but the browser
- * already exposes a 104 ms floor of its own and the 100–200 ms band is
- * dominated by ordinary React work we would not act on. 200 ms is the
- * point where an interaction reads as "the app hesitated".
- */
 const REPORT_THRESHOLD_MS = 200;
 const WINDOW_MS = 30_000;
 const MAX_REPORTS_PER_SESSION = 20;
 
-type ChatArea = ChatInteractionLatencyProps['area'];
+type ChatArea = 'composer' | 'chat_log' | 'quick_reply' | 'branch_action' | 'other' | 'unknown';
 
 interface WindowState {
   worstMs: number;
@@ -140,16 +131,7 @@ function flush(): void {
   // untestable — remove either and the spec stays green.
   reportedThisSession += 1;
 
-  const correlation = chatCorrelation();
-  const props: ChatInteractionLatencyProps = {
-    ...correlation,
-    inp_ms: Math.round(state.worstMs),
-    interaction_count: state.count,
-    event_name: state.eventName,
-    area: state.area,
-    streaming: state.streaming,
-  };
-  reportSafetyEvent('client_chat_interaction_latency', { ...props });
+  // reportSafetyEvent removed
 }
 
 /**

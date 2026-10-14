@@ -7,7 +7,6 @@ import type {
   ProjectFile,
   ProjectMediaTaskFile,
 } from '@open-design/contracts';
-import type { AnalyticsContext } from '../analytics.js';
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
 import { formatMediaTaskDiagnostic } from '../media/diagnostics.js';
 import { fetchProviderModelOptions } from '../media/model-fetch.js';
@@ -33,10 +32,6 @@ import { associateLateRunProducedFile } from '../runtimes/run-produced-files.js'
 import { scaffoldHyperFramesComposition } from '../media/hyperframes-scaffold.js';
 import { assignMediaTaskBatches } from '../media/task-batches.js';
 import { generateMediaBatch } from '../media/generate-media-batch.js';
-import {
-  captureMediaGenerationResult,
-  resolveMediaAnalyticsContext,
-} from '../media/generation-analytics.js';
 import { mediaTaskErrorFromFailure } from '../media/task-error.js';
 import { normalizePersistedAutomationWorkspaceScope } from '../automations/workspace-scope.js';
 import { applyProxyPrefsToProcess } from '../services/proxy-apply.js';
@@ -276,17 +271,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     return { ok: true, policy: run.mediaExecution ?? defaultMediaExecutionPolicy() };
   };
 
-  const mediaAnalyticsContext = async (
-    req: any,
-    grant: ToolTokenGrant | null,
-  ): Promise<AnalyticsContext | null> => resolveMediaAnalyticsContext({
-    req,
-    design,
-    runId: grant?.runId,
-    readAppConfig,
-    runtimeDataDir: RUNTIME_DATA_DIR,
-  });
-
   const handleGenerate = async (
     req: any,
     res: any,
@@ -357,7 +341,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     let task: ReturnType<typeof createMediaTask> | null = null;
     try {
       const taskId = randomUUID();
-      const analyticsContext = await mediaAnalyticsContext(req, options.grant);
       let providerRequestSummary:
         | (ImageGenerationRequestSummary & { providerId: string })
         | null = null;
@@ -517,19 +500,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
         }
         task.endedAt = Date.now();
         persistMediaTask(task);
-        if (analyticsContext && settledProvider && batch.metas.length > 0) {
-          captureMediaGenerationResult(design, {
-            analyticsContext,
-            durationMs: task.endedAt - task.startedAt,
-            meta: batch.metas[0],
-            model,
-            projectId,
-            providerRequestSummary: settledProvider,
-            ...(options.grant?.runId ? { runId: options.grant.runId } : {}),
-            surface,
-            taskId,
-          });
-        }
         notifyTaskWaiters(task);
         console.error(formatMediaTaskDiagnostic({
           ...diagnosticContext,
@@ -568,19 +538,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
           task.file = meta;
           task.endedAt = Date.now();
           persistMediaTask(task);
-          if (analyticsContext && providerRequestSummary) {
-            captureMediaGenerationResult(design, {
-              analyticsContext,
-              durationMs: task.endedAt - task.startedAt,
-              meta,
-              model,
-              projectId,
-              providerRequestSummary,
-              ...(options.grant?.runId ? { runId: options.grant.runId } : {}),
-              surface,
-              taskId,
-            });
-          }
           notifyTaskWaiters(task);
           console.error(formatMediaTaskDiagnostic({
             ...diagnosticContext,
@@ -603,18 +560,6 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
           task.error = mediaTaskErrorFromFailure(err, { model });
           task.endedAt = Date.now();
           persistMediaTask(task);
-          if (analyticsContext && providerRequestSummary) {
-            captureMediaGenerationResult(design, {
-              analyticsContext,
-              durationMs: task.endedAt - task.startedAt,
-              model,
-              projectId,
-              providerRequestSummary,
-              ...(options.grant?.runId ? { runId: options.grant.runId } : {}),
-              surface,
-              taskId,
-            });
-          }
           notifyTaskWaiters(task);
           console.error(formatMediaTaskDiagnostic({
             ...diagnosticContext,

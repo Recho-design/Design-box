@@ -1,27 +1,7 @@
 <h1 align="center">OpenDesign: 오픈소스 Claude Design 대안</h1>
 
-> ⚡ **[OpenDesign Cloud — 공식 모델 서비스.](https://open-design.ai/zh/pricing/)** 한 번 충전하면 OpenDesign 안에서 에이전트 모델과 이미지 모델을 함께 사용할 수 있습니다. 에이전트용 GPT, Claude, DeepSeek와 이미지용 GPT Image 2.0, Seedream 5.0 Pro, Nano Banana 2.0을 지원합니다.
->
-> 🚀 **[DeepSeek V4 Flash와 V4 Pro를 사용할 수 있습니다.](https://open-design.ai/zh/pricing/)** 프로토타입, 덱, 디자인 시스템, 일상적인 에이전트 작업에 최상급 지능을 활용하세요. OpenDesign 회원은 앱에서 두 모델을 2주 동안 무제한으로 사용할 수 있습니다.
->
-> 🧩 **[DeepSeek Harness를 지원합니다.](https://open-design.ai/zh/agents/deepseek-harness-design/)** DeepSeek 공식 `dsh` Agent Harness를 OpenDesign의 네이티브 런타임으로 연결하고 구조화된 사고, 도구 호출, 모델 검색, 취소, 세션 재개를 사용할 수 있습니다. 생성된 파일은 라이브 미리보기와 전달을 위해 OpenDesign 워크플로 안에 유지됩니다.
-
 <p align="center">
-  <img src="https://repo-assets.open-design.ai/resources/images/hero.png" alt="OpenDesign hero banner" width="100%" />
-</p>
-
-<p align="center">
-  <a href="https://open-design.ai/">웹사이트</a> ·
-  <a href="https://open-design.ai/">다운로드</a> ·
-  <a href="https://open-design.ai/cloud/">OpenDesign Cloud</a> ·
-  <a href="https://discord.gg/mHAjSMV6gz">Discord</a> ·
-  <a href="https://x.com/OpenDesignHQ">@OpenDesignHQ 팔로우</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/nexu-io/open-design/releases"><img alt="release" src="https://img.shields.io/github/v/release/nexu-io/open-design?style=flat&color=blueviolet&label=release&include_prereleases&display_name=tag" /></a>
   <a href="../../LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg?style=flat" /></a>
-  <a href="https://discord.gg/mHAjSMV6gz"><img alt="discord" src="https://img.shields.io/discord/1479002485040480266?style=flat&logo=discord&logoColor=white&label=discord&color=5865F2&cacheSeconds=3600" /></a>
   <a href="QUICKSTART.ko.md"><img alt="quickstart" src="https://img.shields.io/badge/quickstart-3%20commands-green?style=flat" /></a>
 </p>
 
@@ -36,7 +16,6 @@
 OpenDesign는 그 루프를 에이전트가 읽고 쓸 수 있는 **기능 스킬 · 렌더링 디자인 템플릿 · 디자인 시스템 · 플러그인의 파일시스템**으로 만듭니다.
 
 또한 이것은 **에이전트 시대를 위한 Figma 대안**입니다 — 캔버스 위에서 픽셀을 밀어 옮기는 대신, 실제 CSS, 실제 폰트, 실제 컴포넌트로 된 단일 페이지 아티팩트를 HTML / PDF / PPTX / MP4로 곧바로 내보내 전달합니다 — 이미 당신의 디자인 시스템으로 빚어졌고, 이미 당신이 매일 쓰는 에이전트 안에서 실행 가능한 상태로요.
-
 
 ---
 
@@ -131,10 +110,6 @@ OpenDesign의 핵심 워크플로를 빠르게 살펴봅니다. **Home**에서 �
 | [Hermes Agent](https://github.com/nousresearch/hermes-agent) | ✅ 지원됨 | `od mcp install hermes` |
 
 `od mcp install <agent> --print`로 드라이런 미리보기 · `--uninstall`로 제거 · 전체 목록은 `od mcp install --help`로 확인.
-
-<p align="center">
-  <img src="https://repo-assets.open-design.ai/resources/images/coding-agents.png" alt="The 25 coding-agent CLIs OpenDesign supports — Claude Code · Codex · OpenCode · Hermes · Antigravity · Vela · Grok Build · Kimi · Cursor Agent · Qwen · Qoder · GitHub Copilot · Pi · Kiro · Kilo · Mistral Vibe · DeepSeek · Reasonix · Aider · Amp · CodeBuddy · Mimo · AtomCode · Devin · Trae" width="100%" />
-</p>
 
 **CLI를 설치하지 않았다고요?** `POST /api/proxy/{anthropic,openai,azure,google,ollama,senseaudio}/stream`의 BYOK 프록시가 동일한 루프(프로세스 스폰 없이)를 제공합니다 — `baseUrl` + `apiKey` + `model`을 붙여넣기만 하면 되며, OpenAI, Anthropic, Azure OpenAI, Google Gemini, Ollama, LM Studio, vLLM 또는 OpenAI 호환 엔드포인트라면 무엇이든 지원합니다. 대상별 SSRF 보호가 데몬 경계에서 내부 IP / 링크 로컬 / CGNAT를 차단합니다.
 
@@ -276,13 +251,9 @@ OpenDesign(OD)는 그 오픈소스 대안입니다. 같은 루프, 같은 아티
 
 ## 빠른 시작
 
-### 🖥️ 데스크톱 앱 다운로드 (권장 — 설정 불필요)
+### 🖥️ 데스크톱 앱 빌드
 
-OpenDesign를 사용하는 가장 빠른 방법입니다. Node도, pnpm도, 클론도 필요 없습니다.
-
-- **macOS** (Apple Silicon · Intel x64) → [**open-design.ai**](https://open-design.ai/) 또는 [GitHub Releases](https://github.com/nexu-io/open-design/releases)
-- **Windows** (x64) → [**open-design.ai**](https://open-design.ai/) 또는 [GitHub Releases](https://github.com/nexu-io/open-design/releases)
-- **Linux** (AppImage, 선택적 레인) → [GitHub Releases](https://github.com/nexu-io/open-design/releases)
+이 포크는 사전 빌드된 설치 프로그램을 배포하지 않습니다. 이 저장소에서 데스크톱 앱을 직접 빌드하세요 — [`QUICKSTART.md`](QUICKSTART.ko.md)를 참고하세요.
 
 설치 후: 앱이 당신의 `PATH`에 있는 모든 코딩 에이전트 CLI를 자동으로 감지하고, 100개 이상의 기능 스킬과 별도 렌더링 템플릿 카탈로그, 151개의 디자인 시스템 패키지를 불러오며, entry view에서 브리프를 입력할 수 있게 합니다.
 
@@ -308,8 +279,8 @@ od mcp install <agent>
 ### 🐳 Docker로 실행
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
-cd open-design/deploy
+git clone https://github.com/Recho-design/Design-box.git
+cd Design-box/deploy
 cp .env.example .env
 echo "OD_API_TOKEN=$(openssl rand -hex 32)" >> .env
 docker compose up -d
@@ -325,8 +296,8 @@ Sealos App Store 템플릿은 게시된 OpenDesign Docker 이미지를 영구 �
 ### 🧑‍💻 소스에서 실행
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
-cd open-design
+git clone https://github.com/Recho-design/Design-box.git
+cd Design-box
 corepack enable && pnpm install
 pnpm tools-dev run web
 ```
@@ -582,19 +553,6 @@ pnpm guard && pnpm --filter @open-design/plugin-runtime typecheck
 
 ---
 
-## 커뮤니티
-
-모든 채널 뒤에는 실제 사람이 있습니다.
-
-- 💬 **Discord** — 매일의 대화, 플러그인 공유, 질문 → [**discord.gg/mHAjSMV6gz**](https://discord.gg/mHAjSMV6gz)
-- 🐦 **X / Twitter** — 릴리스 노트, 마일스톤, 비하인드 → [**@OpenDesignHQ**](https://x.com/OpenDesignHQ)
-- 🗣️ **GitHub Discussions** — 깊이 있는 Q&A, RFC, "당신의 작업을 보여주세요" → [**Discussions**](https://github.com/nexu-io/open-design/discussions)
-- 🐛 **GitHub Issues** — 버그 리포트, 기능 요청 → [**Issues**](https://github.com/nexu-io/open-design/issues)
-
-[`good-first-issue`](https://github.com/nexu-io/open-design/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)와 [`help-wanted`](https://github.com/nexu-io/open-design/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) 라벨이 가장 쉬운 진입로입니다.
-
----
-
 ## 기여하기
 
 OpenDesign가 계속 나아가는 것은 기여자들 — 디자이너, 엔지니어, 프롬프트 작성자 — 이 계속 모습을 드러내기 때문입니다. 가장 많이 쓰이는 스킬, 디자인 시스템, 플러그인의 상당수는 핵심 팀 바깥의 사람들이 작성했습니다.
@@ -607,8 +565,6 @@ OpenDesign가 계속 나아가는 것은 기여자들 — 디자이너, 엔지�
 | 새 **디자인 시스템** | `DESIGN.md` 중심의 패키지를 넣고 필요하면 `manifest.json`, `tokens.css`, 컴포넌트, 에셋, 출처 정보를 추가 | [`design-systems/<brand>/`](../../design-systems/) |
 | 새 **플러그인** | 카테고리 폴더 아래에 `open-design.json` + 유형별 페이로드를 넣기 | [`plugins/community/`](../../plugins/community/) · 사양은 [`plugins/spec/SPEC.md`](../../plugins/spec/SPEC.md)에 · 에이전트 개발 가이드는 [`plugins/spec/AGENT-DEVELOPMENT.md`](../../plugins/spec/AGENT-DEVELOPMENT.md)에 |
 | 새 **코딩 에이전트 CLI** 지원 | Runtime 정의 + registry entry; 새 wire format에만 parser 추가 | [`apps/daemon/src/runtimes/defs/`](../../apps/daemon/src/runtimes/defs/) |
-| 버그 수정 또는 UI 다듬기 | [`good-first-issue`](https://github.com/nexu-io/open-design/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) 라벨 둘러보기 | [Issues →](https://github.com/nexu-io/open-design/issues) |
-| 문서 번역 | `README.<lang>.md` 파일 업데이트 | [`TRANSLATIONS.md`](../../TRANSLATIONS.md) |
 
 ### 🤖 에이전트로서 기여하기
 
@@ -616,8 +572,8 @@ OpenDesign가 계속 나아가는 것은 기여자들 — 디자이너, 엔지�
 
 ```bash
 # 1. Boot locally
-git clone https://github.com/nexu-io/open-design.git
-cd open-design && corepack enable && pnpm install
+git clone https://github.com/Recho-design/Design-box.git
+cd Design-box && corepack enable && pnpm install
 pnpm tools-dev run web
 
 # 2. Find a good-first-issue and assign yourself
@@ -632,73 +588,6 @@ gh pr create --fill
 ```
 
 전체 에이전트 친화적 기여 흐름, 코드 스타일, PR 기준 → [`CONTRIBUTING.ko.md`](CONTRIBUTING.ko.md) ([Deutsch](CONTRIBUTING.de.md) · [Français](CONTRIBUTING.fr.md) · [简体中文](CONTRIBUTING.zh-CN.md) · [日本語](CONTRIBUTING.ja-JP.md) · [Português](CONTRIBUTING.pt-BR.md)).
-
-### 🏅 OpenDesign Fellow 프로그램
-
-우리는 전 세계에서 **OpenDesign Fellow**를 모집하고 있습니다 — Fellow는 핵심 팀과 함께 제품을 빚어내고, 자신의 지역에서 OpenDesign를 공식적으로 대표하며, 지역 커뮤니티를 키웁니다. 여기에는 자금 지원($1,000 / MR), 무료 LLM 크레딧, 직통 리뷰 트랙이 뒷받침됩니다. 자세히 → [`MAINTAINERS.md`](../../MAINTAINERS.md) 및 [Discord](https://discord.gg/mHAjSMV6gz)의 공지.
-
----
-
-## 메인테이너
-
-이들은 많은 짐을 짊어집니다 — 매일의 유지보수, 리뷰, 그리고 커뮤니티 지원.
-
-<table>
-  <tr>
-    <td align="center" valign="top" width="200">
-      <a href="https://github.com/Nagendhra-web">
-        <img src="https://github.com/Nagendhra-web.png" width="96" alt="@Nagendhra-web" /><br/>
-        <sub><b>@Nagendhra-web</b></sub>
-      </a><br/>
-      <sub>Maintainer</sub>
-    </td>
-    <td align="center" valign="top" width="200">
-      <a href="https://github.com/Sid-Qin">
-        <img src="https://github.com/Sid-Qin.png" width="96" alt="@Sid-Qin" /><br/>
-        <sub><b>@Sid-Qin</b></sub>
-      </a><br/>
-      <sub>Maintainer</sub>
-    </td>
-  </tr>
-</table>
-
-메인테이너 규칙, 승급 기준, 그리고 이탈 프로토콜 → [`MAINTAINERS.md`](../../MAINTAINERS.md) (또한 [Deutsch](MAINTAINERS.de.md) · [Français](MAINTAINERS.fr.md) · [简体中文](MAINTAINERS.zh-CN.md) · [日本語](MAINTAINERS.ja-JP.md) · [Português](MAINTAINERS.pt-BR.md)).
-
-## 기여자
-
-참여해 주신 모든 분께 감사드립니다 — 코드, 문서, 피드백, 날카로운 이슈, 새 스킬, 새 디자인 시스템.
-
-<a href="https://github.com/nexu-io/open-design/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=nexu-io/open-design&max=500&columns=20&anon=1&cache_bust=2026-08-04" alt="OpenDesign contributors" />
-</a>
-
----
-
-## 저장소 활동
-
-<picture>
-  <img alt="OpenDesign — repository metrics" src="https://repo-assets.open-design.ai/resources/images/github-metrics.svg" />
-</picture>
-
-위의 SVG는 [`lowlighter/metrics`](https://github.com/lowlighter/metrics)를 사용해 [`.github/workflows/metrics.yml`](../../.github/workflows/metrics.yml)에 의해 매일 다시 생성됩니다.
-
----
-
-## 스타를 눌러주세요
-
-<p align="center">
-  <a href="https://github.com/nexu-io/open-design"><img src="https://repo-assets.open-design.ai/resources/images/star-us.png" alt="Star OpenDesign on GitHub — github.com/nexu-io/open-design" width="100%" /></a>
-</p>
-
-이것이 당신의 30분을 아껴줬다면 ★를 눌러주세요. 스타가 집세를 내주지는 않지만 — 다음 디자이너, 에이전트, 기여자에게 이 실험이 관심을 쏟을 가치가 있다고 알려줍니다. 한 번의 클릭, 3초, 진짜 신호입니다.
-
-<a href="https://star-history.dera.page/#nexu-io/open-design&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=nexu-io/open-design&type=Date&theme=dark&cache_bust=2026-08-04" />
-    <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=nexu-io/open-design&type=Date&cache_bust=2026-08-04" />
-    <img alt="OpenDesign star history" src="https://star-history.dera.page/svg?repos=nexu-io/open-design&type=Date&cache_bust=2026-08-04" />
-  </picture>
-</a>
 
 ---
 

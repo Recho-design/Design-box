@@ -348,8 +348,8 @@ export function runtimeReadsPlainTextPromptFromStdin(def: {
  * backpressured (`stdin_backpressure` is false by construction — a child that
  * never reads its stdin now stalls in its own first-token wait, not in a daemon
  * write), and `stdin_write_start`/`stdin_write_end` land together, in their
- * historical position after spawn, so phase math and the Langfuse
- * `stdin-write` span keep their shape.
+ * historical position after spawn, so phase math and the recorded
+ * `stdin-write` boundary keep their shape.
  */
 export function recordPromptDeliveredAtSpawn(
   run: { stdinBackpressure?: boolean },

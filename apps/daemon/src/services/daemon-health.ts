@@ -532,8 +532,8 @@ export function createDaemonHealth(options: DaemonHealthOptions) {
     for (const report of pending) {
       await target({ ...report, properties: withoutUndefined(report.properties) }).catch(() => undefined);
     }
-    // PostHog dedupes on $insert_id, so a crash before this clears only means
-    // the same reports are offered once more on the next boot.
+    // Duplicate suppression keys on the report id, so a crash before this
+    // clears only means the same reports are offered once more on the next boot.
     const timer = setTimeout(() => {
       safe(() => {
         checkpoint.pendingReports = checkpoint.pendingReports.filter((report) => !pending.includes(report));

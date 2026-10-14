@@ -1,4 +1,15 @@
-import type { TrackingRunTerminalTrigger } from '@open-design/contracts/analytics';
+/**
+ * Why a Run reached its terminal state. This used to be the analytics tracking
+ * union; it is a local product fact (the failure card and the retry policy both
+ * read it), so the daemon owns the list.
+ */
+export type RunTerminalTrigger =
+  | 'daemon_restart'
+  | 'daemon_shutdown'
+  | 'first_output_deadline'
+  | 'inactivity_watchdog'
+  | 'acp_stage_timeout'
+  | 'unknown';
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
 
@@ -12,7 +23,7 @@ export interface RestartRecoverableDurableRunState {
   exitCode?: number | null;
   signal?: string | null;
   status: string;
-  terminalTrigger?: TrackingRunTerminalTrigger | null;
+  terminalTrigger?: RunTerminalTrigger | null;
   terminalRecoveryReason?: 'daemon_restart' | 'analytics_incomplete';
   terminalAt?: number | null;
   updatedAt: number;

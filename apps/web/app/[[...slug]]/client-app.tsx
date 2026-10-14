@@ -2,17 +2,10 @@
 
 import dynamic from 'next/dynamic';
 
-import { installErrorHandlers } from '../../src/analytics/error-tracking';
 import { MatrixLoader } from '../../src/components/MatrixLoader';
 import { installWebObservability } from '../../src/observability/install';
 import { installChatScrollExperiments } from '../../src/runtime/chat-scroll-experiments';
 import { installChatScrollTakeover } from '../../src/runtime/chat-scroll-takeover';
-
-// Install browser exception handlers at module-load time, before any other
-// client code can throw. The hooks buffer events until AnalyticsProvider
-// finishes `bootstrapExceptionTracking()` with the PostHog key, so even
-// errors thrown during the dynamic import of `src/App` are captured.
-installErrorHandlers();
 
 // Install the rest of the observability surface (long tasks, white-screen
 // detector, resource-error capture, boot timing, visibility tracking).

@@ -45,7 +45,6 @@ od:
   mode: deck
   surface: web
   featured: 0.01
-  upstream: "https://github.com/nexu-io/html-anything"
   preview:
     type: html
     entry: index.html

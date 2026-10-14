@@ -6,33 +6,13 @@ import {
   isAzureOpenAIHostname,
   isUnsupportedMaxTokensError,
 } from '../integrations/openai-chat-token-params.js';
-import { projectKindToTracking } from '@open-design/contracts/analytics';
+import { projectKindToTracking } from '../runtimes/run-failure-vocabulary.js';
 import { proxyDispatcherRequestInit, validateUserProviderBaseUrl } from '../connectionTest.js';
 import { isKnownReasoningEffort, resolveModelForServiceTier } from '../runtimes/models.js';
 import { proxyEnvFromPrefs } from '../runtimes/env.js';
 import { googleStreamGenerateContentUrl } from '../integrations/google-models.js';
 import { createRoleMarkerGuard } from '../role-marker-guard.js';
 import { authorizeReasoningEgress, sendReasoningEgressDenial } from '../reasoning-egress.js';
-
-// Allowlist for the `/feedback` route. Mirrors the
-// ChatMessageFeedbackReasonCode union in packages/contracts/src/api/chat.ts.
-// Kept inline (not imported as a runtime value, since the contract type is
-// type-only) so a stale client can't poison Langfuse with unknown categories.
-const FEEDBACK_REASON_ALLOWLIST: ReadonlySet<string> = new Set([
-  'matched_request',
-  'strong_visual',
-  'useful_structure',
-  'easy_to_continue',
-  'followed_design_system',
-  'missed_request',
-  'weak_visual',
-  'could_not_run',
-  'too_slow',
-  'incomplete_output',
-  'hard_to_use',
-  'missed_design_system',
-  'other',
-]);
 
 // The six chat protocols this daemon speaks. `anthropic` and `google` are
 // native wires; `openai`, `deepseek`, `xai` and `custom` all run the same
@@ -71,7 +51,7 @@ function proxyProtocolForEgress(value: unknown): string {
     : 'openai';
 }
 
-export interface RegisterChatRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'chat' | 'agents' | 'critique' | 'validation' | 'lifecycle' | 'paths' | 'telemetry' | 'appConfig'> {}
+export interface RegisterChatRoutesDeps extends RouteDeps<'db' | 'design' | 'http' | 'chat' | 'agents' | 'critique' | 'validation' | 'lifecycle' | 'paths' | 'appConfig'> {}
 
 export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   const { db, design } = ctx;
@@ -107,17 +87,12 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
   // Run lifecycle routes live in `routes/runs.ts`; this file owns feedback,
   // connection tests, critique handoff, and provider proxy routes.
 
-  // Receives the user's thumbs-up/down (+ reason codes) for an assistant
-  // turn and forwards it to Langfuse as a `score-create`. Web persists the
-  // feedback itself via PUT /messages/:id; this endpoint exists only as a
-  // telemetry side channel — the daemon is the single network egress for
-  // Langfuse and gates on `telemetry.metrics + telemetry.content` consent.
-  //
-  // The consent + sink decision is fast (awaits a small file read, no
-  // network); we await it so the response status honestly reflects whether
-  // the score was enqueued, skipped for consent, or skipped because no
-  // Langfuse sink is configured. The actual Langfuse network call happens
-  // as a detached promise inside the bridge.
+  // Receives the user's thumbs-up/down (+ reason codes) for an assistant turn.
+  // Web persists the feedback itself via PUT /messages/:id — the rating is a
+  // message property, not a daemon concern. This endpoint used to exist as the
+  // daemon's single network egress for forwarding ratings; with that outlet
+  // gone there is nothing left to relay, so the route keeps its contract
+  // and answers `skipped_no_sink` without doing network work.
   app.post('/api/runs/:id/feedback', async (req, res) => {
     const runId = req.params.id;
     const body = (req.body ?? {}) as Partial<{
@@ -149,46 +124,7 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
     if (!run || typeof run.projectId !== 'string' || !run.projectId) {
       return sendApiError(res, 404, 'NOT_FOUND', 'run not found');
     }
-    // Drop anything outside the contract-side reason allowlist and
-    // deduplicate; otherwise a malformed or replayed client payload could
-    // create unknown Langfuse categories or duplicate score ids in the
-    // same batch.
-    const reasonCodes = Array.isArray(body.reasonCodes)
-      ? Array.from(
-          new Set(
-            body.reasonCodes.filter(
-              (c): c is string =>
-                typeof c === 'string' && FEEDBACK_REASON_ALLOWLIST.has(c),
-            ),
-          ),
-        )
-      : [];
-    const customReason = typeof body.customReason === 'string' ? body.customReason : '';
-    const reportFeedback = ctx.telemetry?.reportFeedback;
-    if (!reportFeedback) {
-      res.status(202).json({ status: 'skipped_no_sink' });
-      return;
-    }
-    // Build score metadata bag that lands in the Langfuse score body.
-    // Mirrors the PostHog event so analysts can cross-reference. Every
-    // identity field comes from the daemon-owned run object; request bodies
-    // cannot retarget a score to another project/conversation/message.
-    const scoreMetadata: Record<string, unknown> = {
-      projectId: run.projectId,
-      conversationId: run.conversationId ?? null,
-      assistantMessageId: run.assistantMessageId ?? null,
-      hasCustomReason: body.hasCustomReason === true,
-      customReason,
-    };
-    const outcome = await reportFeedback({
-      runId,
-      rating: body.rating,
-      reasonCodes,
-      hasCustomReason: body.hasCustomReason === true,
-      customReason,
-      scoreMetadata,
-    });
-    res.status(202).json(outcome);
+    res.status(202).json({ status: 'skipped_no_sink' });
   });
 
   // ---- Connection tests (single-shot JSON; no SSE) ------------------------
@@ -998,7 +934,6 @@ export function registerChatRoutes(app: Express, ctx: RegisterChatRoutesDeps) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
           ...(validated.parsed!.hostname === 'openrouter.ai' ? {
-            'HTTP-Referer': 'https://opendesign.dev',
             'X-Title': 'OpenDesign',
           } : {}),
         },

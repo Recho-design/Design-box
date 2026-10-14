@@ -40,7 +40,6 @@ example_desc: "苹果 Keynote 风格的产品介绍, ←/→ 切换"
 od:
   mode: deck
   surface: web
-  upstream: "https://github.com/nexu-io/html-anything"
   preview:
     type: html
     entry: index.html

@@ -228,11 +228,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  OPEN_DESIGN_TELEMETRY_RELAY_URL: ${{ vars.OPEN_DESIGN_TELEMETRY_RELAY_URL }}
-  POSTHOG_KEY: ${{ inputs.publish && secrets.POSTHOG_KEY || '' }}
-  POSTHOG_HOST: ${{ inputs.publish && vars.POSTHOG_HOST || '' }}
-  POSTHOG_CLI_API_KEY: ${{ inputs.publish && secrets.POSTHOG_CLI_API_KEY || '' }}
-  POSTHOG_CLI_PROJECT_ID: ${{ inputs.publish && vars.POSTHOG_CLI_PROJECT_ID || '' }}
   # Vela web console origin for the AMR profile this build targets. Held in a
   # per-profile repository secret instead of the source tree: the non-prod AMR
   # environments are internal deployments and this repository is public, so

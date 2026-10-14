@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
  * composed prompt on its `---` separators. The question a drift event has to
  * answer is "what caused the prefix to move", and the cause is always an input;
  * splitting the output would report which bytes differ but still leave the
- * mapping back to a cause to a human diffing Langfuse traces by hand — which is
+ * mapping back to a cause to a human diffing composed prompts by hand — which is
  * the manual step this exists to remove.
  *
  * INVARIANT: the sha256 over the whole composed block (`stablePromptHash`) is
@@ -40,7 +40,7 @@ const SECTION_INPUTS = {
   // plus the derived deck/media/platform signals. Those signals are latched per
   // conversation (#5709) precisely because re-deriving them per turn flipped
   // the prefix mid-session; this section is how a regression there stays
-  // visible instead of needing a hand diff of Langfuse traces.
+  // visible instead of needing a hand diff of composed prompts.
   intent: [
     'metadata',
     'template',

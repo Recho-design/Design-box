@@ -7,16 +7,17 @@
  * coordinator can reuse the same create -> claim -> start transaction without
  * calling the daemon through HTTP.
  */
-import type { RunAnalyticsFacts } from './run-analytics-lifecycle.js';
+import type { PhysicalRunStartFacts } from './run-project-enrichment.js';
+
+export type { PhysicalRunStartFacts };
 
 /**
- * `RunAnalyticsFacts` is a REQUIRED argument of `start` on purpose. Analytics
- * used to be installed by whichever caller remembered to do it, and four
- * daemon-internal Run creators silently reported nothing (OPEND-2365). Making
- * the facts part of the start contract means a new caller has to state its
- * analytics identity — including stating that it has none — instead of dropping
- * the Run. The type is owned by the lifecycle so the choke point and the
- * lifecycle cannot drift apart.
+ * `PhysicalRunStartFacts` is a REQUIRED argument of `start` on purpose. Local
+ * run observers used to be installed by whichever caller remembered to, and
+ * four daemon-internal Run creators silently skipped them (OPEND-2365). Making
+ * the facts part of the start contract means a new caller has to state the Run's
+ * own facts instead of dropping them. The type is owned by the observer that
+ * consumes it, so the choke point and the observers cannot drift apart.
  */
 export interface InternalRunCreateInput extends Record<string, unknown> {
   /** Daemon-owned nonce shared by this run's keyed host protocol markers. */
@@ -47,8 +48,8 @@ export interface InternalPhysicalRun {
   status: string;
 }
 
-export interface InternalRunAnalyticsLifecycle<TRun> {
-  install(input: RunAnalyticsFacts & { run: TRun }): void;
+export interface InternalRunStartObserver<TRun> {
+  install(input: PhysicalRunStartFacts & { run: TRun }): void;
 }
 
 export interface InternalRunRegistry<
@@ -105,7 +106,7 @@ export interface InternalRunCreationService<
   prepare(input: PrepareInternalRunInput<TMeta, TRun>): PreparedInternalRunResult<TRun>;
   start(
     run: TRun,
-    analytics: RunAnalyticsFacts,
+    facts: PhysicalRunStartFacts,
     starter: (run: TRun) => Promise<unknown>,
   ): TRun;
 }
@@ -122,10 +123,10 @@ export function createInternalRunCreationService<
   /**
    * Armed for every physical Run this service starts, whoever asked for it.
    * Required: an optional dependency would let a future factory construct this
-   * service, satisfy the `.runs.start` guard, and still emit nothing. A harness
-   * that wants silence injects a no-op lifecycle and says so.
+   * service, satisfy the `.runs.start` guard, and still run no observer. A
+   * harness that wants silence injects a no-op observer and says so.
    */
-  analyticsLifecycle: InternalRunAnalyticsLifecycle<TRun>;
+  runStartObserver: InternalRunStartObserver<TRun>;
 }): InternalRunCreationService<TMeta, TRun> {
   const isRunActive = (runId: string): boolean => {
     const existing = deps.runs.get(runId);
@@ -189,11 +190,11 @@ export function createInternalRunCreationService<
 
   return {
     prepare,
-    start(run, analytics, starter) {
-      // Before the child is spawned: `run_created` describes a Run that has
-      // been accepted, and the terminal half must already be attached when the
+    start(run, facts, starter) {
+      // Before the child is spawned: the observers describe a Run that has been
+      // accepted, and their terminal halves must already be attached when the
       // Run settles — including a Run that fails on its first tick.
-      deps.analyticsLifecycle.install({ ...analytics, run });
+      deps.runStartObserver.install({ ...facts, run });
       return deps.runs.start(run, () => starter(run));
     },
   };

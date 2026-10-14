@@ -13,9 +13,9 @@
     "edition": "Vol. 01 / Issue Nº 26",
     "version": "v0.3.0",
     "license": "Apache-2.0",
-    "primary_url": "https://github.com/nexu-io/open-design",
-    "primary_url_label": "Star · 0K",
-    "contact_email": "https://github.com/nexu-io/open-design/issues",
+    "primary_url": "https://github.com/Recho-design/Design-box",
+    "primary_url_label": "GitHub · 0K",
+    "contact_email": "https://github.com/Recho-design/Design-box/issues",
     "location": "Berlin / Open / Earth",
     "coordinates": "52.5200° N · 13.4050° E",
     "year": "2026",
@@ -186,9 +186,9 @@
         { "text": " unforgettable" },
         { "text": ".", "dot": true }
       ],
-      "body": "Star us on GitHub, drop into the issues, or run pnpm tools-dev tonight. Three commands and the loop is yours.",
-      "primary":   { "label": "Star on GitHub",  "href": "https://github.com/nexu-io/open-design" },
-      "secondary": { "label": "Open an issue",   "href": "https://github.com/nexu-io/open-design/issues" }
+      "body": "Browse the repository, open an issue, or run pnpm tools-dev tonight. Three commands and the loop is yours.",
+      "primary":   { "label": "View on GitHub",  "href": "https://github.com/Recho-design/Design-box" },
+      "secondary": { "label": "Open an issue",   "href": "https://github.com/Recho-design/Design-box/issues" }
     },
 
     {

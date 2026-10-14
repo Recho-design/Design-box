@@ -38,7 +38,15 @@ export const DESKTOP_UPDATE_ENV = Object.freeze({
   PLATFORM: "OD_UPDATE_PLATFORM",
 } as const);
 
-const DEFAULT_RELEASE_ORIGIN = "https://releases.open-design.ai";
+/**
+ * Release-feed origin for the *default* update source. This fork publishes no
+ * releases of its own, so the default is intentionally empty: a build only
+ * checks for updates when it sets `OD_UPDATE_METADATA_URL` (packaged builds get
+ * it baked in from `tools-pack`). An empty origin yields an empty
+ * `metadataUrl`, which the updater treats as "no update source" and reports as
+ * "no update available" instead of fetching a URL that cannot exist.
+ */
+const DEFAULT_RELEASE_ORIGIN = "";
 const BETA_POLL_INTERVAL_MS = 15 * 60 * 1000;
 const STABLE_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_POLL_INITIAL_DELAY_MS = 5000;
@@ -82,6 +90,7 @@ export type DesktopUpdaterConfig = {
   launcherRoot?: string;
   launcherPayloadExtractorPath?: string;
   launcherRuntimePath?: string;
+  /** Release metadata document URL; empty means "this build has no update source". */
   metadataUrl: string;
   mode: DesktopUpdateMode;
   namespace?: string;
@@ -115,6 +124,7 @@ export function isDesktopUpdateChannel(value: unknown): value is DesktopUpdateCh
 }
 
 function defaultMetadataUrl(channel: DesktopUpdateChannel): string {
+  if (DEFAULT_RELEASE_ORIGIN.length === 0) return "";
   return `${DEFAULT_RELEASE_ORIGIN}/${channel}/latest/metadata.json`;
 }
 

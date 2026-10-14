@@ -72,9 +72,6 @@ import {
   ENTRY_SEARCH_OPEN_EVENT,
   readStoredRailOpen,
 } from './entryRailBridge';
-import { useAnalytics } from '../analytics/provider';
-import { trackEntryNavigationClick } from '../analytics/events';
-import { entryViewToTracking } from '../analytics/workspace';
 import { homeHeroChipLabel } from './home-hero/chip-labels';
 import { isMacPlatform } from '../utils/platform';
 import { useGlideIndicator } from '../hooks/useGlideIndicator';
@@ -865,8 +862,7 @@ export function WorkspaceTabsBar({
   onDeleteProject,
 }: Props) {
   const t = useT();
-  const analytics = useAnalytics();
-  // Same binding the rail's own collapse control advertised (EntryShell owns
+    // Same binding the rail's own collapse control advertised (EntryShell owns
   // the keydown handler); named here so the expand direction says it too.
   const expandHint = `${t('entry.navExpand')} ${isMacPlatform() ? '⌘B' : 'Ctrl+B'}`;
   const collapseHint = `${t('entry.navCollapse')} ${isMacPlatform() ? '⌘B' : 'Ctrl+B'}`;
@@ -902,10 +898,7 @@ export function WorkspaceTabsBar({
     tabMruRef.current = [id, ...tabMruRef.current.filter((x) => x !== id)].slice(0, 50);
   }, [state.activeTabId]);
   const [radialHoverId, setRadialHoverId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!radialMenu) setRadialHoverId(null);
-  }, [radialMenu]);
-  useEffect(() => {
+    useEffect(() => {
     if (!radialMenu) return;
     // Uniform page blur: filter on the shell blurs every descendant equally
     // (backdrop-filter on the scrim sampled composited layers unevenly).
@@ -1066,10 +1059,7 @@ export function WorkspaceTabsBar({
     () => subscribeWorkspaceTabsDock(() => setTabsDockEl(getWorkspaceTabsDock())),
     [],
   );
-  useEffect(() => {
-    if (!tabsDockEl) setDockMenuOpen(false);
-  }, [tabsDockEl]);
-
+  
   // Run status for the dock dropdown's rows. Only fetched while that menu is
   // open: it costs one request per open project tab, and the glyphs it feeds
   // are not on screen otherwise.
@@ -1133,10 +1123,7 @@ export function WorkspaceTabsBar({
   }, [cancelPreviewTimer]);
   // Closing the menu (or unmounting) must not leave a queued preview to fire
   // into a menu that is gone.
-  useEffect(() => {
-    if (!dockMenuOpen) clearPreview();
-  }, [dockMenuOpen, clearPreview]);
-  useEffect(() => cancelPreviewTimer, [cancelPreviewTimer]);
+    useEffect(() => cancelPreviewTimer, [cancelPreviewTimer]);
 
   // ---- Row ⋮ menu (OPEND-2686 / OPEND-3128) ------------------------------
   // The project whose ⋮ menu is open, and where that menu sits. Keyed by
@@ -1383,13 +1370,7 @@ export function WorkspaceTabsBar({
     setState((current) => syncStateToRoute(current, route));
   }, [route, identityScopeKey]);
 
-  useEffect(() => {
-    if (!previousOnboardingCompletedRef.current && onboardingCompleted) {
-      resetEntryToHomeAfterOnboardingRef.current = true;
-    }
-    previousOnboardingCompletedRef.current = onboardingCompleted;
-  }, [onboardingCompleted]);
-
+  
   // Auto-close the Welcome tab once onboarding ends: rewrite any entry tab
   // still parked on the 'onboarding' view back to 'home'. This catches every
   // finish path uniformly — last-step Continue and any future route that
@@ -2644,17 +2625,7 @@ export function WorkspaceTabsBar({
               data-testid="entry-nav-search"
               onClick={() => {
                 const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
-                trackEntryNavigationClick(analytics.track, {
-                  // Same event the control fired from inside the rail; only
-                  // `entry_from` is dropped, since neither of its two values
-                  // (sidebar / workspace_switcher) describes the chrome row.
-                  page_name:
-                    activeTab?.kind === 'entry' ? entryViewToTracking(activeTab.view) : 'project',
-                  area: 'entry_nav',
-                  element: 'search',
-                  target: 'search',
-                });
-                window.dispatchEvent(new CustomEvent(ENTRY_SEARCH_OPEN_EVENT));
+                                window.dispatchEvent(new CustomEvent(ENTRY_SEARCH_OPEN_EVENT));
               }}
             >
               <Icon name="search" size={16} />

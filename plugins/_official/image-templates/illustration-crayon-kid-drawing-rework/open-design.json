@@ -49,9 +49,9 @@
   "license": "Apache-2.0",
   "author": {
     "name": "open-design contributors",
-    "url": "https://github.com/nexu-io/open-design"
+    "url": "https://github.com/Recho-design/Design-box"
   },
-  "homepage": "https://github.com/nexu-io/open-design",
+  "homepage": "https://github.com/Recho-design/Design-box",
   "tags": [
     "image-template",
     "first-party",
@@ -73,7 +73,7 @@
     "surface": "image",
     "preview": {
       "type": "image",
-      "poster": "https://raw.githubusercontent.com/nexu-io/open-design/main/assets/prompt-templates/image/illustration-crayon-kid-drawing-rework.jpg"
+      "poster": "https://raw.githubusercontent.com/Recho-design/Design-box/main/assets/prompt-templates/image/illustration-crayon-kid-drawing-rework.jpg"
     },
     "useCase": {
       "query": {

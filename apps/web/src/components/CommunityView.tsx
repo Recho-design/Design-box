@@ -18,9 +18,6 @@ import { PluginDetailsModal } from './PluginDetailsModal';
 import type { PluginUseAction } from './plugins-home/useActions';
 import { useInView } from './plugins-home/useInView';
 import { useWorkspaceContext } from '../collab/useWorkspaceContext';
-import { useAnalytics } from '../analytics/provider';
-import { trackCommunityTemplateClick, trackPageView } from '../analytics/events';
-import { workspaceAnalyticsDimensions } from '../analytics/workspace';
 
 export interface CommunityTemplateUseTarget {
   templateId: string;
@@ -95,19 +92,9 @@ const MASONRY_TYPES = new Set<TemplateType>(['Image', 'Video']);
 
 export function CommunityView({ onRemixTemplate, onUsePrompt, onUsePlugin }: CommunityViewProps) {
   const { locale, t } = useI18n();
-  const analytics = useAnalytics();
-  const { context: workspaceContext } = useWorkspaceContext();
-  const workspaceDimensions = workspaceAnalyticsDimensions(workspaceContext);
+    const { context: workspaceContext } = useWorkspaceContext();
   const pageViewRecordedRef = useRef(false);
-  useEffect(() => {
-    // React StrictMode replays mount effects in development. Keep one
-    // Community exposure per mounted view so local validation and production
-    // dashboards share the same one-view/one-event contract.
-    if (pageViewRecordedRef.current) return;
-    pageViewRecordedRef.current = true;
-    trackPageView(analytics.track, { page_name: 'community' });
-  }, [analytics.track]);
-  const [plugins, setPlugins] = useState<InstalledPluginRecord[]>([]);
+    const [plugins, setPlugins] = useState<InstalledPluginRecord[]>([]);
   // The gallery card opens the FULL plugin details modal (Use split action +
   // Share + close) — the same surface the plugin library uses — while the
   // lightweight footer-Remix preview belongs to the creation page's template
@@ -209,15 +196,7 @@ export function CommunityView({ onRemixTemplate, onUsePrompt, onUsePlugin }: Com
   const pickType = (type: TemplateType) => {
     setMoreOpen(false);
     if (type === activeType) return;
-    trackCommunityTemplateClick(analytics.track, {
-      page_name: 'community',
-      area: 'community_templates',
-      element: 'filter',
-      filter_type: 'category',
-      filter_value: type,
-      ...workspaceDimensions,
-    });
-    setActiveType(type);
+        setActiveType(type);
   };
   /** One tab pill. It wears the Home type row's pill classes (home-hero.css,
    *  a documented shared contract) so 原型 here and 原型 under the composer
@@ -249,31 +228,13 @@ export function CommunityView({ onRemixTemplate, onUsePrompt, onUsePlugin }: Com
     // whether a request goes out. See the remixingIdRef comment above for
     // why the state flag alone cannot gate this.
     if (remixingIdRef.current) return;
-    trackCommunityTemplateClick(analytics.track, {
-      page_name: 'community',
-      area: 'community_templates',
-      element: 'remix',
-      template_key: template.id,
-      template_type: template.type,
-      resource_scope: templateScope(template.id),
-      ...workspaceDimensions,
-    });
-    remixingIdRef.current = template.id;
+        remixingIdRef.current = template.id;
     setRemixingId(template.id);
     onRemixTemplate?.({ templateId: template.id, prompt: template.prompt });
   };
   const handleCardUse = (template: TemplateDemo) => {
     const target = templateUseTarget(template);
-    trackCommunityTemplateClick(analytics.track, {
-      page_name: 'community',
-      area: 'community_templates',
-      element: 'use_prompt',
-      template_key: template.id,
-      template_type: template.type,
-      resource_scope: templateScope(template.id),
-      ...workspaceDimensions,
-    });
-    const record = pluginById.get(template.id);
+        const record = pluginById.get(template.id);
     if (record && onUsePlugin) {
       onUsePlugin(record, 'use-with-query', target);
       return;
@@ -291,16 +252,7 @@ export function CommunityView({ onRemixTemplate, onUsePrompt, onUsePlugin }: Com
   /** Card body → FULL details modal. Templates are a projection of the plugin
    *  catalogue, so the record behind a card is always present in `plugins`. */
   const openTemplateDetails = (template: TemplateDemo) => {
-    trackCommunityTemplateClick(analytics.track, {
-      page_name: 'community',
-      area: 'community_templates',
-      element: 'template_detail',
-      template_key: template.id,
-      template_type: template.type,
-      resource_scope: templateScope(template.id),
-      ...workspaceDimensions,
-    });
-    const record = plugins.find((row) => row.id === template.id) ?? null;
+        const record = plugins.find((row) => row.id === template.id) ?? null;
     setDetailsRecord(record);
   };
   /** The detail modal's Use split action. Shells that own a Home hand-off

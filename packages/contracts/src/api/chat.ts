@@ -12,28 +12,24 @@ import type { RunContextSelection } from './context.js';
 import type { MediaExecutionPolicy, RunMediaTaskFailure } from './media.js';
 import type { AppliedPluginSnapshot } from '../plugins/apply.js';
 import type { McpAuthMode, McpServerConfig, McpTransport } from './mcp';
-import type {
-  AnalyticsAttributionQuality,
-  AnalyticsDistributionMechanism,
-  AnalyticsEntrySurface,
-  AnalyticsHostProduct,
-  AnalyticsPublisherClass,
-  TrackingRuntimeType,
-} from '../analytics/public-params.js';
-import type {
-  TrackingRunCancelOrigin,
-  TrackingRunFailureCategory,
-  TrackingRunFailureDetail,
-  TrackingRunRecoveryActionType,
-  TrackingRunTerminalTrigger,
-  TrackingRunTerminalIntegrity,
-  TrackingRunTerminationOrigin,
-  TrackingRunTerminalPersistenceErrorType,
-  TrackingRunPosthogDeliveryStatus,
-  TrackingRunPosthogAcknowledgement,
-  TrackingRunPosthogErrorType,
-  TrackingRunMatureUnfinishedState,
-} from '../analytics/events.js';
+export type AnalyticsAttributionQuality = string;
+export type AnalyticsDistributionMechanism = string;
+export type AnalyticsEntrySurface = string;
+export type AnalyticsHostProduct = string;
+export type AnalyticsPublisherClass = string;
+export type TrackingRuntimeType = 'byok' | 'local_cli' | string;
+export type TrackingRunCancelOrigin = string;
+export type TrackingRunFailureCategory = string;
+export type TrackingRunFailureDetail = string;
+export type TrackingRunRecoveryActionType = string;
+export type TrackingRunTerminalTrigger = string;
+export type TrackingRunTerminalIntegrity = string;
+export type TrackingRunTerminationOrigin = string;
+export type TrackingRunTerminalPersistenceErrorType = string;
+export type TrackingRunPosthogDeliveryStatus = string;
+export type TrackingRunPosthogAcknowledgement = string;
+export type TrackingRunPosthogErrorType = string;
+export type TrackingRunMatureUnfinishedState = string;
 import type { StrategyTaskProjectionV2 } from '../plugins/strategy-v2.js';
 import type { OdNextRolloutDecision } from './strategy-rollout.js';
 import type {

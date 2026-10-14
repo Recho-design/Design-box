@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   AutomationEvolutionProposal,
   AutomationEvolutionProposalListResponse,
-  AutomationsClickProps,
   AutomationTemplate as ContractAutomationTemplate,
   AutomationTemplateListResponse,
   ConnectorDetail,
@@ -21,8 +20,6 @@ import { useT } from '../i18n';
 import type { SkillSummary } from '../types';
 
 type TranslateFn = ReturnType<typeof useT>;
-import { useAnalytics } from '../analytics/provider';
-import { trackAutomationsClick, trackPageView } from '../analytics/events';
 import {
   NewAutomationModal,
   type AutomationTemplate,
@@ -396,8 +393,7 @@ function errorMessage(err: unknown): string {
 
 export function TasksView({ skills = [], designTemplates = [], connectors = [], isActive = true }: Props) {
   const t = useT();
-  const analytics = useAnalytics();
-  // Attaches the same workspace identity headers project reads already carry,
+    // Attaches the same workspace identity headers project reads already carry,
   // so the daemon's `GET /api/workspaces/:id/projects` returns the caller's
   // team projects instead of falling back to the no-scope `GET /api/projects`
   // catalog (spec 04 §10), which now only lists never-claimed projects.
@@ -423,27 +419,16 @@ export function TasksView({ skills = [], designTemplates = [], connectors = [], 
   // P2 page_view page_name=automations. Ref-keyed so re-renders don't
   // double-fire while the user is on the page.
   const pageViewFiredRef = useState<{ fired: boolean }>(() => ({ fired: false }))[0];
-  useEffect(() => {
-    if (pageViewFiredRef.fired) return;
-    pageViewFiredRef.fired = true;
-    trackPageView(analytics.track, { page_name: 'automations' });
-  }, [analytics.track, pageViewFiredRef]);
-  // P2 ui_click page_name=automations. Fire on every actionable click inside
+    // P2 ui_click page_name=automations. Fire on every actionable click inside
   // the tab before running the handler, so navigations that unmount the view
   // still report.
   const fireClick = useCallback(
     (
-      element: AutomationsClickProps['element'],
-      extra?: Pick<AutomationsClickProps, 'type_id' | 'filter_id' | 'template_kind'>,
+      _element: string,
+      _extra?: Record<string, unknown>,
     ) => {
-      trackAutomationsClick(analytics.track, {
-        page_name: 'automations',
-        area: 'automations',
-        element,
-        ...extra,
-      });
-    },
-    [analytics.track],
+          },
+    [],
   );
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -1100,7 +1085,7 @@ function AutomationRunHistory({
   workspaceContext: WorkspaceCollabContext | null;
   crystallizingRunId: string | null;
   onCrystallizeRun: (routineId: string, runId: string) => void;
-  onFireClick: (element: AutomationsClickProps['element']) => void;
+  onFireClick: (element: string) => void;
   t: TranslateFn;
 }) {
   const [runs, setRuns] = useState<RoutineRun[] | null>(null);

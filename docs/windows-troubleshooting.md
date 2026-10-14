@@ -35,12 +35,11 @@ If you downloaded the installer from an official source, you can proceed:
 
 ### Verify the download first
 
-Only run the installer if you got it from an official source:
+Only run the installer if you got it from this repository's own sources:
 
-- [open-design.ai](https://open-design.ai/), or
-- [GitHub Releases](https://github.com/nexu-io/open-design/releases) on the `nexu-io/open-design` repository.
+- [GitHub Releases](https://github.com/Recho-design/Design-box/releases) on the `Recho-design/Design-box` repository.
 
-Do not run an installer from a mirror, a re-upload, or a link you cannot trace back to one of those two sources. If a release publishes a SHA-256 checksum, you can confirm the file is intact before running it:
+Do not run an installer from a mirror, a re-upload, or a link you cannot trace back to that source. If a release publishes a SHA-256 checksum, you can confirm the file is intact before running it:
 
 ```powershell
 Get-FileHash .\open-design-x.y.z-win-x64-setup.exe -Algorithm SHA256

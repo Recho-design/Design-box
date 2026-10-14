@@ -775,9 +775,9 @@ export async function readAppConfig(dataDir: string): Promise<AppConfigPrefs> {
   //
   // Migration: when this daemon is the first to boot with installation.json
   // support and finds an existing installationId in the legacy app-config
-  // path, mirror it forward exactly once so PostHog continues to see the
-  // same person across the 0.7.x → 0.8.0 upgrade. Without this mirror, the
-  // user count would double when 0.8.0 ships.
+  // path, mirror it forward exactly once so the install keeps the same
+  // identity across the 0.7.x → 0.8.0 upgrade. Without this mirror, the
+  // user would be counted twice when 0.8.0 ships.
   const installationDir = resolveInstallationDir(dataDir);
   const installation = await readInstallationFile(installationDir);
   if (typeof installation.installationId === 'string' && installation.installationId.length > 0) {

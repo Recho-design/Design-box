@@ -22,29 +22,6 @@ import { Button } from "@open-design/components";
 import { navigate } from "../router";
 import { deleteProjectFile, projectFileUrl, uploadProjectFiles } from "../providers/registry";
 import { useProjectCollabContext } from "../collab/collab-context";
-import { useAnalytics } from "../analytics/provider";
-import {
-  trackAssistantFeedbackButtonClick,
-  trackAssistantFeedbackClick,
-  trackAssistantFeedbackReasonClick,
-  trackAssistantFeedbackReasonPanelSurfaceView,
-  trackAssistantFeedbackReasonSubmit,
-  trackAssistantFeedbackReasonSubmitClick,
-  trackAssistantFeedbackReasonView,
-  trackFeedbackSubmitResult,
-  trackQuestionsFormClick,
-  trackQuestionsFormSurfaceView,
-} from "../analytics/events";
-import {
-  feedbackAgentProviderIdToTracking,
-  modelIdForTracking,
-  normalizeCustomReason,
-  type TrackingFeedbackProviderId,
-  type TrackingFeedbackReasonCode,
-  type TrackingFeedbackRatingWithNone,
-  type TrackingProjectKind,
-} from "@open-design/contracts/analytics";
-import { questionsFormTrackingId } from "@open-design/contracts/analytics";
 import {
   hasUnterminatedQuestionForm,
   splitOnQuestionForms,
@@ -81,6 +58,8 @@ import {
   type QuestionFormInteraction,
 } from "./QuestionForm";
 import type { VisualStyleContext } from "../runtime/visual-style-catalog";
+
+type TrackingProjectKind = string;
 import { splitStreamingArtifact, stripArtifact, stripRecoveredHtmlFallbackForDisplay } from "../artifacts/strip";
 import { stripInternalControlMarkers } from "../artifacts/internal-markers";
 import {
@@ -1410,8 +1389,8 @@ function AssistantMessageImpl({
                 conversationId={conversationId}
                 runId={message.runId ?? null}
                 assistantMessageId={message.id}
-                modelId={modelIdForTracking(assistantFeedbackModelId(message))}
-                agentProviderId={feedbackAgentProviderIdToTracking(message.agentId)}
+                modelId={assistantFeedbackModelId(message) ?? ''}
+                agentProviderId={message.agentId ?? ''}
                 producedFileCount={displayedProduced.length}
                 hasDesignSystemContext={hasDesignSystemContext}
                 footerProps={{
@@ -2348,12 +2327,11 @@ export function AssistantFeedback({
   runId: string | null;
   assistantMessageId: string;
   modelId: string;
-  agentProviderId: TrackingFeedbackProviderId;
+  agentProviderId: string;
   producedFileCount: number;
 }) {
   const t = useT();
-  const analytics = useAnalytics();
-  // Analytics context the feedback events need. The four ids are either
+    // Analytics context the feedback events need. The four ids are either
   // user-anchored (projectId / assistantMessageId) or run-anchored (runId),
   // so we pass them down with a stable identity. `producedFileCount` feeds
   // `has_produced_files` on assistant_feedback_button click.
@@ -2376,41 +2354,15 @@ export function AssistantFeedback({
     // P0 surface_view assistant_feedback_reason_panel — fires when the
     // reason panel actually appears (reasonRating flips from null to
     // truthy), not when the buttons render.
-    trackAssistantFeedbackReasonPanelSurfaceView(analytics.track, {
-      page_name: "chat_panel",
-      area: "chat_panel",
-      element: "assistant_feedback_reason_panel",
-      view_type: "panel",
-      project_id: projectId ?? "",
-      project_kind: projectKind,
-      conversation_id: conversationId,
-      assistant_message_id: assistantMessageId,
-      run_id: runId ?? "",
-      rating: reasonRating,
-    });
-    // Dedicated assistant_feedback_reason_view event paired with the
+        // Dedicated assistant_feedback_reason_view event paired with the
     // umbrella surface_view above. Requires the full project + conversation
     // identity (its props type is stricter than the umbrella variant);
     // skipped on test renders that mount AssistantMessage without those.
     if (projectId && projectKind && conversationId) {
-      trackAssistantFeedbackReasonView(analytics.track, {
-        page: "studio",
-        area: "chat_panel",
-        element: "assistant_feedback_reason_panel",
-        view_type: "panel",
-        project_id: projectId,
-        project_kind: projectKind,
-        conversation_id: conversationId,
-        assistant_message_id: assistantMessageId,
-        run_id: runId ?? null,
-        agent_provider_id: agentProviderId,
-        model_id: modelId,
-        rating: reasonRating,
-      });
-    }
+          }
   }, [
     reasonRating,
-    analytics.track,
+    
     projectId,
     projectKind,
     conversationId,
@@ -2425,50 +2377,6 @@ export function AssistantFeedback({
     setDraftReasonCodes(new Set());
     setCustomReason("");
     setReasonRating(nextRating);
-    // P0 ui_click assistant_feedback_button. v1 emitted `rating: null` on
-    // the clear path, which lost the signal "user un-thumbed positive vs
-    // un-thumbed negative". v2 fixes this: when clearing, `rating` carries
-    // the rating that was cleared (the user's most recent gesture target),
-    // and `rating_before` records the previous selection state.
-    const ratingBefore: "positive" | "negative" | "none" = selected ?? "none";
-    trackAssistantFeedbackButtonClick(analytics.track, {
-      page_name: "chat_panel",
-      area: "chat_panel",
-      element: "assistant_feedback_button",
-      action: nextRating ? "submit_feedback_rating" : "clear_feedback_rating",
-      project_id: projectId ?? "",
-      project_kind: projectKind,
-      conversation_id: conversationId,
-      assistant_message_id: assistantMessageId,
-      run_id: runId ?? "",
-      agent_provider_id: agentProviderId,
-      model_id: modelId,
-      rating,
-      rating_before: ratingBefore,
-      has_produced_files: producedFileCount > 0,
-    });
-    // Dedicated assistant_feedback_click paired with the umbrella ui_click
-    // above. Carries the post-action rating in the widened union (allows
-    // 'none' for the clear path).
-    if (projectId && projectKind && conversationId) {
-      const ratingAfter: TrackingFeedbackRatingWithNone = nextRating ?? "none";
-      trackAssistantFeedbackClick(analytics.track, {
-        page: "studio",
-        area: "chat_panel",
-        element: "assistant_feedback_button",
-        action: nextRating ? "submit_feedback_rating" : "clear_feedback_rating",
-        project_id: projectId,
-        project_kind: projectKind,
-        conversation_id: conversationId,
-        assistant_message_id: assistantMessageId,
-        run_id: runId ?? null,
-        agent_provider_id: agentProviderId,
-        model_id: modelId,
-        rating: ratingAfter,
-        rating_before: ratingBefore,
-        has_produced_files: producedFileCount > 0,
-      });
-    }
     onFeedback(nextRating ? { rating: nextRating } : null);
   };
   const toggleReasonCode = (code: ChatMessageFeedbackReasonCode) => {
@@ -2489,104 +2397,6 @@ export function AssistantFeedback({
     if (!reasonRating) return;
     const trimmedCustomReason = customReason.trim();
     const reasonCodes = [...draftReasonCodes];
-    const reasonJoined = reasonCodes.length > 0 ? reasonCodes.join(",") : undefined;
-    const hasCustomReason = trimmedCustomReason.length > 0;
-    const requestId = analytics.newRequestId();
-    // P0 ui_click element=assistant_feedback_reason_submit_button — fires
-    // synchronously on the user gesture so the click count never depends on
-    // the host's onFeedback persistence resolving.
-    trackAssistantFeedbackReasonSubmitClick(
-      analytics.track,
-      {
-        page_name: "chat_panel",
-        area: "chat_panel",
-        element: "assistant_feedback_reason_submit_button",
-        action: "click_submit_feedback_reason",
-        project_id: projectId ?? "",
-        project_kind: projectKind,
-        conversation_id: conversationId,
-        assistant_message_id: assistantMessageId,
-        run_id: runId ?? "",
-        agent_provider_id: agentProviderId,
-        model_id: modelId,
-        rating: reasonRating,
-        ...(reasonJoined ? { reason: reasonJoined } : {}),
-        reason_count: reasonCodes.length,
-        has_custom_reason: hasCustomReason,
-        ...(hasCustomReason ? { custom_reason: trimmedCustomReason } : {}),
-      },
-      { requestId },
-    );
-    // P0 feedback_submit_result — paired with the click via requestId so
-    // PostHog dashboards can correlate intent → persistence. onFeedback in
-    // our app currently completes synchronously, so we emit `success`
-    // optimistically; a future error-aware host can flip this to `failed`.
-    trackFeedbackSubmitResult(
-      analytics.track,
-      {
-        page_name: "chat_panel",
-        area: "chat_panel",
-        element: "assistant_feedback_reason_submit",
-        action: "submit_feedback_reason",
-        project_id: projectId ?? "",
-        project_kind: projectKind,
-        conversation_id: conversationId,
-        assistant_message_id: assistantMessageId,
-        run_id: runId ?? "",
-        agent_provider_id: agentProviderId,
-        model_id: modelId,
-        rating: reasonRating,
-        ...(reasonJoined ? { reason: reasonJoined } : {}),
-        reason_count: reasonCodes.length,
-        has_custom_reason: hasCustomReason,
-        ...(hasCustomReason ? { custom_reason: trimmedCustomReason } : {}),
-        result: "success",
-      },
-      { requestId },
-    );
-    // Dedicated assistant_feedback_reason_click + reason_submit paired with
-    // the umbrella ui_click + feedback_submit_result above. Both fire under
-    // the same `requestId` so PostHog can stitch click → result per the
-    // tracking spec.
-    if (projectId && projectKind && conversationId) {
-      const reasons = reasonCodes as TrackingFeedbackReasonCode[];
-      const sharedPayload = {
-        page: "studio" as const,
-        area: "chat_panel" as const,
-        project_id: projectId,
-        project_kind: projectKind,
-        conversation_id: conversationId,
-        assistant_message_id: assistantMessageId,
-        run_id: runId ?? null,
-        agent_provider_id: agentProviderId,
-        model_id: modelId,
-        rating: reasonRating,
-        reason: reasons,
-        reason_count: reasons.length,
-        has_custom_reason: hasCustomReason,
-        custom_reason: hasCustomReason
-          ? normalizeCustomReason(trimmedCustomReason)
-          : "",
-      };
-      trackAssistantFeedbackReasonClick(
-        analytics.track,
-        {
-          ...sharedPayload,
-          element: "assistant_feedback_reason_submit_button",
-          action: "click_submit_feedback_reason",
-        },
-        { requestId },
-      );
-      trackAssistantFeedbackReasonSubmit(
-        analytics.track,
-        {
-          ...sharedPayload,
-          element: "assistant_feedback_reason_submit",
-          action: "submit_feedback_reason",
-        },
-        { requestId },
-      );
-    }
     onFeedback({
       rating: reasonRating,
       reasonCodes,
@@ -3101,8 +2911,7 @@ function FormBlock({
   visualStyleContext?: VisualStyleContext;
 }) {
   const t = useT();
-  const analytics = useAnalytics();
-  const { workspaceContext } = useProjectCollabContext();
+    const { workspaceContext } = useProjectCollabContext();
   const formKey =
     projectId && conversationId
       ? `${projectId}:${conversationId}:${assistantMessageId}:${form.id}`
@@ -3174,13 +2983,7 @@ function FormBlock({
     const occurrenceKey = `${projectId}:${assistantMessageId}:${form.id}`;
     if (viewedInlineQuestionForms.has(occurrenceKey)) return;
     viewedInlineQuestionForms.add(occurrenceKey);
-    trackQuestionsFormSurfaceView(analytics.track, {
-      page_name: "chat_panel",
-      area: "questions_form",
-      project_id: projectId,
-      form_id: questionsFormTrackingId(form.id),
-    });
-  }, [analytics.track, assistantMessageId, form.id, projectId, submittedFromHistory]);
+      }, [ assistantMessageId, form.id, projectId, submittedFromHistory]);
 
   const handleAnswerChange = useCallback(
     (questionId: string, value: string | string[]) => {
@@ -3192,46 +2995,15 @@ function FormBlock({
             ? ("brand_bg_chip" as const)
             : null;
       if (!element) return;
-      trackQuestionsFormClick(analytics.track, {
-        page_name: "chat_panel",
-        area: "questions_form",
-        element,
-        chip_id: questionsFormTrackingId(value),
-        form_id: questionsFormTrackingId(form.id),
-        project_id: projectId,
-      });
-    },
-    [analytics.track, form.id, projectId],
+          },
+    [ form.id, projectId],
   );
 
   const handleInteraction = useCallback(
     (interaction: QuestionFormInteraction) => {
       if (!projectId) return;
-      trackQuestionsFormClick(analytics.track, {
-        page_name: "chat_panel",
-        area: "questions_form",
-        element: interaction.element,
-        form_id: questionsFormTrackingId(form.id),
-        question_id: questionsFormTrackingId(interaction.questionId),
-        project_id: projectId,
-        ...("styleId" in interaction
-          ? { style_id: questionsFormTrackingId(interaction.styleId) }
-          : {}),
-        ...("styleContext" in interaction
-          ? { style_context: interaction.styleContext }
-          : {}),
-        ...("source" in interaction
-          ? { interaction_source: interaction.source }
-          : {}),
-        ...("stepIndex" in interaction
-          ? {
-              step_index: interaction.stepIndex,
-              step_count: interaction.stepCount,
-            }
-          : {}),
-      });
-    },
-    [analytics.track, form.id, projectId],
+          },
+    [ form.id, projectId],
   );
 
   const rollbackPendingUploads = useCallback(async () => {
@@ -3340,21 +3112,7 @@ function FormBlock({
             ? value.length > 0
             : typeof value === "string" && value.trim().length > 0;
         }).length;
-        trackQuestionsFormClick(analytics.track, {
-          page_name: "chat_panel",
-          area: "questions_form",
-          element: source === "submit" ? "submit" : "skip",
-          ...(source === "skip"
-            ? { skip_source: "button" as const }
-            : source === "auto"
-              ? { skip_source: "countdown" as const }
-              : {}),
-          answered_count: answeredCount,
-          skipped_count: form.questions.length - answeredCount,
-          form_id: questionsFormTrackingId(form.id),
-          project_id: projectId,
-        });
-      }
+              }
       const rejectSubmission = async () => {
         if (attachments.length > 0) {
           pendingUploadCleanupRef.current = attachments;
@@ -3393,7 +3151,7 @@ function FormBlock({
         () => void rejectSubmission(),
       );
     },
-    [analytics.track, form, formKey, onSubmit, projectId, rollbackPendingUploads, t],
+    [ form, formKey, onSubmit, projectId, rollbackPendingUploads, t],
   );
 
   if (submittedFromHistory) {
@@ -3753,16 +3511,7 @@ function ThinkingBlock({
   // fall back to the plain "已深度思考" label with no seconds.
   const startRef = useRef<number | null>(null);
   const [elapsedSec, setElapsedSec] = useState<number | null>(null);
-  useEffect(() => {
-    if (isThinking) {
-      if (startRef.current === null) startRef.current = Date.now();
-      setElapsedSec(null);
-    } else if (startRef.current !== null) {
-      setElapsedSec(Math.max(1, Math.round((Date.now() - startRef.current) / 1000)));
-      startRef.current = null;
-    }
-  }, [isThinking]);
-  const label = isThinking
+    const label = isThinking
     ? t("assistant.thinking")
     : elapsedSec != null
       ? t("assistant.thoughtFor", { s: elapsedSec })

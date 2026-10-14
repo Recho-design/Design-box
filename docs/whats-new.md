@@ -63,7 +63,7 @@ down is an explicit act rather than something a typo can do for you.
   "title": "Design system sync",
   "body": "Import, edit and sync design systems with cleaner release highlights on Home.",
   "imageUrl": "https://whatsnew.open-design.ai/0.13.0.png",
-  "linkUrl": "https://github.com/nexu-io/open-design/releases/tag/open-design-v0.13.0",
+  "linkUrl": "https://github.com/Recho-design/Design-box/releases/tag/open-design-v0.13.0",
   "ctaLabel": "View release notes",
   "locales": {
     "zh-CN": {
@@ -113,10 +113,10 @@ To publish release copy, run **whats-new-publish** manually
 (`workflow_dispatch`) against the corresponding `release/vX.Y.Z` branch:
 
 ```bash
-gh workflow run whats-new-publish.yml --repo nexu-io/open-design \
+gh workflow run whats-new-publish.yml --repo Recho-design/Design-box \
   --ref release/v0.22.0 -f dry_run=true
 # After reviewing the proposed document and id:
-gh workflow run whats-new-publish.yml --repo nexu-io/open-design \
+gh workflow run whats-new-publish.yml --repo Recho-design/Design-box \
   --ref release/v0.22.0 -f dry_run=false
 ```
 

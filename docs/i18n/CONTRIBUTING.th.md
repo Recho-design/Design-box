@@ -19,7 +19,7 @@ Guide นี้บอกชัด ๆ ว่า contribution แต่ละป�
 | เพิ่ม feature, แก้ bug, ยก UX pattern จาก [`open-codesign`][ocod] | code | `apps/web/src/`, `apps/daemon/` | PR ปกติ |
 | ปรับ docs, port section เป็น Français / Deutsch / 中文, แก้ typo | docs | `README.md`, `docs/i18n/README.fr.md`, `docs/i18n/README.de.md`, `docs/i18n/README.zh-CN.md`, `docs/`, `QUICKSTART.md` | หนึ่ง PR |
 
-ถ้ายังไม่แน่ใจว่า idea ของคุณอยู่ bucket ไหน ให้ [เปิด discussion / issue ก่อน](https://github.com/nexu-io/open-design/issues/new) แล้วเราจะชี้ surface ที่ถูกให้.
+ถ้ายังไม่แน่ใจว่า idea ของคุณอยู่ bucket ไหน ให้ [เปิด discussion / issue ก่อน](https://github.com/Recho-design/Design-box/issues/new) แล้วเราจะชี้ surface ที่ถูกให้.
 
 ---
 
@@ -28,8 +28,8 @@ Guide นี้บอกชัด ๆ ว่า contribution แต่ละป�
 Setup แบบหน้าเดียวเต็มอยู่ใน [`QUICKSTART.th.md`](QUICKSTART.th.md). TL;DR สำหรับ contributors:
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
-cd open-design
+git clone https://github.com/Recho-design/Design-box.git
+cd Design-box
 corepack enable           # selects the pinned pnpm from packageManager
 pnpm install
 pnpm tools-dev run web    # daemon + web foreground loop
@@ -95,8 +95,6 @@ OPEN_DESIGN_IMAGE=docker.io/vanjayak/open-design:latest
 > Projects และ database data จะ persist อัตโนมัติด้วย Docker volumes.
 
 สำหรับ Docker guide เต็มและ advanced configuration ดู `QUICKSTART.th.md`.
-
-
 
 ---
 
@@ -230,8 +228,6 @@ Table OVERRIDES ใน `maxTokens.ts` มีไว้สำหรับกรณ
 
 ภาษา German ใช้ formal `Sie` เพราะ OD พูดกับ audience ผสมทั้ง solo creators, agencies และ engineering teams; จนกว่า feedback ของ project จะบอกว่า informal `du` fit กว่า formal German เป็น default ที่ surprise น้อยที่สุด. Locale PRs ควรแปล UI chrome, core docs และ display-only gallery metadata ใน `apps/web/src/i18n/content.ts`, แต่ไม่ควรแปล `skills/`, `design-systems/` หรือ prompt bodies ที่ agents execute. Source prompts เหล่านั้นถูก maintain ในฐานะ workflow inputs และการคง source language เดียวช่วยเลี่ยงการคูณ prompt QA ไปตาม locales. เมื่อเพิ่มหรือ rename skill, design system หรือ prompt template ให้ update German display metadata และรัน `pnpm typecheck` (repository ไม่มี test suite แล้ว; display metadata drift จะถูกจับที่ typecheck). Daemon errors, export filenames และ agent-generated artifact text เป็น known limitations เว้นแต่ PR จะ scope เรื่องนั้นโดยตรง.
 
-สำหรับขั้นตอนทีละขั้นในการเพิ่ม locale ใหม่ (UI dictionary, README, language switcher, regional terminology), ดู [`TRANSLATIONS.md`](../../TRANSLATIONS.md).
-
 ---
 
 ## Code style
@@ -284,8 +280,8 @@ Table OVERRIDES ใน `maxTokens.ts` มีไว้สำหรับกรณ
 
 ## Asking questions
 
-- คำถาม architecture, design, "นี่คือ bug หรือ misuse" → [GitHub Discussions](https://github.com/nexu-io/open-design/discussions) (preferred — searchable สำหรับคนถัดไป).
-- "จะเขียน skill ที่ทำ X ได้อย่างไร" → เปิด discussion. เราจะตอบและเปลี่ยนคำตอบเป็น [`docs/skills-protocol.md`](../../docs/skills-protocol.md) ถ้ามันเป็น pattern ที่ยังขาดอยู่.
+- คำถาม architecture, design, "นี่คือ bug หรือ misuse" → เปิด issue ใน repo นี้ แล้วอธิบายว่าคุณรันอะไรและคาดหวังอะไร.
+- "จะเขียน skill ที่ทำ X ได้อย่างไร" → เปิด issue. เราจะตอบและเปลี่ยนคำตอบเป็น [`docs/skills-protocol.md`](../../docs/skills-protocol.md) ถ้ามันเป็น pattern ที่ยังขาดอยู่.
 
 ---
 
@@ -300,22 +296,6 @@ Table OVERRIDES ใน `maxTokens.ts` มีไว้สำหรับกรณ
 - **Bundle binary** โดยไม่มี license file และ authorship attribution ข้าง ๆ.
 
 ถ้าไม่แน่ใจว่า idea ของคุณ fit ไหม เปิด discussion ก่อนเขียน code.
-
----
-
-## Becoming a Maintainer
-
-ถ้าคุณ contribute อย่างสม่ำเสมอและอยากรู้ path สู่ Maintainer กติกาอยู่ใน **[`MAINTAINERS.md`](../../MAINTAINERS.md)**. Short version:
-
-- Maintainer review, approve และ close issues ได้. ปุ่ม merge ยังอยู่กับ Core Team — approval ของคุณยังนับเป็น approval ที่ต้องมีสำหรับ merge.
-- Bar คือ **≥ 20 merged PRs** พร้อม account-quality check ที่ publish แล้ว (anti-bot, anti-sock-puppet) และ judgment ของ Core Team เรื่อง contribution quality. ไม่มี application form; Core Team raise candidates ภายในแล้วติดต่อไป.
-- **ไม่มี quotas, ไม่มี SLAs, ไม่มี fixed term.** Stepping down ง่ายและ reversible (Emeritus → กลับมาเมื่อชีวิตนิ่งขึ้น).
-- Thresholds ทั้งหมด, nomination flow, step-down rules และ early-project waiver อยู่ใน [`MAINTAINERS.md`](../../MAINTAINERS.md). อ่านเอกสารนั้นถ้าสนใจข้อใดข้างต้น.
-
-tl;dr: ship PR ดี ๆ, review อย่างใส่ใจ, อยู่ใน [Discussions][discussions] / [Discord][discord], แล้วที่เหลือจะตามมาเอง.
-
-[discussions]: https://github.com/nexu-io/open-design/discussions
-[discord]: https://discord.gg/qhbcCH8Am4
 
 ---
 

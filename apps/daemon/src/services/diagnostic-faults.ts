@@ -1,5 +1,15 @@
 import type { RecentApiFailure } from '../http/api-failure-journal.js';
-import type { FaultEvidence } from './automatic-diagnostics.js';
+
+/**
+ * A local, bounded fault description. Kept here rather than in the removed
+ * automatic-diagnostics relay so the fault classifier stays independent of any
+ * delivery mechanism.
+ */
+export interface FaultEvidence {
+  sourceId: string; kind: string; at: number;
+  runId?: string; agentId?: string; projectId?: string; conversationId?: string;
+  attempt?: number; errorCode?: string; detail?: unknown;
+}
 
 interface Run {
   id: string; agentId?: string; projectId?: string; conversationId?: string;

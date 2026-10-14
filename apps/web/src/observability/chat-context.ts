@@ -2,18 +2,16 @@
 //
 // Why this exists
 // ---------------
-// A dashboard that says "first paint P95 went from 3s to 9s" has done half
-// a job. The other half is answering "for whom, on what, and doing what" —
-// otherwise the next step is guessing. Every `client_chat_*` event
-// therefore carries a correlation block:
+// A health check that says "first paint P95 went from 3s to 9s" has done
+// half a job. The other half is answering "for whom, on what, and doing
+// what" — otherwise the next step is guessing. Every `client_chat_*`
+// event therefore carries a correlation block:
 //
-//   conversation_id / project_id / run_id  → pivot within PostHog, then
-//                                            hand `run_id` to Langfuse
-//                                            (its trace id IS the run id)
-//                                            and to the diagnostics bundle
+//   conversation_id / project_id / run_id  → correlate with the daemon's
+//                                            run records and the local
+//                                            diagnostics bundle
 //   agent_id / model_id                    → "is this one provider?"
 //   app_version / release_channel          → "is this one build?"
-//   replay_session_id                      → jump to the session replay
 //
 // The privacy line is unchanged and absolute: **identifiers yes, content
 // never**. An id is an opaque handle we can join on. A message body, a
@@ -88,8 +86,6 @@ export interface ChatCorrelation {
    * source exists; absent until then rather than faked.
    */
   build_sha?: string;
-  /** PostHog replay session id, when session replay is actually recording. */
-  replay_session_id?: string;
 }
 
 const MAX_BREADCRUMBS = 24;
@@ -119,50 +115,7 @@ export function setChatCorrelation(next: Partial<ChatCorrelation>): void {
  * object so a caller cannot mutate the shared context by accident.
  */
 export function chatCorrelation(): ChatCorrelation {
-  return { ...correlation, ...readReplaySessionId() };
-}
-
-type ReplaySessionIdReader = () => string | undefined;
-
-let replaySessionIdReader: ReplaySessionIdReader | null = null;
-
-/**
- * Teach this module how to find PostHog's replay session id.
- *
- * This registration is REQUIRED for replay links to work, and its absence
- * is a real trap. `apps/web/src/analytics/client.ts` loads posthog-js with
- * `await import('posthog-js')`, and the ESM build — unlike the `array.js`
- * snippet the landing page uses — does not publish itself as
- * `window.posthog`. So the obvious `globalThis.posthog.get_session_id()`
- * silently returns `undefined` forever, and every replay link on the
- * dashboard would be quietly dead while looking implemented.
- *
- * The analytics client must therefore hand us its instance explicitly. We
- * keep the global lookup below only as a fallback for surfaces that do
- * load posthog-js as a global script.
- */
-export function registerChatReplaySessionSource(reader: ReplaySessionIdReader): void {
-  replaySessionIdReader = reader;
-}
-
-/**
- * PostHog's replay session id, read lazily on every event rather than
- * cached: posthog-js loads asynchronously after consent (so an id cached
- * at boot would always be missing) and the id rotates over a long session.
- */
-function readReplaySessionId(): { replay_session_id?: string } {
-  try {
-    const id =
-      replaySessionIdReader?.() ??
-      (globalThis as unknown as {
-        posthog?: { get_session_id?: () => string | undefined };
-      }).posthog?.get_session_id?.();
-    return typeof id === 'string' && id.length > 0 ? { replay_session_id: id } : {};
-  } catch {
-    // posthog-js not loaded, opted out, or mid-teardown. Correlation is a
-    // nice-to-have; never let reading it break the event.
-    return {};
-  }
+  return { ...correlation };
 }
 
 // ---------------------------------------------------------------------------
@@ -180,8 +133,8 @@ export function pushChatBreadcrumb(kind: ChatBreadcrumbKind, at?: number): void 
  *
  * Deliberately a string, not structured data. A breadcrumb trail is read by
  * a human staring at one bad event, never aggregated across events, and a
- * flat string survives PostHog's property inspector intact while an array
- * of objects becomes a chore to unfold and impossible to grep.
+ * flat string stays compact and greppable where an array of objects would
+ * need unfolding.
  */
 export function chatBreadcrumbTrail(): string {
   return breadcrumbs.map((b) => `${b.kind}@${b.at}`).join(',');
@@ -271,7 +224,6 @@ function nowMs(): number {
 /** Test-only — flush module state between cases. */
 export function __resetChatContextForTest(): void {
   correlation = {};
-  replaySessionIdReader = null;
   breadcrumbs.length = 0;
   heapTrendMb.length = 0;
 }

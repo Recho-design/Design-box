@@ -24,7 +24,6 @@ od:
   surface: web
   scenario: design
   featured: 0.17
-  upstream: "https://github.com/nexu-io/html-anything"
   preview:
     type: html
     entry: index.html

@@ -18,10 +18,6 @@ import { resolveDefaultImageModelId } from '../media/default-image-model.js';
 import { errorText, generateMediaBatch } from '../media/generate-media-batch.js';
 import { findMediaModel, modelsForSurface, offeredModelsForSurface } from '../media/models.js';
 import {
-  captureMediaGenerationResult,
-  resolveMediaAnalyticsContext,
-} from '../media/generation-analytics.js';
-import {
   PLAYGROUND_UPLOAD_MAX_BYTES,
   detectImageFormat,
   playgroundUploadFileName,
@@ -269,14 +265,6 @@ export function registerMediaPlaygroundRoutes(
     // `outputDir` 只有这一处加：机器消费面（CLI / MCP）靠它把 <outputDir>/<name>
     // 拼成真实文件路径，而列表 / 转存响应里的相对路径已经够 web 用。
     res.status(200).json({ ...toPlaygroundGeneration(record), outputDir: resolution.target.dir });
-    await captureBatchAnalytics({
-      req,
-      batch,
-      generationId,
-      model,
-      startedAt,
-      projectId: resolution.target.projectId ?? SCRATCH_ANALYTICS_PROJECT,
-    });
   }
 
   /**
@@ -333,43 +321,6 @@ export function registerMediaPlaygroundRoutes(
       return { ...batch, providerRequestSummary };
     } finally {
       await dispatcher.close();
-    }
-  }
-
-  /**
-   * 复用 `mediaAnalyticsContext` 的无 Run standalone 身份上报
-   * `media_generation_result`：Playground 的生成不能成为观测盲区。
-   */
-  async function captureBatchAnalytics(input: {
-    req: Request;
-    batch: BatchOutcome;
-    generationId: string;
-    model: string;
-    startedAt: number;
-    projectId: string;
-  }): Promise<void> {
-    const summary = input.batch.providerRequestSummary;
-    if (input.batch.metas.length === 0 || !summary) return;
-    try {
-      const analyticsContext = await resolveMediaAnalyticsContext({
-        req: input.req,
-        design,
-        readAppConfig,
-        runtimeDataDir: RUNTIME_DATA_DIR,
-      });
-      if (!analyticsContext) return;
-      captureMediaGenerationResult(design, {
-        analyticsContext,
-        durationMs: Date.now() - input.startedAt,
-        meta: input.batch.metas[0],
-        model: input.model,
-        projectId: input.projectId,
-        providerRequestSummary: summary,
-        surface: 'image',
-        taskId: input.generationId,
-      });
-    } catch {
-      // 埋点是 best-effort，绝不能反过来影响生成结局。
     }
   }
 

@@ -24,7 +24,7 @@ await build({
     "./src/design-systems/components-manifest.ts",
     "./src/design-systems/derived-token-outputs.ts",
     "./src/design-systems/token-schema.ts",
-    "./src/analytics/index.ts",
+    "./src/updater/update-lifecycle.ts",
   ],
   format: "esm",
   outbase: "./src",

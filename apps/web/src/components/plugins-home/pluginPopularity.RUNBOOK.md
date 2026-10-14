@@ -52,8 +52,10 @@ score = 0.6 · norm(log1p(distinctUsers)) + 0.4 · norm(log1p(runs))
   generated metadata and are robust — 0.5–0.7 barely move the order.
 - `log1p` tames the head-template scale gap; min-max normalized over the live
   template set so both metrics land in `[0,1]`.
-- Window: trailing **28 days** of `run_finished` events keyed by `plugin_id`
-  (PostHog OD project `420348`), so the order follows template rotation.
+- Window: trailing **28 days** of `run_finished` events keyed by `plugin_id`.
+  **This fork no longer collects that data and no longer rebuilds the snapshot**
+  (see *Refresh* below), so the committed scores are a frozen historical
+  snapshot: the ordering is still applied, it just stops tracking usage.
 - **Retired** templates (absent from the live catalog) are dropped and get no
   score.
 - Templates below **20 distinct users** get no score → they keep their
@@ -97,29 +99,18 @@ valve for freshly launched or strategically promoted templates that have not
 accrued usage yet (they would otherwise sink below the min-sample threshold).
 Add an id and it jumps to the front; keep the list short.
 
-## Refresh (weekly)
+## Refresh — removed in this fork
 
-The rebuild runs in-repo — the same pattern as `refresh-contributors-wall` and
-`tutorials-youtube-sync`, which already run credentialed scheduled fetches here.
+The upstream weekly refresh pipeline (a scheduled workflow that queried the
+project's PostHog usage data and opened a PR rewriting
+`pluginPopularity.generated.ts`) has been **deleted**, together with the rest of
+the telemetry chain: this fork collects no usage events, so there is nothing to
+rebuild the scores from and no scheduled job touches this folder. The committed
+`pluginPopularity.generated.ts` is a frozen snapshot; the ordering rules above
+still apply to it, and every template without a score keeps its curated/visual
+fallback order.
 
-- Generator: `scripts/refresh-plugin-popularity.ts` — queries PostHog
-  `run_finished` for the trailing 28-day `plugin_id` counts (runs + distinct
-  users), joins against the live bundled catalog (drops retired ids), blends,
-  and rewrites `pluginPopularity.generated.ts`.
-- Workflow: `.github/workflows/refresh-plugin-popularity.yml` — weekly cron +
-  `workflow_dispatch`; opens a PR with only the generated file changed via
-  `peter-evans/create-pull-request` (self-PR, no cross-repo token).
-
-Regenerate locally:
-
-```bash
-POSTHOG_PERSONAL_API_KEY=... pnpm exec tsx scripts/refresh-plugin-popularity.ts --write
-```
-
-Only the fetch needs credentials — HogQL requires a PostHog **personal** API key
-(`phx_…`). The workflow prefers `POSTHOG_PERSONAL_API_KEY` and falls back to the
-existing `POSTHOG_CLI_API_KEY` (already a personal key, used for release
-sourcemap uploads), so it may need no new secret; add `POSTHOG_PERSONAL_API_KEY`
-only if neither can query project `420348`. Until a working key resolves, the
-workflow no-ops (green) and opens no PR. The transform is deterministic and
-creds-free, so a reviewer can reproduce the generated file from the raw counts.
+Editing the generated file by hand is still not the intended path. If a future
+change needs different ordering, prefer the source-level knobs
+(`ALWAYS_PINNED`, `ALWAYS_LAST`, `POPULARITY_LEADS_CURATION`) over the data
+snapshot.

@@ -10,14 +10,11 @@
 //   - dom_content_loaded_ms: navigationStart → domContentLoadedEventStart
 //   - app_mount_ms:  navigationStart → first `home_view`-like DOM marker
 //
-// Why we don't reuse posthog-js's `$performance` events: those are
-// stripped for users who opted out of analytics. Boot timing is a
-// stability signal more than a behavioral one — slow boots are bugs we
-// need to triage regardless of consent.
+// Boot timing is a stability signal — slow boots are bugs we
+// need to triage.
 //
 // Fires at most once per page load.
 
-import { reportSafetyEvent } from '../analytics/error-tracking';
 
 let captured = false;
 
@@ -59,24 +56,7 @@ function schedule(fn: () => void): void {
 }
 
 function emit(): void {
-  // PerformanceNavigationTiming is the modern shape; Navigation Timing v1
-  // (`performance.timing`) is deprecated but still ubiquitous. We prefer
-  // the typed v2 surface and only fall back when getEntriesByType returns
-  // nothing (Safari < 15 in some quirk modes).
-  const nav = readNavigationTiming();
-  if (!nav) return;
-
-  reportSafetyEvent('client_boot_timing', {
-    navigation_start_offset_ms: round(nav.navigationStart),
-    dom_interactive_ms: round(nav.domInteractive),
-    dom_content_loaded_ms: round(nav.domContentLoadedEventStart),
-    dom_complete_ms: round(nav.domComplete),
-    load_event_ms: round(nav.loadEventStart),
-    transfer_size_bytes:
-      typeof nav.transferSize === 'number' && nav.transferSize > 0 ? nav.transferSize : undefined,
-    next_render_mode: detectNextRenderMode(),
-    visibility_state: typeof document !== 'undefined' ? document.visibilityState : undefined,
-  });
+  // Pure local stub: safety event reporting removed.
 }
 
 interface BootTimingsShape {

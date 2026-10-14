@@ -86,9 +86,9 @@
       "types": "./dist/critique.d.ts",
       "default": "./dist/critique.mjs"
     },
-    "./analytics": {
-      "types": "./dist/analytics/index.d.ts",
-      "default": "./dist/analytics/index.mjs"
+    "./updater/update-lifecycle": {
+      "types": "./dist/updater/update-lifecycle.d.ts",
+      "default": "./dist/updater/update-lifecycle.mjs"
     },
     "./runtime/html-injection-points": {
       "types": "./dist/runtime/html-injection-points.d.ts",

@@ -13,11 +13,11 @@
     "edition": "Vol. 01 / Issue Nº 26",
     "version": "v0.3.0",
     "license": "Apache-2.0",
-    "primary_url": "https://github.com/nexu-io/open-design",
-    "primary_url_label": "Star · 0K",
-    "download_url": "https://github.com/nexu-io/open-design/releases",
+    "primary_url": "https://github.com/Recho-design/Design-box",
+    "primary_url_label": "GitHub · 0K",
+    "download_url": "https://github.com/Recho-design/Design-box/releases",
     "download_url_label": "Download",
-    "contact_email": "https://github.com/nexu-io/open-design/issues",
+    "contact_email": "https://github.com/Recho-design/Design-box/issues",
     "location": "Berlin / Open / Earth",
     "coordinates": "52.5200° N · 13.4050° E",
     "year": "2026",
@@ -32,8 +32,8 @@
   },
 
   "nav": [
-    { "label": "Skills", "href": "https://github.com/nexu-io/open-design/tree/main/skills", "count": "31" },
-    { "label": "Systems", "href": "https://github.com/nexu-io/open-design/tree/main/design-systems", "count": "72" },
+    { "label": "Skills", "href": "https://github.com/Recho-design/Design-box/tree/main/skills", "count": "31" },
+    { "label": "Systems", "href": "https://github.com/Recho-design/Design-box/tree/main/design-systems", "count": "72" },
     { "label": "Agents", "href": "#agents", "count": "12" },
     { "label": "Labs", "href": "#labs", "count": "05" },
     { "label": "Contact", "href": "#contact" }
@@ -62,8 +62,8 @@
       { "text": ".", "dot": true }
     ],
     "lead": "The open-source alternative to Anthropic&rsquo;s Claude Design. 12 coding agents — Claude, Codex, Cursor, Gemini and friends — drive 31 composable skills and 72 brand-grade design systems. Generate web pages, slide decks, mobile prototypes, images, even short videos — all running on your own laptop.",
-    "primary":   { "label": "Star us on GitHub",  "href": "https://github.com/nexu-io/open-design" },
-    "secondary": { "label": "Download desktop",   "href": "https://github.com/nexu-io/open-design/releases" },
+    "primary":   { "label": "View on GitHub",  "href": "https://github.com/Recho-design/Design-box" },
+    "secondary": { "label": "Download desktop",   "href": "https://github.com/Recho-design/Design-box/releases" },
     "stats": [
       { "value": "31", "label": "skills",  "sub": "shippable", "variant": "solid" },
       { "value": "72", "label": "systems", "sub": "portable",  "variant": "dashed" },
@@ -97,7 +97,7 @@
     ],
     "lead": "The strongest coding agents already live on your laptop. We don't ship one — we wire them into a skill-driven design workflow that runs locally with <code class='code-inline'>pnpm tools-dev</code>, deploys the web layer to Vercel, and stays BYOK at every layer.",
     "cta_label": "Read our approach",
-    "cta_href": "https://github.com/nexu-io/open-design/tree/main/apps/daemon",
+    "cta_href": "https://github.com/Recho-design/Design-box/tree/main/apps/daemon",
     "footer_text": "Research · Design · Engineering · Repeat",
     "stamp_top": "Studio practice",
     "stamp_bottom": "Est. MMXXVI",
@@ -126,7 +126,7 @@
         "icon_svg": "<circle cx='9' cy='9' r='5'/><path d='M14 14l5 5'/>",
         "title": "Skills,\nnot plugins",
         "body": "31 file-based <code class='code-inline sm'>SKILL.md</code> bundles. Drop a folder in, restart the daemon, it appears.",
-        "href": "https://github.com/nexu-io/open-design/tree/main/skills"
+        "href": "https://github.com/Recho-design/Design-box/tree/main/skills"
       },
       {
         "num": "02",
@@ -134,7 +134,7 @@
         "icon_svg": "<rect x='3.5' y='3.5' width='8' height='8'/><rect x='12.5' y='3.5' width='8' height='8'/><rect x='3.5' y='12.5' width='8' height='8'/><rect x='12.5' y='12.5' width='8' height='8'/>",
         "title": "Design Systems\nas Markdown",
         "body": "72 portable <code class='code-inline sm'>DESIGN.md</code> systems — Linear, Vercel, Stripe, Apple, Cursor, Figma…",
-        "href": "https://github.com/nexu-io/open-design/tree/main/design-systems"
+        "href": "https://github.com/Recho-design/Design-box/tree/main/design-systems"
       },
       {
         "num": "03",
@@ -142,7 +142,7 @@
         "icon_svg": "<circle cx='8' cy='12' r='4.5'/><circle cx='16' cy='12' r='4.5'/>",
         "title": "12 Agent\nAdapters",
         "body": "Claude · Codex · Gemini · Cursor · Copilot · OpenCode · Devin · Hermes · Pi · Kimi · Kiro · Qwen — auto-detected on $PATH.",
-        "href": "https://github.com/nexu-io/open-design/tree/main/apps/daemon"
+        "href": "https://github.com/Recho-design/Design-box/tree/main/apps/daemon"
       },
       {
         "num": "04",
@@ -150,7 +150,7 @@
         "icon_svg": "<path d='M5 8h14v8H5z'/><path d='M9 12h6M12 9v6'/>",
         "title": "BYOK\nat every layer",
         "body": "OpenAI-compatible proxy. DeepSeek, Groq, OpenRouter, your self-hosted vLLM — paste a baseUrl + key, ship.",
-        "href": "https://github.com/nexu-io/open-design"
+        "href": "https://github.com/Recho-design/Design-box"
       }
     ]
   },
@@ -177,14 +177,14 @@
       "sub": "documenting ideas in flux<br/>building intelligence<br/>through making"
     },
     "cards": [
-      { "badge": "Deck",     "num": "Nº 01", "year": "2026", "title": "Magazine Decks",     "body": "Editorial-grade slide decks with <code class='code-inline sm'>guizang-ppt</code>. Magazine layout, WebGL hero.", "href": "https://github.com/nexu-io/open-design/tree/main/skills/guizang-ppt" },
-      { "badge": "Media",    "num": "Nº 02", "year": "2026", "title": "Synthetic Matter",   "body": "Gpt-image-2 + Seedance + HyperFrames. Image, video, audio — same chat surface as code.",                       "href": "https://github.com/nexu-io/open-design/tree/main/skills/hyperframes" },
-      { "badge": "Loop",     "num": "Nº 03", "year": "2026", "title": "Prompt Choreography","body": "When unresolved choices would materially change the result, a focused question form keeps the next iteration on track.","href": "https://github.com/nexu-io/open-design/tree/main/skills/design-brief" },
-      { "badge": "Critique", "num": "Nº 04", "year": "2026", "title": "Visual Reasoning",   "body": "5-dim self-critique gates every artifact: philosophy · hierarchy · execution · specificity · restraint.",       "href": "https://github.com/nexu-io/open-design/tree/main/skills/critique" },
-      { "badge": "Runtime",  "num": "Nº 05", "year": "2026", "title": "Soft Systems",       "body": "Sandboxed iframe preview. Streaming todos. Real-cwd filesystem. Adaptive loops between human and machine.",      "href": "https://github.com/nexu-io/open-design/tree/main/apps/daemon" }
+      { "badge": "Deck",     "num": "Nº 01", "year": "2026", "title": "Magazine Decks",     "body": "Editorial-grade slide decks with <code class='code-inline sm'>guizang-ppt</code>. Magazine layout, WebGL hero.", "href": "https://github.com/Recho-design/Design-box/tree/main/skills/guizang-ppt" },
+      { "badge": "Media",    "num": "Nº 02", "year": "2026", "title": "Synthetic Matter",   "body": "Gpt-image-2 + Seedance + HyperFrames. Image, video, audio — same chat surface as code.",                       "href": "https://github.com/Recho-design/Design-box/tree/main/skills/hyperframes" },
+      { "badge": "Loop",     "num": "Nº 03", "year": "2026", "title": "Prompt Choreography","body": "When unresolved choices would materially change the result, a focused question form keeps the next iteration on track.","href": "https://github.com/Recho-design/Design-box/tree/main/skills/design-brief" },
+      { "badge": "Critique", "num": "Nº 04", "year": "2026", "title": "Visual Reasoning",   "body": "5-dim self-critique gates every artifact: philosophy · hierarchy · execution · specificity · restraint.",       "href": "https://github.com/Recho-design/Design-box/tree/main/skills/critique" },
+      { "badge": "Runtime",  "num": "Nº 05", "year": "2026", "title": "Soft Systems",       "body": "Sandboxed iframe preview. Streaming todos. Real-cwd filesystem. Adaptive loops between human and machine.",      "href": "https://github.com/Recho-design/Design-box/tree/main/apps/daemon" }
     ],
     "progress": { "total": 8, "filled": 5 },
-    "foot": "05 / 31 SKILLS &nbsp;·&nbsp; <a class='library-link' href='https://github.com/nexu-io/open-design/tree/main/skills' target='_blank' rel='noreferrer noopener' style='color:var(--coral);'>VIEW FULL LIBRARY →</a>"
+    "foot": "05 / 31 SKILLS &nbsp;·&nbsp; <a class='library-link' href='https://github.com/Recho-design/Design-box/tree/main/skills' target='_blank' rel='noreferrer noopener' style='color:var(--coral);'>VIEW FULL LIBRARY →</a>"
   },
 
   "method": {
@@ -204,7 +204,7 @@
       { "num": "04", "title": "Deliver",  "body": "The agent writes to disk, you preview in a sandboxed iframe, export HTML / PDF / PPTX / ZIP / Markdown." }
     ],
     "foot_left": "Skills inform everything. Files make it real.",
-    "foot_right_bold": "github.com/nexu-io/open-design",
+    "foot_right_bold": "github.com/Recho-design/Design-box",
     "foot_right_rest": "Apache-2.0"
   },
 
@@ -218,7 +218,7 @@
       { "text": ".", "dot": true }
     ],
     "link_label": "View all 31 skills",
-    "link_href": "https://github.com/nexu-io/open-design/tree/main/skills",
+    "link_href": "https://github.com/Recho-design/Design-box/tree/main/skills",
     "cards": [
       {
         "small_label": "Featured skill",
@@ -260,7 +260,7 @@
       { "glyph_svg": "<rect x='4' y='5' width='22' height='18'/><rect x='14' y='9' width='22' height='18'/>", "name": "hyperframes",   "role": "Frames",     "href": "https://github.com/heygen-com/hyperframes" }
     ],
     "read_more_label": "Read more stories",
-    "read_more_href": "https://github.com/nexu-io/open-design"
+    "read_more_href": "https://github.com/Recho-design/Design-box"
   },
 
   "cta": {
@@ -274,8 +274,8 @@
       { "text": " unforgettable" },
       { "text": ".", "dot": true }
     ],
-    "lead": "Star us on GitHub, drop into the issues, or run <code class='code-inline'>pnpm tools-dev</code> tonight. Three commands and the loop is yours.",
-    "primary": { "label": "Star on GitHub", "href": "https://github.com/nexu-io/open-design" },
+    "lead": "Browse the repository, open an issue, or run <code class='code-inline'>pnpm tools-dev</code> tonight. Three commands and the loop is yours.",
+    "primary": { "label": "View on GitHub", "href": "https://github.com/Recho-design/Design-box" },
     "ribbon": "OPENDESIGN &nbsp;·&nbsp; FIN."
   },
 
@@ -312,8 +312,8 @@
       { "handle": "alchaincyf",   "role": "huashu",   "href": "https://github.com/alchaincyf" },
       { "handle": "multica-ai",   "role": "daemon",   "href": "https://github.com/multica-ai" },
       { "handle": "OpenCoworkAI", "role": "codesign", "href": "https://github.com/OpenCoworkAI" },
-      { "handle": "nexu-io",      "role": "studio",   "href": "https://github.com/nexu-io" },
-      { "handle": "you",          "role": "be next",  "href": "https://github.com/nexu-io/open-design/graphs/contributors" }
+      { "handle": "Recho-design", "role": "studio",   "href": "https://github.com/Recho-design" },
+      { "handle": "you",          "role": "be next",  "href": "https://github.com/Recho-design/Design-box/graphs/contributors" }
     ]
   },
 
@@ -321,33 +321,33 @@
     "brand_description": "The open-source alternative to Claude Design. Built on the shoulders of <a class='inline-link' href='https://github.com/alchaincyf/huashu-design' target='_blank' rel='noreferrer noopener'>huashu-design</a>, <a class='inline-link' href='https://github.com/op7418/guizang-ppt-skill' target='_blank' rel='noreferrer noopener'>guizang-ppt</a>, <a class='inline-link' href='https://github.com/multica-ai/multica' target='_blank' rel='noreferrer noopener'>multica-ai</a>, and <a class='inline-link' href='https://github.com/OpenCoworkAI/open-codesign' target='_blank' rel='noreferrer noopener'>open-codesign</a>.",
     "brand_cta": {
       "label": "Download desktop",
-      "href": "https://github.com/nexu-io/open-design/releases",
+      "href": "https://github.com/Recho-design/Design-box/releases",
       "meta": "macOS · v0.3.0"
     },
     "columns": [
       { "title": "Studio",  "links": [
         { "label": "Capabilities", "href": "#agents" },
         { "label": "Labs",         "href": "#labs" },
-        { "label": "Method",       "href": "https://github.com/nexu-io/open-design/tree/main/apps/daemon" },
-        { "label": "Manifesto",    "href": "https://github.com/nexu-io/open-design" }
+        { "label": "Method",       "href": "https://github.com/Recho-design/Design-box/tree/main/apps/daemon" },
+        { "label": "Manifesto",    "href": "https://github.com/Recho-design/Design-box" }
       ]},
       { "title": "Library", "links": [
-        { "label": "31 Skills",    "href": "https://github.com/nexu-io/open-design/tree/main/skills" },
-        { "label": "72 Systems",   "href": "https://github.com/nexu-io/open-design/tree/main/design-systems" },
-        { "label": "5 Directions", "href": "https://github.com/nexu-io/open-design/tree/main/design-systems" },
-        { "label": "5 Frames",     "href": "https://github.com/nexu-io/open-design/tree/main/skills/hyperframes" }
+        { "label": "31 Skills",    "href": "https://github.com/Recho-design/Design-box/tree/main/skills" },
+        { "label": "72 Systems",   "href": "https://github.com/Recho-design/Design-box/tree/main/design-systems" },
+        { "label": "5 Directions", "href": "https://github.com/Recho-design/Design-box/tree/main/design-systems" },
+        { "label": "5 Frames",     "href": "https://github.com/Recho-design/Design-box/tree/main/skills/hyperframes" }
       ]},
       { "title": "Connect", "links": [
-        { "label": "GitHub",       "href": "https://github.com/nexu-io/open-design" },
-        { "label": "Issues",       "href": "https://github.com/nexu-io/open-design/issues" },
-        { "label": "Contributors", "href": "https://github.com/nexu-io/open-design/graphs/contributors" },
-        { "label": "Releases",     "href": "https://github.com/nexu-io/open-design/releases" }
+        { "label": "GitHub",       "href": "https://github.com/Recho-design/Design-box" },
+        { "label": "Issues",       "href": "https://github.com/Recho-design/Design-box/issues" },
+        { "label": "Contributors", "href": "https://github.com/Recho-design/Design-box/graphs/contributors" },
+        { "label": "Releases",     "href": "https://github.com/Recho-design/Design-box/releases" }
       ]},
       { "title": "Docs",    "links": [
-        { "label": "Quickstart",     "href": "https://github.com/nexu-io/open-design/blob/main/QUICKSTART.md" },
-        { "label": "Architecture",   "href": "https://github.com/nexu-io/open-design/blob/main/docs/architecture.md" },
-        { "label": "Skill Protocol", "href": "https://github.com/nexu-io/open-design/blob/main/docs/skills-protocol.md" },
-        { "label": "Roadmap",        "href": "https://github.com/nexu-io/open-design/blob/main/docs/roadmap.md" }
+        { "label": "Quickstart",     "href": "https://github.com/Recho-design/Design-box/blob/main/QUICKSTART.md" },
+        { "label": "Architecture",   "href": "https://github.com/Recho-design/Design-box/blob/main/docs/architecture.md" },
+        { "label": "Skill Protocol", "href": "https://github.com/Recho-design/Design-box/blob/main/docs/skills-protocol.md" },
+        { "label": "Roadmap",        "href": "https://github.com/Recho-design/Design-box/blob/main/docs/roadmap.md" }
       ]}
     ],
     "mega": [

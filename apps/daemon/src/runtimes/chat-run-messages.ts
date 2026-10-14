@@ -2,7 +2,9 @@ import { performance } from 'node:perf_hooks';
 import type Database from 'better-sqlite3';
 import type { PersistedAgentEvent } from '@open-design/contracts';
 import { MAX_ARTIFACT_FOCUS_SHOW, MAX_NEXT_STEP_SUGGESTIONS } from '@open-design/contracts';
-import type { RunFinishedProps } from '@open-design/contracts/analytics';
+// The event-shape projections below used to be typed against the removed
+// analytics wire schema. They now return plain property bags.
+type RunFinishedProps = Record<string, unknown>;
 import {
   appendMessageAgentEvents,
   clearMessageAgentEventBatches,
@@ -187,16 +189,22 @@ function recordRunEventStorageShape(
   }
 }
 
+/**
+ * The storage-shape keys a run may report. Every key is optional: a run whose
+ * events never went through this process (a daemon restart) reports none of
+ * them, and must not be given zero-filled values for a shape nobody observed.
+ */
+export type RunEventStorageShapeAnalytics = {
+  storage_largest_event_chars?: number;
+  storage_largest_event_kind?: string;
+  storage_truncated_event_count?: number;
+  storage_truncated_original_bytes?: number;
+};
+
 /** In-process event shape counters; absent after a daemon restart, never 0-filled. */
 export function runEventStorageShapeAnalytics(
   run: ChatRunMessageState,
-): Pick<
-  RunFinishedProps,
-  | 'storage_largest_event_chars'
-  | 'storage_largest_event_kind'
-  | 'storage_truncated_event_count'
-  | 'storage_truncated_original_bytes'
-> {
+): RunEventStorageShapeAnalytics {
   const shape = runEventStorageShapes.get(run);
   if (!shape) return {};
   return {

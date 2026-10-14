@@ -162,9 +162,9 @@ export async function readDefaultMailtoHandlerBundleId(
 }
 
 // The address a first-party mailto is addressed to, for the "copied to your
-// clipboard" fallback. `mailto:support@open-design.ai?subject=…` → the
-// support address; anything unparseable yields null and the caller skips the
-// notice rather than copying garbage.
+// clipboard" fallback. `mailto:someone@example.com?subject=…` → that address;
+// anything unparseable yields null and the caller skips the notice rather than
+// copying garbage.
 export function mailtoAddress(url: string): string | null {
   try {
     const parsed = new URL(url);

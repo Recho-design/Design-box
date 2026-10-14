@@ -11,7 +11,6 @@
 // browser already filters at 50 ms; bumping to 100 ms here halves the
 // event volume while still catching every task a human notices.
 
-import { reportSafetyEvent } from '../analytics/error-tracking';
 
 const MIN_DURATION_MS = 100;
 
@@ -29,23 +28,7 @@ export function installLongTaskObserver(): () => void {
   observer = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       if (entry.duration < MIN_DURATION_MS) continue;
-      // The `attribution` array on a PerformanceLongTaskTiming entry
-      // names the script / frame that caused the block (e.g. an iframe
-      // child for file-viewer renders). The Long Tasks API surface is
-      // not fully covered by TypeScript's lib.dom so we read it through
-      // an `unknown` cast rather than a hand-rolled type.
-      const attribution = (entry as unknown as {
-        attribution?: Array<{ containerType?: string; containerName?: string; containerSrc?: string }>;
-      }).attribution?.[0];
-      reportSafetyEvent('client_long_task', {
-        duration_ms: Math.round(entry.duration),
-        start_time_ms: Math.round(entry.startTime),
-        container_type: attribution?.containerType,
-        container_name: attribution?.containerName,
-        // containerSrc can be a full URL that may include query strings.
-        // Trimmed to origin+pathname; full URL scrub lives in error-tracking.
-        container_src_origin: stripUrlQuery(attribution?.containerSrc),
-      });
+      // reportSafetyEvent removed
     }
   });
 

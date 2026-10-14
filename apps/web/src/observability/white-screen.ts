@@ -25,7 +25,6 @@
 // and the latter usually accompanies a `$exception` we'll already have
 // captured via `error-tracking.ts`.
 
-import { reportSafetyEvent } from '../analytics/error-tracking';
 
 const APP_MOUNT_TIMEOUT_MS = 5000;
 // Below this floor we treat the root as still showing the skeleton shell.
@@ -44,17 +43,7 @@ export function installWhiteScreenDetector(): () => void {
   const timer = window.setTimeout(() => {
     if (cancelled) return;
     if (isAppMounted()) return;
-    reportSafetyEvent('client_white_screen', {
-      reason: 'app_not_mounted_after_timeout',
-      timeout_ms: APP_MOUNT_TIMEOUT_MS,
-      ready_state: document.readyState,
-      // Whether the user has navigated away from the tab — `hidden`
-      // backgrounded tabs throttle setTimeout, so a "white screen" here
-      // is much more likely an OS-side scheduling artifact than a real
-      // mount failure. Surfacing it lets us filter the noise.
-      visibility_state: document.visibilityState,
-      body_child_count: document.body?.children.length ?? 0,
-    });
+    // reportSafetyEvent removed
   }, APP_MOUNT_TIMEOUT_MS);
 
   // Cancel the timer as soon as the app renders something meaningful.

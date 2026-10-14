@@ -2,24 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { flushSync } from 'react-dom';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { Button } from '@open-design/components';
-import { reportAgentDetectDiagnostics } from './analytics/agent-detect';
-import { useAnalytics } from './analytics/provider';
-import {
-  trackFileUploadResult,
-  trackProjectCreateResult,
-} from './analytics/events';
-import { deriveUploadCohort } from './analytics/upload-tracking';
-import { setPendingDesignSystemCreateEntry } from './analytics/ds-create-entry';
-import { detectClientType } from './analytics/identity';
+import { detectClientType } from './runtime/client-type';
 import {
   stashOnboardingEntryForProject,
   type OnboardingEntry,
 } from './onboarding/onboarding-entry';
-import {
-  deriveConfigureGlobals,
-  projectKindFromMetadataToTracking,
-  fidelityToTracking,
-} from '@open-design/contracts/analytics';
 import type {
   ChatSessionMode,
   CreateProjectExampleReference,
@@ -83,7 +70,6 @@ import {
   type SettingsSection,
   type SettingsHighlight,
 } from './components/SettingsDialog';
-import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import { TestCampaignModal } from './components/TestCampaignModal';
 import { ProductionCampaignModal } from './components/ProductionCampaignModal';
 import {
@@ -470,18 +456,9 @@ export async function persistComposioConfigChange(
 }
 
 export function buildPersistedConfig(next: AppConfig, current: AppConfig): AppConfig {
-  const stalePrivacySnapshot =
-    current.privacyDecisionAt != null && next.privacyDecisionAt == null;
   return {
     ...next,
     onboardingCompleted: current.onboardingCompleted ? true : next.onboardingCompleted,
-    ...(stalePrivacySnapshot
-      ? {
-          installationId: current.installationId,
-          privacyDecisionAt: current.privacyDecisionAt,
-          telemetry: current.telemetry,
-        }
-      : {}),
     composio: next.composio
       ? {
           apiKey: '',
@@ -918,13 +895,7 @@ function AppInner() {
   // otherwise be mistaken for a real mount. Survives subsequent render
   // crashes — once App has mounted at least once, it's no longer a white
   // screen (subsequent failures show up as `$exception`).
-  useEffect(() => {
-    if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-od-app-mounted', '1');
-      document.querySelectorAll('.od-loading-shell').forEach((node) => node.remove());
-    }
-  }, []);
-  // Desktop vibrancy focus response: an unfocused window drops the cream
+    // Desktop vibrancy focus response: an unfocused window drops the cream
   // scrim to let the wallpaper show through more clearly; on focus the scrim
   // returns to full strength (app-wash.css keys off this class).
   useEffect(() => {
@@ -1059,10 +1030,7 @@ function AppInner() {
     projectIds: ReadonlySet<string>;
   } | null>(null);
   const projectsRef = useRef<Project[]>(projects);
-  useEffect(() => {
-    projectsRef.current = projects;
-  }, [projects]);
-  // Project names from another member's team-catalog row are authoritative:
+    // Project names from another member's team-catalog row are authoritative:
   // the local mirror can carry an older real name (not only "共享项目") with a
   // newer local timestamp. Scope keys prevent a project id observed in one
   // workspace/member context from leaking its title authority into another.
@@ -1370,8 +1338,7 @@ function AppInner() {
     }
   }
   const projectScopeRefreshMountedRef = useRef(false);
-  const analytics = useAnalytics();
-
+  
   // Single-flight guard for `/api/agents?stream=1`: beginning a new request
   // physically aborts the previous stream, not just invalidates its
   // callbacks. Stacked live streams are what deadlocked the packaged app —
@@ -1390,12 +1357,6 @@ function AppInner() {
     return agentStreamRequestSeqRef.current === requestId;
   }, []);
 
-
-  // v2 schema removed the standalone `app_launch` event; the initial
-  // page_view fires from each top-level page surface (home / projects /
-  // automations / plugins / design_systems / integrations) instead.
-  // `detectClientType` still feeds analytics identity via the provider.
-  void detectClientType;
 
   const rememberLocalProject = useCallback((projectId: string) => {
     pendingLocalProjectIdsRef.current.add(projectId);
@@ -1588,26 +1549,6 @@ function AppInner() {
     return true;
   }, []);
 
-  // Propagate the Privacy toggle through to PostHog without a reload —
-  // posthog-js's opt_out_capturing flips a localStorage flag that makes
-  // every subsequent capture() a no-op. When the user opts back in we
-  // call opt_in_capturing to resume.
-  useEffect(() => {
-    analytics.setConsent(config.telemetry?.metrics === true);
-  }, [analytics.setConsent, config.telemetry?.metrics]);
-
-  // Sync PostHog's distinct_id with the anonymous installationId, both on
-  // first opt-in (when the daemon stamps a fresh id) and on Delete-my-data
-  // rotation (when PrivacySection.tsx generates a new one). posthog-js
-  // caches the previous id in localStorage; identify() alone would stitch
-  // the two ids together, so applyIdentity() does reset() first to
-  // guarantee the new session is fully decoupled from the deleted one.
-  useEffect(() => {
-    if (config.telemetry?.metrics !== true) return;
-    analytics.setIdentity(config.installationId ?? null);
-  }, [analytics.setIdentity, config.installationId, config.telemetry?.metrics]);
-
-
   // Tab-scope identity key, fed to WorkspaceTabsBar so it can close every open
   // tab down to a single fresh Home tab whenever the caller's identity
   // changes — signing out, signing in as a different account, or switching
@@ -1640,33 +1581,7 @@ function AppInner() {
   // lands asynchronously after this effect's first run) does not stamp
   // the first home/projects/plugins page_view with
   // has_available_configure_cli=false / configure_availability=unavailable
-  // on machines that DO have an installed CLI. While the probe is in
-  // flight we leave the boot defaults ('unknown'/'unknown') in place,
-  // matching what the helper would return for an empty agent list with
-  // no mode pinned.
-  useEffect(() => {
-    if (agentsLoading) return;
-    const byokConfigured = (() => {
-      const protocols = config.apiProtocolConfigs;
-      if (!protocols) return Boolean(config.apiKey?.trim());
-      return Object.values(protocols).some(
-        (cfg) => Boolean(cfg?.apiKey?.trim()),
-      );
-    })();
-    const globals = deriveConfigureGlobals({
-      mode: config.mode,
-      agentId: config.agentId,
-      agents: agents.map((a) => ({ id: a.id, available: a.available })),
-      byokConfigured,    });
-    analytics.setConfigureGlobals(globals);
-  }, [
-    analytics.setConfigureGlobals,
-    agentsLoading,    config.mode,
-    config.agentId,
-    config.apiKey,
-    config.apiProtocolConfigs,
-    agents,
-  ]);
+
 
   // Stamp the app appearance onto the <html> element so CSS variables pick it
   // up. The theme itself is a constant (light-only), but the accent still comes
@@ -1689,11 +1604,7 @@ function AppInner() {
   // card-click handler suspends the gate synchronously and this effect keeps
   // it authoritative for every other entry path (deep links, quick switcher)
   // and resumes it when the user returns home (Batch A §4.2).
-  useEffect(() => {
-    if (route.kind === 'project') suspendThumbnailLoads();
-    else resumeThumbnailLoads();
-  }, [route.kind]);
-  // Gate the privacy banner on three things:
+    // Gate the privacy banner on three things:
   //   1. Daemon config has hydrated (privacyDecisionAt is daemon-owned).
   //   2. The user has not yet made a privacy decision.
   //   3. Onboarding is complete (Skip and design-system creation both flip
@@ -1704,10 +1615,6 @@ function AppInner() {
   // is running. Settings is irrelevant to visibility; the banner sits above
   // the modal-backdrop layer in index.css so opening Settings does not hide
   // it.
-  const showPrivacyConsent =
-    daemonConfigLoaded &&
-    config.privacyDecisionAt == null &&
-    config.onboardingCompleted === true;
   useEffect(() => {
     const body = activeProjectId
       ? { projectId: activeProjectId, fileName: activeFileName }
@@ -1780,8 +1687,7 @@ function AppInner() {
       })
         .then((list) => {
           if (cancelled || !isCurrentAgentStreamRequest(agentRequestId)) return;
-          reportAgentDetectDiagnostics(analytics.track, list);
-          setAgents(orderAgentsByRegistry(list));
+                    setAgents(orderAgentsByRegistry(list));
         })
         .catch((err) => {
           if (
@@ -2415,23 +2321,6 @@ function AppInner() {
     settingsDraftConfigRef.current = draft;
   }, []);
 
-  const handlePrivacyConsentChoice = useCallback((share: boolean) => {
-    const base = settingsDraftConfigRef.current ?? latestPersistedConfigRef.current;
-    const installationId = share
-      ? base.installationId ?? generateInstallationIdSafe()
-      : null;
-    void handleConfigPersist({
-      ...base,
-      installationId,
-      privacyDecisionAt: Date.now(),
-      telemetry: {
-        ...(base.telemetry ?? {}),
-        metrics: share,
-        content: share,
-      },
-    });
-  }, [handleConfigPersist]);
-
   /**
    * Explicit Composio API-key save. Called from the section-local
    * "Save key" button so secrets never ride the autosave keystroke
@@ -2565,8 +2454,7 @@ function AppInner() {
           },
         });
         const ordered = orderAgentsByRegistry(next);
-        reportAgentDetectDiagnostics(analytics.track, ordered);
-        if (isCurrentAgentStreamRequest(agentRequestId)) {
+                if (isCurrentAgentStreamRequest(agentRequestId)) {
           setAgents(ordered);
           setAgentsLoading(false);
         }
@@ -2744,7 +2632,6 @@ function AppInner() {
 
       const metadata = mergeLinkedDirsIntoMetadata(input.metadata, input.linkedDirs);
       const kind = metadata?.kind ?? null;
-      const fidelity = fidelityToTracking(metadata?.fidelity ?? null);
       const creationSource: 'blank' | 'template' | 'zip' | 'folder' =
         kind === 'template' ? 'template' : 'blank';
       let createWorkspaceContext: WorkspaceCollabContext | null = null;
@@ -2801,21 +2688,7 @@ function AppInner() {
           err instanceof Error && err.message.trim()
             ? err.message
             : 'CREATE_REQUEST_FAILED';
-        trackProjectCreateResult(
-          analytics.track,
-          {
-            page_name: 'home',
-            area: 'new_project',
-            project_source: 'create_button',
-            project_id: null,
-            project_kind: projectKindFromMetadataToTracking(metadata),
-            fidelity,
-            result: 'failed',
-            error_code: errorCode,
-          },
-          { requestId: input.requestId },
-        );
-        if (optimisticProjectId) {
+                if (optimisticProjectId) {
           rollbackOptimisticProjectCreation(
             optimisticProjectId,
             stagedFiles,
@@ -2829,23 +2702,7 @@ function AppInner() {
         throw err;
       }
       if (!result) {
-        trackProjectCreateResult(
-          analytics.track,
-          {
-            page_name: 'home',
-            area: 'new_project',
-            project_source: 'create_button',
-            project_id: null,
-            project_kind: projectKindFromMetadataToTracking(metadata),
-            fidelity,
-            ...(input.pluginId ? { plugin_id: input.pluginId } : {}),
-            ...(input.pluginType ? { plugin_type: input.pluginType } : {}),
-            result: 'failed',
-            error_code: 'CREATE_REQUEST_FAILED',
-          },
-          { requestId: input.requestId },
-        );
-        return false;
+                return false;
       }
       const project = result.appliedPluginSnapshotId
         ? {
@@ -2922,12 +2779,7 @@ function AppInner() {
         );
         let firstMessageAttachments: ChatAttachment[] = [];
         if (!workingDirHandoffFailed && pendingFiles.length > 0) {
-          // Home composer attaches stay client-side until submit lands a
-          // project; the actual upload happens here. v2 doc wants one
-          // file_upload_result per surface — `page_name='home'` /
-          // `area='chat_composer'` so it's distinguishable from the
-          // file_manager Upload button and the chat_panel composer.
-          const cohort = deriveUploadCohort(pendingFiles);
+
           // One request per file at `STAGED_UPLOAD_CONCURRENCY`, the same shape
           // the in-project composer has used since the staged-attachment work.
           // The single 12-file batch this replaces made every attachment wait
@@ -2964,33 +2816,8 @@ function AppInner() {
           if (partial) {
             console.warn('Some Home attachments failed to upload', failedUploads);
           }
-          trackFileUploadResult(analytics.track, {
-            page_name: 'home',
-            area: 'chat_composer',
-            project_id: result.project.id,
-            ...cohort,
-            result: partial ? 'failed' : 'success',
-            ...(partial && firstUploadError
-              ? { error_code: firstUploadError }
-              : {}),
-          });
-        }
-        trackProjectCreateResult(
-          analytics.track,
-          {
-            page_name: 'home',
-            area: 'new_project',
-            project_source: 'create_button',
-            project_id: result.project.id,
-            project_kind: projectKindFromMetadataToTracking(metadata),
-            fidelity,
-            ...(input.pluginId ? { plugin_id: input.pluginId } : {}),
-            ...(input.pluginType ? { plugin_type: input.pluginType } : {}),
-            result: 'success',
-          },
-          { requestId: input.requestId },
-        );
-        // PluginLoopHome flow: the user already typed (or accepted) the
+                  }
+                // PluginLoopHome flow: the user already typed (or accepted) the
         // first message on Home. Mark this project so ProjectView fires
         // sendMessage(pendingPrompt) once on mount instead of just
         // pre-filling the composer. Scoped to sessionStorage so a page
@@ -3099,7 +2926,7 @@ function AppInner() {
       return true;
     },
     [
-      analytics.track,
+      
       beginOptimisticProjectCreation,
       rememberLocalProject,
       rollbackOptimisticProjectCreation,
@@ -5149,8 +4976,7 @@ function AppInner() {
         onTeamProjectContentReady={handleTeamProjectContentReady}
         onChangeDefaultDesignSystem={handleChangeDefaultDesignSystem}
         onCreateDesignSystem={() => {
-          setPendingDesignSystemCreateEntry('design_systems_page');
-          navigate({ kind: 'design-system-create' });
+                    navigate({ kind: 'design-system-create' });
         }}
         onOpenDesignSystem={(id: string) => navigate({ kind: 'design-system-detail', designSystemId: id })}
         onDesignSystemsRefresh={refreshDesignSystems}
@@ -5214,8 +5040,6 @@ function AppInner() {
                 ? projectRouteWorkspaceContext.loading
                 : undefined
             }
-            metricsConsent={config.telemetry?.metrics === true}
-            installationId={config.installationId}
           />
         ) : null}
         {route.kind === 'project'
@@ -5297,42 +5121,7 @@ function AppInner() {
           onDismiss={() => setProjectOpenError(null)}
         />
       ) : null}
-      {/* First-run privacy consent banner. It waits for daemon config
-          hydration because privacyDecisionAt is daemon-owned and stripped
-          from localStorage. It waits for `onboardingCompleted` so first-run
-          users see the welcome panel before the disclosure (Skip and
-          finish both flip the flag). Independent of Settings: z-index in
-          index.css sits above modal backdrops so opening Settings does
-          not hide the banner. */}
-      <AnimatePresence>
-      {showPrivacyConsent ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.97 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-        >
-        <PrivacyConsentModal
-          onShare={() => {
-            // The banner owns only the privacy decision; it does not drive
-            // navigation. Choosing Share keeps the current anonymous identity
-            // when one already exists and enables the telemetry surface.
-            handlePrivacyConsentChoice(true);
-          }}
-          onDecline={() => {
-            handlePrivacyConsentChoice(false);
-          }}
-        />
-      </motion.div>
-      ) : null}
-      </AnimatePresence>
     </>
   );
 }
 
-function generateInstallationIdSafe(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `inst-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}

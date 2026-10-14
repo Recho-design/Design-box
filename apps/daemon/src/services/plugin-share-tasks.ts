@@ -1,6 +1,6 @@
 import type { randomUUID } from 'node:crypto';
 
-export type PluginShareAction = 'publish-github' | 'contribute-open-design';
+export type PluginShareAction = 'publish-github';
 
 export interface PluginShareTask {
   id: string;
@@ -63,39 +63,22 @@ function parsePluginShareCliPayload(value: string | undefined): PluginShareCliPa
 const TASK_TTL_AFTER_DONE_MS = 10 * 60 * 1000;
 const PLUGIN_SHARE_TERMINAL_STATUSES = new Set(['done', 'failed']);
 
-function pluginShareActionToCli(action: PluginShareAction) {
-  if (action === 'publish-github') {
-    return {
-      argv: ['plugin', 'publish-repo'],
-      title: 'Publish repo',
-      command: 'od plugin publish-repo',
-      successMessage: 'Published plugin to GitHub.',
-      failureCode: 'publish-repo-failed',
-    };
-  }
+function pluginShareActionToCli() {
   return {
-    argv: ['plugin', 'open-design-pr'],
-    title: 'OpenDesign PR',
-    command: 'od plugin open-design-pr',
-    successMessage: 'Opened OpenDesign PR flow.',
-    failureCode: 'open-design-pr-failed',
+    argv: ['plugin', 'publish-repo'],
+    title: 'Publish repo',
+    command: 'od plugin publish-repo',
+    successMessage: 'Published plugin to GitHub.',
+    failureCode: 'publish-repo-failed',
   };
 }
 
-function pluginShareProgressPlan(action: PluginShareAction) {
-  if (action === 'publish-github') {
-    return [
-      'Resolve GitHub owner and validate plugin metadata',
-      'Create or update the GitHub repository',
-      'Push plugin files',
-      'Return the repository URL',
-    ];
-  }
+function pluginShareProgressPlan() {
   return [
-    'Ensure the OpenDesign fork exists',
-    'Clone the fork and prepare a branch',
-    'Copy the plugin into plugins/community',
-    'Push the branch and open the PR form',
+    'Resolve GitHub owner and validate plugin metadata',
+    'Create or update the GitHub repository',
+    'Push plugin files',
+    'Return the repository URL',
   ];
 }
 
@@ -161,15 +144,14 @@ export function createPluginShareTaskStore(deps: CreatePluginShareTaskStoreDeps)
   }
 
   async function run(task: PluginShareTask, folder: string) {
-    const action = task.action ?? 'publish-github';
-    const share = pluginShareActionToCli(action);
+    const share = pluginShareActionToCli();
     appendProgress(task, `${share.title} started for ${task.path}`);
     appendProgress(task, `$ ${share.command} ${task.path}`);
-    for (const step of pluginShareProgressPlan(action)) appendProgress(task, `- ${step}`);
+    for (const step of pluginShareProgressPlan()) appendProgress(task, `- ${step}`);
     const result = await deps.execCommandViaLoginShell(
       deps.OD_NODE_BIN,
       [deps.OD_BIN, ...share.argv, folder, '--json'],
-      { timeout: action === 'publish-github' ? 240_000 : 300_000 },
+      { timeout: 240_000 },
     );
     let payload: PluginShareCliPayload | null = null;
     try {
@@ -190,12 +172,10 @@ export function createPluginShareTaskStore(deps: CreatePluginShareTaskStoreDeps)
       notify(task);
       return;
     }
-    const url = payload.repoUrl || payload.prUrl || undefined;
+    const url = payload.repoUrl || undefined;
     task.status = 'done';
     task.result = {
-      message: url
-        ? (action === 'publish-github' ? `Published plugin to ${url}.` : `Opened OpenDesign PR flow at ${url}.`)
-        : share.successMessage,
+      message: url ? `Published plugin to ${url}.` : share.successMessage,
       ...(url ? { url } : {}),
       log: stepLog,
     };

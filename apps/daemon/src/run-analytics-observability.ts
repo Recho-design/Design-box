@@ -1,19 +1,19 @@
 import type {
-  TrackingArtifactWriteSource,
-  TrackingArtifactWriteStatus,
-  TrackingByokProviderId,
-  TrackingCliProviderId,
-  TrackingFirstModelEventType,
-  TrackingRunLifecyclePhase,
-  TrackingRunPhaseTimingStatus,
-  TrackingRuntimeType,
-} from '@open-design/contracts/analytics';
+  ArtifactWriteSource,
+  ArtifactWriteStatus,
+  ByokProviderId,
+  CliProviderId,
+  FirstModelEventType,
+  RunLifecyclePhase,
+  RunPhaseTimingStatus,
+  RuntimeType,
+} from './runtimes/run-failure-vocabulary.js';
 import {
   agentIdToTracking,
   byokProtocolToTracking,
-} from '@open-design/contracts/analytics';
+} from './runtimes/run-failure-vocabulary.js';
 
-const RUNTIME_TYPES: readonly TrackingRuntimeType[] = [
+const RUNTIME_TYPES: readonly RuntimeType[] = [
   'byok',
   'local_cli',
   'none',
@@ -27,14 +27,14 @@ const RUNTIME_TYPES: readonly TrackingRuntimeType[] = [
 // hint; a valid hint wins. Anything outside the closed runtime set (missing,
 // malformed) falls back to the daemon's own derivation.
 export function runtimeTypeForRunAnalytics(args: {
-  derived: TrackingRuntimeType;
+  derived: RuntimeType;
   hint?: unknown;
-}): TrackingRuntimeType {
+}): RuntimeType {
   if (
     typeof args.hint === 'string' &&
     (RUNTIME_TYPES as readonly string[]).includes(args.hint)
   ) {
-    return args.hint as TrackingRuntimeType;
+    return args.hint as RuntimeType;
   }
   return args.derived;
 }
@@ -42,7 +42,7 @@ export function runtimeTypeForRunAnalytics(args: {
 export function agentProviderIdForRunAnalytics(args: {
   agentId: unknown;
   byokProvider?: unknown;
-}): TrackingCliProviderId | TrackingByokProviderId {
+}): CliProviderId | ByokProviderId {
   if (args.agentId === 'byok-opencode') {
     const protocol = readByokProviderProtocol(args.byokProvider);
     return byokProtocolToTracking(protocol) ?? 'other';
@@ -91,7 +91,7 @@ export interface RunTelemetryTimestamps {
   // of it. Phase boundaries anchor here; `firstModelEventAt` keeps feeding the
   // published `time_to_first_model_event_ms`.
   firstModelResponseAt?: number;
-  firstModelEventType?: TrackingFirstModelEventType;
+  firstModelEventType?: FirstModelEventType;
   firstTokenAt?: number;
   // When user-visible model output actually LEFT the daemon, which is later
   // than `firstTokenAt` by however long the title-marker stripper, the
@@ -135,7 +135,7 @@ export interface RunUsageAnalytics {
   agent_reported_model: string | null;
 }
 
-/** Compact tool histogram for PostHog `run_finished` (no inputs/outputs). */
+/** Compact tool histogram for the `run_finished` run record (no inputs/outputs). */
 export interface RunToolAnalyticsSummary {
   /** Unique toolUseIds that reported isError (not duplicate result frames). */
   tool_error_count: number;
@@ -279,9 +279,8 @@ export function perRequestUsageFromLedger(ledger: PerRequestUsageLedger): PerReq
 
 /** Collect the per-request usage records emitted by the claude-stream-json
  *  parser and check the reconciliation invariant against the run-level
- *  aggregate (`result.usage`). Pure and order-preserving so the Langfuse
- *  per-request export and the PostHog `run_finished` coverage properties both
- *  read the same source. */
+ *  aggregate (`result.usage`). Pure and order-preserving so every consumer of
+ *  this window reads the same source. */
 export function scanRunEventsForPerRequestUsageAnalytics(
   events: RunEventForAnalyticsObservability[],
 ): PerRequestUsageAnalytics {
@@ -315,7 +314,7 @@ export interface RunTimingAnalytics {
   process_spawn_duration_ms?: number;
   stdin_write_duration_ms?: number;
   time_to_first_model_event_ms?: number;
-  first_model_event_type?: TrackingFirstModelEventType;
+  first_model_event_type?: FirstModelEventType;
   time_to_first_token_ms?: number;
   time_to_first_visible_output_ms?: number;
   runtime_init_to_first_token_ms?: number;
@@ -342,20 +341,20 @@ export interface RunTimingAnalytics {
   tool_call_count: number;
   tool_duration_ms?: number;
   artifact_write_duration_ms?: number;
-  artifact_write_status?: TrackingArtifactWriteStatus;
-  artifact_write_source?: TrackingArtifactWriteSource;
+  artifact_write_status?: ArtifactWriteStatus;
+  artifact_write_source?: ArtifactWriteSource;
   finalize_duration_ms?: number;
   total_duration_ms: number;
-  bottleneck_phase?: TrackingRunLifecyclePhase;
+  bottleneck_phase?: RunLifecyclePhase;
   // Which phase-boundary definition produced `bottleneck_phase`. Rows from
   // different versions are not comparable; filter, do not average.
   phase_schema_version?: number;
-  last_observed_phase?: TrackingRunLifecyclePhase;
-  phase_timing_status?: TrackingRunPhaseTimingStatus;
+  last_observed_phase?: RunLifecyclePhase;
+  phase_timing_status?: RunPhaseTimingStatus;
   attempt_index?: number;
   attempt_duration_ms?: number;
   attempt_time_to_first_token_ms?: number;
-  attempt_terminal_phase?: TrackingRunLifecyclePhase;
+  attempt_terminal_phase?: RunLifecyclePhase;
 }
 
 export function hasExplicitRequestedModelForAnalytics(value: unknown): value is string {
@@ -429,7 +428,7 @@ function latestDefinedNumber(...values: Array<number | undefined>): number | und
   return undefined;
 }
 
-function measuredStatus(values: Array<number | undefined>): TrackingRunPhaseTimingStatus {
+function measuredStatus(values: Array<number | undefined>): RunPhaseTimingStatus {
   if (values.length === 0) return 'missing';
   const measured = values.filter((value) => value !== undefined).length;
   if (measured === 0) return 'missing';
@@ -488,8 +487,8 @@ const RUN_PHASE_SCHEMA_VERSION = 2;
 function setMeasuredDuration(
   result: Partial<RunTimingAnalytics>,
   key: string,
-  phaseDurations: Array<{ phase: TrackingRunLifecyclePhase; duration: number }>,
-  phase: TrackingRunLifecyclePhase,
+  phaseDurations: Array<{ phase: RunLifecyclePhase; duration: number }>,
+  phase: RunLifecyclePhase,
   start: number | undefined,
   end: number | undefined,
 ): void {
@@ -500,9 +499,9 @@ function setMeasuredDuration(
 }
 
 function largestMeasuredPhase(
-  phaseDurations: Array<{ phase: TrackingRunLifecyclePhase; duration: number }>,
-): TrackingRunLifecyclePhase | undefined {
-  let largest: { phase: TrackingRunLifecyclePhase; duration: number } | undefined;
+  phaseDurations: Array<{ phase: RunLifecyclePhase; duration: number }>,
+): RunLifecyclePhase | undefined {
+  let largest: { phase: RunLifecyclePhase; duration: number } | undefined;
   for (const entry of phaseDurations) {
     if (!largest || entry.duration > largest.duration) largest = entry;
   }
@@ -766,7 +765,7 @@ export function scanRunEventsForUsageAnalytics(
         }
         // Any real provider token field counts as provider_usage (not only
         // input/output) so thought-only or total-only ACP payloads still mark
-        // the source correctly for PostHog/Langfuse.
+        // the source correctly in the run record.
         if (
           fields.inputTokens !== undefined ||
           fields.outputTokens !== undefined ||
@@ -957,7 +956,7 @@ export function scanRunEventsForUsageAnalytics(
 }
 
 /**
- * Canonical tool families shipped to PostHog. Raw ACP/CLI tool names are
+ * Canonical tool families kept in the run record. Raw ACP/CLI tool names are
  * never forwarded — only this small allowlist (plus `other`).
  */
 const TOOL_ANALYTICS_FAMILIES = [
@@ -1001,7 +1000,7 @@ const TOOL_ANALYTICS_FAMILY_ALIASES: Readonly<Record<string, ToolAnalyticsFamily
 };
 
 /**
- * Map an arbitrary tool name to a PostHog-safe canonical family.
+ * Map an arbitrary tool name to a record-safe canonical family.
  * Never returns paths, URLs, or free-text titles.
  */
 export function canonicalizeToolAnalyticsName(raw: string | undefined): ToolAnalyticsFamily {
@@ -1040,7 +1039,7 @@ export function canonicalizeToolAnalyticsName(raw: string | undefined): ToolAnal
 /**
  * Cheap tool family histogram + error counts from tool_use/tool_result events.
  * Canonicalizes names to a small allowlist; never includes inputs/outputs
- * (PostHog payload safety). tool_error_count is unique failed toolUseIds.
+ * (payload safety). tool_error_count is unique failed toolUseIds.
  */
 export function summarizeToolAnalytics(
   events: RunEventForAnalyticsObservability[],
@@ -1115,8 +1114,8 @@ function eventTimestamp(
 /**
  * When the model started responding, for phase-boundary purposes.
  *
- * Exported because two sinks report this window -- PostHog via
- * `model_active_duration_ms` and the Langfuse phase diagnostics -- and they are
+ * Exported because more than one reader reports this window -- the run record's
+ * `model_active_duration_ms` and the phase diagnostics -- and they are
  * only comparable if they anchor identically. Re-listing the marks at each call
  * site is what let them drift apart before.
  *
@@ -1179,11 +1178,11 @@ export function summarizeRunTimingAnalytics(args: {
   let toolDurationMs = 0;
   const toolIntervals: Array<{ start: number; end: number }> = [];
   let firstToolUseAt: number | undefined;
-  let firstObservedModelEventType: TrackingFirstModelEventType | undefined;
+  let firstObservedModelEventType: FirstModelEventType | undefined;
   let lastToolActivityAt: number | undefined;
   let firstArtifactWriteToolStartedAt: number | undefined;
   let firstArtifactWriteToolEndedAt: number | undefined;
-  let artifactWriteSource: TrackingArtifactWriteSource | undefined;
+  let artifactWriteSource: ArtifactWriteSource | undefined;
   let liveArtifactSeen = false;
   const openTools = new Map<string, number>();
   // When each still-open tool_use was OBSERVED, on the daemon's clock. Kept
@@ -1362,7 +1361,7 @@ export function summarizeRunTimingAnalytics(args: {
     telemetry.firstArtifactWriteAt ??
     firstArtifactWriteToolEndedAt ??
     (liveArtifactSeen ? lastToolActivityAt : undefined);
-  const phaseDurations: Array<{ phase: TrackingRunLifecyclePhase; duration: number }> = [];
+  const phaseDurations: Array<{ phase: RunLifecyclePhase; duration: number }> = [];
   const result: RunTimingAnalytics = {
     tool_call_count: toolCallCount,
     total_duration_ms: Math.round(totalDurationMs),

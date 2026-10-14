@@ -25,7 +25,6 @@ od:
   platform: desktop
   scenario: personal
   featured: 0.04
-  upstream: "https://github.com/nexu-io/html-anything"
   preview:
     type: html
     entry: index.html

@@ -103,16 +103,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   orbit: DEFAULT_ORBIT,
   projectLocations: [],
   defaultProjectLocationId: 'default',
-  // Telemetry defaults to ON so fresh-install users emit onboarding /
-  // ui_click events from the first frame. The disclosure modal still
-  // appears after `onboardingCompleted` flips, and Settings → Privacy
-  // remains the one-click opt-out. Without these defaults the gate at
-  // `daemon/src/analytics.ts` (`if (telemetry?.metrics !== true) return`)
-  // dropped every event fired during onboarding because no consent
-  // existed yet — observed live on the prerelease.10 QA run, which left
-  // zero `page_view pn=onboarding` rows on PostHog despite the user
-  // completing the flow.
-  telemetry: { metrics: true, content: true },
 };
 
 /** Well-known providers with pre-filled base URLs. */
@@ -684,9 +674,6 @@ export async function syncComposioConfigToDaemon(
 // fully resets the install identity, with no residual cohort key
 // silently sitting in browser storage where the user can't see it.
 const DAEMON_OWNED_KEYS = new Set<keyof AppConfig>([
-  'installationId',
-  'telemetry',
-  'privacyDecisionAt',
   'allowSilentUpdates',
 ]);
 
@@ -792,48 +779,6 @@ export function mergeDaemonConfig(
   }
   if (daemonConfig.orbit !== undefined) {
     next.orbit = normalizeOrbit(daemonConfig.orbit);
-  }
-  if (daemonConfig.installationId !== undefined) {
-    next.installationId = daemonConfig.installationId;
-  }
-  if (daemonConfig.telemetry !== undefined) {
-    next.telemetry = { ...daemonConfig.telemetry };
-  }
-  if (daemonConfig.privacyDecisionAt !== undefined) {
-    next.privacyDecisionAt = daemonConfig.privacyDecisionAt;
-  } else if (
-    daemonConfig.installationId !== undefined ||
-    daemonConfig.telemetry !== undefined
-  ) {
-    // One-shot migration for configs created before privacyDecisionAt
-    // existed. If the daemon already has an id or telemetry prefs, the user
-    // has resolved the first-run prompt and should not see it again.
-    next.privacyDecisionAt = Date.now();
-  }
-  // Default-on reporting. Unless the user has explicitly opted out
-  // (Settings → "Don't share", which persists telemetry.metrics === false
-  // together with installationId: null), an install reports with the
-  // product's default telemetry channels on and carries a stable
-  // installationId. This is the single source of the "Opted out" state:
-  // previously an upgraded or never-prompted install could sit with
-  // telemetry on but no id (the daemon ships a metrics+content default but
-  // never mints an id), which the Settings → Privacy field rendered as
-  // "Opted out" even though the user never declined. We mint the id and
-  // keep the default channels on so the displayed state matches the product
-  // default — the same metrics+content surface the first-run banner's
-  // "Share" choice enables (artifactManifest stays off, as it
-  // does there).
-  // This does NOT override an explicit opt-out: metrics === false short-
-  // circuits the whole block, and any channel the user already turned off
-  // is preserved via the nullish-coalesce.
-  const explicitlyOptedOut = next.telemetry?.metrics === false;
-  if (!explicitlyOptedOut && !next.installationId) {
-    next.installationId = randomUUID();
-    next.telemetry = {
-      metrics: true,
-      content: next.telemetry?.content ?? true,
-      artifactManifest: next.telemetry?.artifactManifest ?? false,
-    };
   }
   if (daemonConfig.allowSilentUpdates !== undefined) {
     next.allowSilentUpdates = daemonConfig.allowSilentUpdates;
@@ -968,9 +913,6 @@ export async function syncConfigToDaemon(
     disabledSkills: config.disabledSkills,
     disabledDesignSystems: config.disabledDesignSystems,
     orbit: normalizeOrbit(config.orbit),
-    installationId: config.installationId,
-    telemetry: config.telemetry,
-    privacyDecisionAt: config.privacyDecisionAt,
     allowSilentUpdates: config.allowSilentUpdates,
     customInstructions: config.customInstructions ?? null,
     projectLocations: config.projectLocations ?? [],

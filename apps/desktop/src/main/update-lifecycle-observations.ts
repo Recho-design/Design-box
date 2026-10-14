@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { link, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { parseUpdateLifecycleObservation, type UpdateLifecycleObservation } from "@open-design/contracts/analytics";
+import { parseUpdateLifecycleObservation, type UpdateLifecycleObservation } from "@open-design/contracts/updater/update-lifecycle";
 import { isSafeInstallerObservationFlowId, type InstallerObservationHandle } from "./installer-observations.js";
 
-export type { UpdateLifecycleObservation } from "@open-design/contracts/analytics";
+export type { UpdateLifecycleObservation } from "@open-design/contracts/updater/update-lifecycle";
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Local best-effort telemetry must never hold an updater transition indefinitely. */
+/** Local best-effort observation writes must never hold an updater transition indefinitely. */
 async function boundedObservation(work: () => Promise<void>): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

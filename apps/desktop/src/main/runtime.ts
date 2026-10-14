@@ -474,14 +474,6 @@ export type DesktopRuntimeOptions = {
    */
   splashStartedAt?: number;
   updater?: DesktopUpdater;
-  /**
-   * Fired once the main window is actually revealed (the web app mounted and
-   * the window is shown) — the real "app is running" moment, distinct from
-   * `createDesktopRuntime` returning (which starts async bootstrap via
-   * `void tick()` and returns before the first load). Used to mark the session
-   * as having reached running for abnormal-exit detection.
-   */
-  onRevealed?: () => void;
   onUpdateMenuLabels?: (labels: OpenDesignHostUpdaterMenuLabels) => void;
 };
 
@@ -1079,30 +1071,34 @@ interface RendererCrashScreenContext {
   exitCode: number | null;
 }
 
-const CRASH_REPORT_ISSUES_URL = "https://github.com/nexu-io/open-design/issues/new";
-const SUPPORT_EMAIL = "support@open-design.ai";
-// Every address the app is allowed to hand to the OS mail client. Keep this in
-// sync with the renderer's own contact affordances (`CONTACT_EMAIL_URL` in
-// `apps/web/src/components/EntryNavRail.tsx`); an address that is not listed
-// here silently does nothing when clicked in the packaged shell.
-const FIRST_PARTY_EMAILS = new Set([SUPPORT_EMAIL, "contact@open.design"]);
+const CRASH_REPORT_ISSUES_URL = "https://github.com/Recho-design/Design-box/issues/new";
+// Addresses the app is allowed to hand to the OS mail client. This fork has no
+// staffed support mailbox, so the list is empty and every contact affordance is
+// the issue tracker above; the crash screen's email line hides itself when the
+// mailto it would build has no address. Keep this in sync with the renderer's
+// own contact affordances — an address that is not listed here silently does
+// nothing when clicked in the packaged shell.
+const FIRST_PARTY_EMAILS: ReadonlySet<string> = new Set<string>();
 
-// Narrow allowlist for the crash screen's "Email us" action: only a mailto
-// addressed to our own support address, carrying nothing but the crash-screen's
-// own `subject`/`body`, opens. Validating just protocol+pathname is not enough —
-// `mailto:support@open-design.ai?bcc=attacker@example.com` (or `?to=`/`?cc=`)
-// keeps `pathname === "support@open-design.ai"` yet smuggles extra recipients
-// and headers through to `shell.openExternal`. Because this predicate widens the
-// renderer-exposed `shell:open-external` bridge past http, a compromised
-// renderer could otherwise launch the mail client with arbitrary recipients, so
-// reject any `to`/`cc`/`bcc`/unknown query key.
+// Allowlist for the crash screen's "Email us" action: only a mailto addressed
+// to one of our own addresses, carrying nothing but the crash screen's own
+// `subject`/`body`, opens. The list is empty in this fork (no staffed support
+// mailbox), so the crash screen never builds one and its email line hides
+// itself; the predicate stays as the boundary for a deployment that adds an
+// address back. Validating just protocol+pathname is not enough — a
+// `?bcc=`/`?to=`/`?cc=` query keeps the address intact yet smuggles extra
+// recipients and headers through to `shell.openExternal`. Because this
+// predicate widens the renderer-exposed `shell:open-external` bridge past http,
+// a compromised renderer could otherwise launch the mail client with arbitrary
+// recipients, so reject any `to`/`cc`/`bcc`/unknown query key.
 export function isSupportMailtoUrl(url: string): boolean {
-  return isMailtoUrlAddressedTo(url, (address) => address === SUPPORT_EMAIL);
+  return isMailtoUrlAddressedTo(url, (address) => FIRST_PARTY_EMAILS.has(address));
 }
 
 // Same allowlist discipline as `isSupportMailtoUrl`, widened to every address
-// this app owns. A `mailto:` the user clicks in the UI never reaches the OS on
-// its own: Electron raises `will-navigate` for it, and a handler that only
+// this app owns — the predicate `will-navigate` and the child-window handler
+// consult. A `mailto:` the user clicks in the UI never reaches the OS on its
+// own: Electron raises `will-navigate` for it, and a handler that only
 // recognises http(s) leaves the navigation to be dropped, so the click reads as
 // dead. Routing first-party mailtos through `shell.openExternal` is what
 // actually opens the mail client.
@@ -1169,8 +1165,11 @@ function buildCrashReportUrl(ctx: RendererCrashScreenContext): string {
 }
 
 // Prefilled mailto for the "Email us" action — same auto-filled diagnostics as
-// the issue, for users who'd rather email than open a GitHub account.
-function buildCrashMailtoUrl(ctx: RendererCrashScreenContext): string {
+// the issue. Empty when the app has no first-party support address to send to
+// (this fork), in which case the crash screen hides the email line.
+function buildCrashMailtoUrl(ctx: RendererCrashScreenContext): string | null {
+  const address = [...FIRST_PARTY_EMAILS][0];
+  if (address == null) return null;
   const subject = `OpenDesign keeps crashing (renderer ${ctx.reason})`;
   const body = [
     "The OpenDesign desktop app crashed several times in a row on my device.",
@@ -1181,7 +1180,7 @@ function buildCrashMailtoUrl(ctx: RendererCrashScreenContext): string {
     `OS: ${osLabelForReport(ctx.platform)} ${ctx.osVersion}`,
     `Renderer exit: ${ctx.reason}, code ${formatRendererExitCode(ctx.exitCode)}`,
   ].join("\n");
-  return `mailto:${SUPPORT_EMAIL}?${new URLSearchParams({ subject, body }).toString()}`;
+  return `mailto:${address}?${new URLSearchParams({ subject, body }).toString()}`;
 }
 
 function createRendererCrashHtml(ctx: RendererCrashScreenContext): string {
@@ -1296,7 +1295,7 @@ function createRendererCrashHtml(ctx: RendererCrashScreenContext): string {
       </div>
       <p class="hint" id="diag-note">Saved logs include a crash memory snapshot so we can find the cause. Nothing is sent unless you choose to share it.</p>
       <p class="status" id="status" aria-live="polite"></p>
-      <p class="email" id="email-line">Prefer email? <a href="#" id="email">Contact ${SUPPORT_EMAIL}</a></p>
+      <p class="email" id="email-line"${mailtoUrl == null ? " hidden" : ""}>Prefer email? <a href="#" id="email">Contact ${[...FIRST_PARTY_EMAILS][0] ?? ""}</a></p>
       <p class="hint">If this keeps happening, quitting and reinstalling OpenDesign usually resolves it.</p>
     </div>
     <script>
@@ -1321,7 +1320,7 @@ function createRendererCrashHtml(ctx: RendererCrashScreenContext): string {
           } else { report.style.display = "none"; }
         }
         if (email) {
-          if (canOpen) {
+          if (canOpen && mailtoUrl) {
             email.addEventListener("click", function (e) { e.preventDefault(); host.openExternal(mailtoUrl); });
           } else if (emailLine) { emailLine.style.display = "none"; }
         }
@@ -1947,50 +1946,6 @@ function checkOptionsFromHost(options: unknown): { autoDownload?: boolean } | un
   return { autoDownload: payload.autoDownload };
 }
 
-async function reportRendererCrash(
-  options: DesktopRuntimeOptions,
-  properties: {
-    reason: string;
-    exit_code: number | null;
-    loop_tripped?: boolean;
-    // Set on the bounded "recovery-attempt" signal (reason === "recovery-attempt"):
-    // the Nth time the breaker re-armed and tried to actively recover this
-    // session. Lets triage see chronic loopers (index keeps climbing) apart from
-    // devices that recovered (no further recovery-attempt events).
-    recovery_attempt?: number;
-  },
-): Promise<void> {
-  try {
-    // discoverDaemonUrl returns the real http://127.0.0.1:<port> URL the
-    // sidecar daemon listens on. In tools-dev callers omit it and fall back
-    // to discoverUrl (which is also http in dev). In packaged builds it's
-    // mandatory because the renderer-only `od://app/` scheme isn't
-    // reachable from main-process Node fetch.
-    const baseUrl = (await (options.discoverDaemonUrl?.() ?? options.discoverUrl())) ?? null;
-    if (!baseUrl) return;
-    const url = new URL("/api/observability/event", baseUrl).toString();
-    await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        event: "desktop_renderer_crash",
-        properties: {
-          reason: properties.reason,
-          exit_code: properties.exit_code,
-          // Marks the single crash that tripped the loop breaker, so a crash
-          // loop is one flagged event instead of thousands of anonymous ones.
-          loop_tripped: properties.loop_tripped ?? false,
-          // Present on the bounded recovery-attempt signal; null on real crashes.
-          recovery_attempt: properties.recovery_attempt ?? null,
-        },
-      }),
-    });
-  } catch {
-    // Best-effort. The user is already in a degraded state — failing to
-    // report the crash must not cascade into another failure path.
-  }
-}
-
 /**
  * Native directory picker, parented to the renderer window that initiated
  * the IPC call. Parenting makes the dialog window-modal and hands it
@@ -2232,14 +2187,13 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
   let ticking = false;
   // Bounds the reload loop when the renderer crashes deterministically (a
   // GPU/V8 CHECK, a corrupt profile): without it a wedged device reloads →
-  // crashes → reloads forever, staying blank and flooding telemetry (one
-  // 0.14.0 machine logged 26k renderer-crash events in a day). When it opens we
-  // park on a recoverable error screen and re-arm after a quiet cooldown.
+  // crashes → reloads forever, staying blank. When it opens we park on a
+  // recoverable error screen and re-arm after a quiet cooldown.
   const rendererCrashLoop = new RendererCrashLoopBreaker();
   // Monotonic per session: how many times the breaker re-armed and tried to
   // recover (a passive reload). Not reset on a successful load, so a chronic
   // looper's index keeps climbing while a recovered device simply stops
-  // emitting recovery-attempt events.
+  // logging further recovery attempts.
   let rendererRecoveryAttempts = 0;
 
   const consoleEntries: DesktopConsoleEntry[] = [];
@@ -2376,13 +2330,10 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
     });
   });
 
-  // Renderer-process crashes are completely invisible to the web bundle's
-  // own analytics surface (the renderer is dead — no JS can run, no
-  // window.error fires). The main process is the last layer that can
-  // observe them, so we forward the event to the daemon's safety-event
-  // bridge (`POST /api/observability/event`), which posts directly to
-  // PostHog with `device_id = installationId`. Best-effort: a failure to
-  // reach the daemon must not block the crash recovery flow.
+  // Renderer-process crashes are completely invisible to the web bundle (the
+  // renderer is dead — no JS can run, no window.error fires). The main process
+  // is the last layer that can observe them, so the crash-loop breaker and the
+  // reload recovery below are driven from here.
   window.webContents.on("render-process-gone", (_event, details) => {
     // During app quit / teardown the renderer goes away and the window (and its
     // webContents) can already be destroyed when this fires. Reading getURL()
@@ -2396,26 +2347,13 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
       url: gone ? null : window.webContents.getURL(),
     });
     // During app quit / teardown the window is already destroyed; skip all
-    // crash-loop bookkeeping, telemetry, and recovery (mirrors the getURL guard
-    // above — a clean teardown must not look like a crash).
+    // crash-loop bookkeeping and recovery (mirrors the getURL guard above — a
+    // clean teardown must not look like a crash).
     if (gone) return;
     // A clean-exit is intentional teardown; only a crash / OOM / OS kill feeds
     // the crash-loop breaker and triggers recovery.
-    const isCrash = details.reason !== "clean-exit";
-    const outcome = isCrash
-      ? rendererCrashLoop.recordCrash(Date.now())
-      : { tripped: false, suppressTelemetry: rendererCrashLoop.isOpen(), justOpened: false };
-    // Report every crash up to and including the one that trips the breaker so
-    // the loop is visible in analytics, then go quiet — one wedged device must
-    // not emit tens of thousands of identical events.
-    if (!outcome.suppressTelemetry) {
-      void reportRendererCrash(options, {
-        reason: details.reason,
-        exit_code: typeof details.exitCode === "number" ? details.exitCode : null,
-        loop_tripped: outcome.tripped,
-      });
-    }
-    if (!isCrash) return;
+    if (details.reason === "clean-exit") return;
+    const outcome = rendererCrashLoop.recordCrash(Date.now());
     if (outcome.tripped) {
       // Breaker open: stop the poll loop from cycling a deterministic crash.
       // Show the recoverable error screen once (on the opening crash) instead
@@ -2812,13 +2750,6 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
       pendingUpdateDialogRequest = null;
     }
     if (splash != null && !splash.isDestroyed()) splash.close();
-    // The app is now truly up (mounted + shown). Fire once — revealed guards
-    // re-entry — so callers can mark "reached running".
-    try {
-      options.onRevealed?.();
-    } catch {
-      // A callback fault must not break reveal.
-    }
   };
 
   // Hold the splash until BOTH (a) the web bundle reports it has mounted — it
@@ -2929,8 +2860,8 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
       // The retry is intentionally PASSIVE: mutating a wedged device's state
       // (clearing caches/storage) on every cooldown risked amplifying the churn
       // without helping a GPU/V8-CHECK crash, so we only stop the loop and let a
-      // transient fault clear on its own. The attempt is still logged + counted
-      // so the recovery is observable.
+      // transient fault clear on its own. The attempt is still logged so the
+      // recovery stays observable locally.
       if (rendererCrashLoop.isOpen()) {
         if (rendererCrashLoop.rearmIfCooledDown(Date.now())) {
           rendererRecoveryAttempts += 1;
@@ -2938,11 +2869,6 @@ export async function createDesktopRuntime(options: DesktopRuntimeOptions): Prom
             "[open-design desktop] renderer crash-loop cooldown elapsed — attempting recovery reload",
             { attempt: rendererRecoveryAttempts },
           );
-          void reportRendererCrash(options, {
-            reason: "recovery-attempt",
-            exit_code: null,
-            recovery_attempt: rendererRecoveryAttempts,
-          });
           rendererFailed = true;
         } else {
           schedule(RUNNING_POLL_MS);

@@ -1,7 +1,7 @@
 import type {
-  TrackingRunAdmissionPhase,
-  TrackingRunPolicyReason,
-} from '@open-design/contracts/analytics';
+  RunAdmissionPhase,
+  RunPolicyReason,
+} from '../runtimes/run-failure-vocabulary.js';
 import type {
   RunEventForFailureClassification,
   RunFailureClassification,
@@ -17,7 +17,7 @@ function record(value: unknown): Record<string, unknown> {
 function admissionPhase(
   input: RunFailureClassificationInput,
   events: RunEventForFailureClassification[],
-): TrackingRunAdmissionPhase {
+): RunAdmissionPhase {
   if (input.admissionEvidence) {
     if (input.admissionEvidence.executionEvidenceSeen) return 'during_execution';
     if (input.admissionEvidence.attemptStarted
@@ -92,10 +92,10 @@ export function runFailureEvidence(
   // from earlier status/errors. Keep legacy classification untouched.
   const providerVerdict = (code === 'UPSTREAM_UNAVAILABLE' || code === 'AGENT_CONNECTION_DROPPED')
     && failure.failure_mechanism === 'policy_rejection';
-  const policyReason: TrackingRunPolicyReason = !providerVerdict
+  const policyReason: RunPolicyReason = !providerVerdict
     && failure.failure_mechanism === 'policy_rejection'
     && failure.failure_category !== 'entitlement_required'
-    ? failure.failure_detail as TrackingRunPolicyReason
+    ? failure.failure_detail as RunPolicyReason
     : !providerVerdict && failure.failure_category === 'entitlement_required'
       ? 'entitlement_required' : 'none';
   const phase = admissionPhase(input, events);

@@ -16,7 +16,7 @@ the only network destination the extension sends captured content to.
 
 ## What we collect
 
-Nothing. The developer (OpenDesign / nexu-io) operates **no servers** that
+Nothing. The developer operates **no servers** that
 receive your captures, browsing activity, or any personal information from this
 extension. There is **no analytics, no telemetry, no tracking, and no
 advertising** in the extension.
@@ -48,4 +48,4 @@ new "Last updated" date.
 
 ## Contact
 
-Questions: https://github.com/nexu-io/open-design/issues
+Questions: https://github.com/Recho-design/Design-box/issues

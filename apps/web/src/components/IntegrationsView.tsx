@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { AppConfig } from '../types';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackIntegrationsConnectorsTabClick,
-  trackIntegrationsTabClick,
-  trackPageView,
-  trackSettingsConnectorAuthResult,
-} from '../analytics/events';
 import { ConnectorSection } from './SettingsDialog';
 import { Icon } from './Icon';
 import { McpClientSection } from './McpClientSection';
@@ -53,14 +46,8 @@ export function IntegrationsView({
   onSkillsChanged,
 }: Props) {
   const t = useT();
-  const analytics = useAnalytics();
-  const integrationsPageViewFiredRef = useRef(false);
-  useEffect(() => {
-    if (integrationsPageViewFiredRef.current) return;
-    integrationsPageViewFiredRef.current = true;
-    trackPageView(analytics.track, { page_name: 'integrations' });
-  }, [analytics.track]);
-  const [activeTab, setActiveTab] = useState<IntegrationTab>(initialTab);
+    const integrationsPageViewFiredRef = useRef(false);
+    const [activeTab, setActiveTab] = useState<IntegrationTab>(initialTab);
   const [localConfig, setLocalConfig] = useState<AppConfig>(config);
   const localConfigRef = useRef(localConfig);
 
@@ -145,12 +132,7 @@ export function IntegrationsView({
               aria-selected={active}
               className={`integrations-view__tab${active ? ' is-active' : ''}`}
               onClick={() => {
-                trackIntegrationsTabClick(analytics.track, {
-                  page_name: 'integrations',
-                  area: 'integrations_tab',
-                  element: integrationTabToTrackingElement(tab.id),
-                });
-                setActiveTab(tab.id);
+                                setActiveTab(tab.id);
               }}
               data-testid={`integrations-tab-${tab.id}`}
             >
@@ -171,21 +153,10 @@ export function IntegrationsView({
             composioConfigLoading={composioConfigLoading}
             onPersistComposioKey={onPersistComposioKey}
             onConnectorsTabClick={(element) =>
-              trackIntegrationsConnectorsTabClick(analytics.track, {
-                page_name: 'integrations',
-                area: 'connectors_tab',
-                element,
-              })
+              {}
             }
             onConnectorAuthResult={({ connectorId, action, result, errorCode }) =>
-              trackSettingsConnectorAuthResult(analytics.track, {
-                page_name: 'settings',
-                area: 'connectors',
-                connector_id: connectorId,
-                action,
-                result,
-                ...(errorCode ? { error_code: errorCode } : {}),
-              })
+              {}
             }
           />
         ) : null}

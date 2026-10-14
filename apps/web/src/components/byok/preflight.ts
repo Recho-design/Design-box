@@ -1,4 +1,4 @@
-import type { TrackingByokPreflightBlockReason } from '@open-design/contracts/analytics';
+export type TrackingByokPreflightBlockReason = string;
 import { KNOWN_PROVIDERS } from '../../state/config';
 import type { AppConfig } from '../../types';
 import { byokProviderRequiresApiKey } from '../../utils/byokProvider';

@@ -390,22 +390,6 @@ export function PluginCard({
                 />
                 <span>{sharePendingAction === 'publish-github' ? t('pluginCard.starting') : t('pluginCard.publish')}</span>
               </button>
-              <button
-                type="button"
-                className="plugins-home__action plugins-home__action--secondary plugins-home__action--compact"
-                onClick={() => onShareAction(record, 'contribute-open-design')}
-                disabled={pendingAny || shareBusy}
-                aria-busy={sharePendingAction === 'contribute-open-design' ? 'true' : undefined}
-                aria-label={t('pluginCard.contributeAria', { title })}
-                title={t('pluginCard.contributeTitle')}
-                data-testid={`plugins-home-contribute-open-design-${record.id}`}
-              >
-                <Icon
-                  name={sharePendingAction === 'contribute-open-design' ? 'spinner' : 'share'}
-                  size={12}
-                />
-                <span>{sharePendingAction === 'contribute-open-design' ? t('pluginCard.starting') : t('pluginCard.contribute')}</span>
-              </button>
             </div>
           ) : null}
         </div>

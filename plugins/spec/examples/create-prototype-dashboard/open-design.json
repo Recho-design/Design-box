@@ -8,9 +8,9 @@
   "license": "MIT",
   "author": {
     "name": "OpenDesign Spec Examples",
-    "url": "https://github.com/nexu-io/open-design"
+    "url": "https://github.com/Recho-design/Design-box"
   },
-  "homepage": "https://github.com/nexu-io/open-design/tree/main/plugins/spec/examples/create-prototype-dashboard",
+  "homepage": "https://github.com/Recho-design/Design-box/tree/main/plugins/spec/examples/create-prototype-dashboard",
   "tags": ["create", "prototype", "dashboard", "operations"],
   "compat": {
     "agentSkills": [{ "path": "./SKILL.md" }]

@@ -1,19 +1,19 @@
 import { asObject } from './agent-protocol/acp/json.js';
 import type {
-  TrackingRunCancelOrigin,
-  TrackingRunFailureCategory,
-  TrackingRunFailureDetail,
-  TrackingRunFailureDomain,
-  TrackingRunFailureMechanism,
-  TrackingRunFailureStage,
-  TrackingRunFailureUserAction,
-  TrackingRunEvidenceLevel,
-  TrackingRunAdmissionStatus,
-  TrackingRunAdmissionPhase,
-  TrackingRunPolicyReason,
-  TrackingRunRepairOwner,
-  TrackingRunTerminalTrigger,
-} from '@open-design/contracts/analytics';
+  RunCancelOrigin,
+  RunFailureCategory,
+  RunFailureDetail,
+  RunFailureDomain,
+  RunFailureMechanism,
+  RunFailureStage,
+  RunFailureUserAction,
+  RunEvidenceLevel,
+  RunAdmissionStatus,
+  RunAdmissionPhase,
+  RunPolicyReason,
+  RunRepairOwner,
+  RunTerminalTrigger,
+} from './runtimes/run-failure-vocabulary.js';
 import {
   isModelWindowLimitFailure,
 } from '@open-design/contracts';
@@ -46,30 +46,30 @@ export interface RunFailureClassificationInput {
   };
   errorCode?: string;
   agentId?: string | null;
-  cancelOrigin?: TrackingRunCancelOrigin | null;
-  terminalTrigger?: TrackingRunTerminalTrigger | null;
+  cancelOrigin?: RunCancelOrigin | null;
+  terminalTrigger?: RunTerminalTrigger | null;
   events?: RunEventForFailureClassification[];
   admissionEvidence?: RunAdmissionEvidence | undefined;
 }
 
 export interface RunFailureClassification {
-  failure_category: TrackingRunFailureCategory;
-  failure_detail: TrackingRunFailureDetail;
-  failure_stage: TrackingRunFailureStage;
-  failure_mechanism?: TrackingRunFailureMechanism;
-  failure_domain?: TrackingRunFailureDomain;
-  evidence_level?: TrackingRunEvidenceLevel;
-  repair_owner?: TrackingRunRepairOwner;
-  admission_status?: TrackingRunAdmissionStatus;
-  admission_phase?: TrackingRunAdmissionPhase;
-  policy_reason?: TrackingRunPolicyReason;
+  failure_category: RunFailureCategory;
+  failure_detail: RunFailureDetail;
+  failure_stage: RunFailureStage;
+  failure_mechanism?: RunFailureMechanism;
+  failure_domain?: RunFailureDomain;
+  evidence_level?: RunEvidenceLevel;
+  repair_owner?: RunRepairOwner;
+  admission_status?: RunAdmissionStatus;
+  admission_phase?: RunAdmissionPhase;
+  policy_reason?: RunPolicyReason;
   classifier_version?: 'run-failure-v2' | 'run-failure-v3';
   retryable: boolean;
-  user_action: TrackingRunFailureUserAction;
+  user_action: RunFailureUserAction;
   /** Distinguishes an explicit user stop from lifecycle-driven cancellation. */
-  cancel_origin?: TrackingRunCancelOrigin;
+  cancel_origin?: RunCancelOrigin;
   /** Lifecycle or watchdog mechanism that forced the terminal state. */
-  terminal_trigger?: TrackingRunTerminalTrigger;
+  terminal_trigger?: RunTerminalTrigger;
 }
 
 function normalizeCode(value: string | undefined | null): string {
@@ -155,8 +155,8 @@ function terminalAttemptEvents(
 
 function inferFailureStageFromEvents(
   events: RunEventForFailureClassification[] | undefined,
-  fallback: TrackingRunFailureStage,
-): TrackingRunFailureStage {
+  fallback: RunFailureStage,
+): RunFailureStage {
   let sawFirstToken = false;
   let sawArtifact = false;
   const toolProgress = summarizeRunToolProgress(events);
@@ -298,7 +298,7 @@ function isBundledBinaryMissingText(text: string): boolean {
 const ENDPOINT_NEVER_REACHED_RE =
   /\b(ECONNREFUSED|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ENOTFOUND|EAI_AGAIN|getaddrinfo|network unreachable|local connection failed)\b/i;
 
-function clientEnvironmentFailureDetail(text: string): TrackingRunFailureDetail | null {
+function clientEnvironmentFailureDetail(text: string): RunFailureDetail | null {
   if (/\b(Windows Application Control|AppLocker)\b/i.test(text)) return 'host_policy_block';
   if (/\b(SQLite|WAL).*(?:I\/O|readonly|locked|corrupt|failed)\b/i.test(text)) return 'local_storage_failure';
   if (/\b(certificate|CERT_|self[- ]signed|unable to verify)\b/i.test(text)) return 'certificate_failure';
@@ -353,7 +353,7 @@ function isSessionResumeExpiredText(text: string): boolean {
     /\bsession [\w-]+ not found\b/i.test(text);
 }
 
-function promptTooLargeDetail(text: string): TrackingRunFailureDetail | null {
+function promptTooLargeDetail(text: string): RunFailureDetail | null {
   if (
     /\b(?:Payload Too Large|Request Entity Too Large|request entity too large|request body exceeds configured limit)\b/i.test(text) ||
     /\[code=request_too_large\]/i.test(text)
@@ -373,7 +373,7 @@ function promptTooLargeDetail(text: string): TrackingRunFailureDetail | null {
   return null;
 }
 
-function clientRequestFailureDetail(text: string): TrackingRunFailureDetail | null {
+function clientRequestFailureDetail(text: string): RunFailureDetail | null {
   if (
     /\bsource\.media_type\b[\s\S]*\bInvalid enum value\b[\s\S]*\bapplication\/pdf\b/i.test(text) ||
     /\bapplication\/pdf\b[\s\S]*\bexpected\b[\s\S]*\bimage\/(?:jpeg|png|gif|webp)\b/i.test(text)
@@ -429,7 +429,7 @@ function isByokOpenCodeProviderNotFoundText(
     /\bstatusCode[\"']?\s*:\s*404\b/i.test(text);
 }
 
-function modelUnavailableDetail(text: string): TrackingRunFailureDetail | null {
+function modelUnavailableDetail(text: string): RunFailureDetail | null {
   if (/\brequires a newer version of codex\b|\bunknown option [`'"]?--[\w-]+[`'"]?\b/i.test(text)) {
     return 'cli_version_incompatible';
   }
@@ -467,7 +467,7 @@ function wasBlockedByModelCapabilityPreflight(
   });
 }
 
-function authDetail(text: string): TrackingRunFailureDetail {
+function authDetail(text: string): RunFailureDetail {
   if (/\brefresh token (?:was )?(?:already used|expired|invalid)|access token could not be refreshed\b/i
     .test(text)) {
     return 'refresh_token_reused';
@@ -489,7 +489,7 @@ function authDetail(text: string): TrackingRunFailureDetail {
   return 'auth_required';
 }
 
-function upstreamClientErrorDetail(text: string): TrackingRunFailureDetail {
+function upstreamClientErrorDetail(text: string): RunFailureDetail {
   // Only the provider's explicit region denial gets S30. A bare 403, proxy
   // rejection, or request-shape error keeps the existing client-error detail.
   return /\bCountry, region, or territory not supported\b/i.test(text)
@@ -497,7 +497,7 @@ function upstreamClientErrorDetail(text: string): TrackingRunFailureDetail {
     : 'upstream_client_error';
 }
 
-function upstreamDetail(text: string): TrackingRunFailureDetail {
+function upstreamDetail(text: string): RunFailureDetail {
   if (/\b(AMR model catalog is (?:temporarily )?unavailable|no endpoints found that support tool use|provider routing)\b/i.test(text)) {
     return 'provider_routing_error';
   }
@@ -598,7 +598,7 @@ function signalInterruptClassification(
   return classification('process_exit', 'terminated_unknown', 'child_close', false, 'none');
 }
 
-function toolErrorDetail(text: string): TrackingRunFailureDetail {
+function toolErrorDetail(text: string): RunFailureDetail {
   if (isPluginArtifactMissingText(text)) return 'plugin_artifact_missing';
   return 'tool_error';
 }
@@ -606,7 +606,7 @@ function toolErrorDetail(text: string): TrackingRunFailureDetail {
 function processExitDetail(
   errorCode: string,
   text: string,
-): TrackingRunFailureDetail {
+): RunFailureDetail {
   if (isCliNotInstalledText(text) || errorCode === 'AGENT_UNAVAILABLE') {
     return 'cli_not_installed';
   }
@@ -780,7 +780,7 @@ function hasDaemonTimeoutVerdict(
 // absorbs a reason we haven't reasoned about.
 function executionFailedDetail(
   events: RunEventForFailureClassification[] | undefined,
-): TrackingRunFailureDetail {
+): RunFailureDetail {
   switch (readRuntimeCloseReason(events)) {
     case 'stream_error':
       return 'stream_error';
@@ -829,14 +829,14 @@ export function isResumableFailure(
 }
 
 function classification(
-  failure_category: TrackingRunFailureCategory,
-  failure_detail: TrackingRunFailureDetail,
-  failure_stage: TrackingRunFailureStage,
+  failure_category: RunFailureCategory,
+  failure_detail: RunFailureDetail,
+  failure_stage: RunFailureStage,
   retryable: boolean,
-  user_action: TrackingRunFailureUserAction,
+  user_action: RunFailureUserAction,
   options: {
     structuredProviderEvidence?: boolean;
-    evidenceLevel?: TrackingRunEvidenceLevel;
+    evidenceLevel?: RunEvidenceLevel;
   } = {},
 ): RunFailureClassification {
   const policy = [
@@ -875,7 +875,7 @@ function classification(
     'agent_protocol_error', 'acp_frame_too_large', 'bundled_binary_missing', 'empty_output', 'fabricated_role_marker',
     'permission_request_not_found', 'plugin_artifact_missing',
   ].includes(failure_detail) || clientRequest || failure_category === 'prompt_too_large';
-  const failure_mechanism: TrackingRunFailureMechanism = policy
+  const failure_mechanism: RunFailureMechanism = policy
     ? 'policy_rejection'
     : provider
       ? 'provider_rejection'
@@ -900,7 +900,7 @@ function classification(
               : failure_category === 'process_exit'
                 ? 'child_exit'
                 : 'unknown';
-  const failure_domain: TrackingRunFailureDomain = policy
+  const failure_domain: RunFailureDomain = policy
     ? 'policy_admission'
     : provider
       ? 'provider_control_plane'
@@ -913,7 +913,7 @@ function classification(
           : failure_category === 'timeout' || failure_category === 'process_exit'
             ? 'cross_boundary'
             : 'unknown';
-  const inferredEvidenceLevel: TrackingRunEvidenceLevel = failure_detail === 'membership_concurrency_limit'
+  const inferredEvidenceLevel: RunEvidenceLevel = failure_detail === 'membership_concurrency_limit'
     ? 'structured_code'
     : failure_detail === 'interrupted'
       ? 'lifecycle_signal'
@@ -933,7 +933,7 @@ function classification(
               ? 'unknown'
               : 'legacy_text';
   const evidence_level = options.evidenceLevel ?? inferredEvidenceLevel;
-  const repair_owner: TrackingRunRepairOwner = failure_domain === 'policy_admission'
+  const repair_owner: RunRepairOwner = failure_domain === 'policy_admission'
     ? 'policy_owner'
     : failure_domain === 'provider_control_plane'
       ? 'provider_owner'
@@ -1432,7 +1432,7 @@ function classifyRunFailureBase(
     // the sentence it wrote is gone.
     const acpStageTimeout =
       daemonTimeoutVerdict || /\bACP\b[^\n]*timed out after \d+\s*ms/i.test(text);
-    const terminalTrigger: TrackingRunTerminalTrigger | undefined =
+    const terminalTrigger: RunTerminalTrigger | undefined =
       /without emitting a first output/i.test(text)
         ? 'first_output_deadline'
         : inactivityTimeout

@@ -16,11 +16,7 @@
 //   client_chat_memory_pressure  "Who is about to OOM?"
 //   client_chat_stream_health    "How janky is the UI while a run streams?"
 //
-// Transport is `reportSafetyEvent` — the consent-bypassing direct-fetch
-// path that already carries `client_long_task`, `client_white_screen` and
-// `client_boot_timing`. Stability ground truth must not disappear when a
-// user opts out of product analytics; the reasoning is documented at the
-// top of `analytics/error-tracking.ts`.
+// Diagnostics are evaluated locally for runtime health monitoring.
 //
 // Cost discipline. Measurement must never become the jank it measures:
 //
@@ -42,16 +38,13 @@
 // length, or a fixed enum. No message text, no file path, no prompt, no
 // user-authored string is read, let alone transmitted.
 
-import type {
-  ChatDomGrowthProps,
-  ChatFirstPaintProps,
-  ChatMemoryPressureProps,
-  ChatOpenKind,
-  ChatSampleReason,
-  ChatStreamHealthProps,
-} from '@open-design/contracts/analytics';
+export type ChatOpenKind = 'direct' | 'deeplink' | 'switch_tab' | 'navigation' | 'remount';
+export type ChatSampleReason = 'initial_mount' | 'conversation_switch' | 'run_turn_end' | 'interval' | 'conversation_open';
 
-import { reportSafetyEvent } from '../analytics/error-tracking';
+export type ChatFirstPaintProps = Record<string, unknown>;
+export type ChatDomGrowthProps = Record<string, unknown>;
+export type ChatStreamHealthProps = Record<string, unknown>;
+
 import {
   chatBreadcrumbTrail,
   chatCorrelation,
@@ -298,7 +291,7 @@ class ChatSurface implements ChatSurfaceHandle {
         ? { stream_event_count: this.streamEventCount }
         : {}),
     };
-    reportSafetyEvent('client_chat_first_paint', { ...props });
+    // reportSafetyEvent removed
   }
 
   setMessageCount(count: number): void {
@@ -342,7 +335,7 @@ class ChatSurface implements ChatSurfaceHandle {
           }
         : {}),
     };
-    reportSafetyEvent('client_chat_dom_growth', { ...props });
+    // reportSafetyEvent removed
 
     if (heap) this.evaluateHeapPressure(heap, domNodeCount);
   }
@@ -459,7 +452,7 @@ class ChatSurface implements ChatSurfaceHandle {
       run_completed: runCompleted,
       details_count: this.element.getElementsByTagName('details').length,
     };
-    reportSafetyEvent('client_chat_stream_health', { ...props });
+    // reportSafetyEvent removed
   }
 
   private evaluateHeapPressure(heap: HeapSnapshot, domNodeCount: number): void {
@@ -472,23 +465,7 @@ class ChatSurface implements ChatSurfaceHandle {
     if (band == null) return;
     firedHeapBands.add(band);
     pushChatBreadcrumb('heap_band');
-    const props: ChatMemoryPressureProps = {
-      ...chatCorrelation(),
-      threshold_pct: band,
-      js_heap_used_mb: heap.usedMb,
-      js_heap_limit_mb: heap.limitMb,
-      heap_pressure_pct: heap.pressurePct,
-      message_count: this.messageCount,
-      dom_node_count: domNodeCount,
-      surface_age_ms: Math.round(now() - this.attachedAt),
-      run_count: this.runCount,
-      details_count: this.element.getElementsByTagName('details').length,
-      // The run-up, not just the moment. Without these two an OOM report
-      // says "it happened" and nothing else.
-      breadcrumbs: chatBreadcrumbTrail(),
-      heap_trend_mb: chatHeapTrend(),
-    };
-    reportSafetyEvent('client_chat_memory_pressure', { ...props });
+    // reportSafetyEvent removed
   }
 
   /**

@@ -8,14 +8,14 @@
 //   1. **Namespace churn.** If a packaged build bakes a different
 //      `namespace` token than the previous version, the daemon writes to
 //      a different `<namespace>/data/` subtree and the old installationId
-//      is invisible. The user shows up in PostHog as a brand-new person.
+//      is invisible, so the install reads as a brand-new one.
 //
 //   2. **Clean reinstall.** Even when the namespace is stable, anything
 //      that wipes `<userData>/namespaces/<ns>/data/` (a future installer
 //      that resets per-namespace data, a manual `rm -rf`) takes the id
 //      down with it.
 //
-// To preserve person continuity across both, we mirror the id into a
+// To preserve installation continuity across both, we mirror the id into a
 // stable file at the **channel root** — one level above the namespaces
 // directory — and treat that file as authoritative on read. The legacy
 // app-config.json field is still written so any code path that reads it

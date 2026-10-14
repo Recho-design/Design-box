@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Issue: https://github.com/nexu-io/open-design/issues/709
+Issue: #709
 
 This plan defines the durable Linux packaged-client scope: bring Linux closer
 to the macOS and Windows packaged lifecycle without claiming stable public Linux

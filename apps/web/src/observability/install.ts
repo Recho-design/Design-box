@@ -1,9 +1,8 @@
 // Single entry point for the web-side observability surface.
 //
 // Called as a side-effect import from `apps/web/app/[[...slug]]/client-app.tsx`
-// at module load — runs before React mounts, before posthog-js's lazy
-// import resolves, before any product code can throw. Each observer is
-// individually defensive (no-ops in environments where its API is
+// at module load — runs before React mounts, before any product code can throw.
+// Each observer is individually defensive (no-ops in environments where its API is
 // missing), so this call is safe to make unconditionally.
 //
 // Why one entry point: every observer reaches into the same

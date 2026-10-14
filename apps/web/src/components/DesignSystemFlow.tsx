@@ -90,46 +90,6 @@ import { FileWorkspace, type FileRefreshResult } from './FileWorkspace';
 import { Icon, type IconName } from './Icon';
 import { Spinner } from './Loading';
 import { Toast } from './Toast';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackDesignSystemCreateResult,
-  trackDesignSystemReviewResult,
-  trackDesignSystemsCreateClick,
-  trackDesignSystemsPresetBrandPickerClick,
-  trackDesignSystemsPresetBrandPickerSurfaceView,
-  trackDesignSystemSourceIngestResult,
-  trackDesignSystemStatusResult,
-  trackFileUploadResult,
-  trackPageView,
-} from '../analytics/events';
-import {
-  clearOnboardingSessionId,
-  peekOnboardingSessionId,
-} from '../analytics/onboarding-session';
-import { consumeDesignSystemCreateEntry } from '../analytics/ds-create-entry';
-import { deriveUploadCohort } from '../analytics/upload-tracking';
-import {
-  designSystemFolderCountBucket,
-  designSystemLengthBucket,
-  designSystemModuleSlug,
-  designSystemModuleType,
-  designSystemRepoHostFromUrl,
-  designSystemTotalSizeBucket,
-} from '@open-design/contracts/analytics';
-import type {
-  DesignSystemsCreateClickProps,
-  TrackingDesignSystemCreateEntryFrom,
-  TrackingDesignSystemIngestMethod,
-  TrackingDesignSystemIngestSourceType,
-  TrackingDesignSystemOrigin,
-  TrackingDesignSystemRepoHost,
-  TrackingDesignSystemSourceIngestEntryFrom,
-  TrackingDesignSystemSourceIngestResult,
-  TrackingDesignSystemStatus,
-  TrackingDesignSystemStatusAction,
-  TrackingDesignSystemStatusValue,
-  TrackingDesignSystemsEntryFrom,
-} from '@open-design/contracts/analytics';
 import { useI18n } from '../i18n';
 import { useWorkspaceContext } from '../collab/useWorkspaceContext';
 import { workspaceIdentityCacheKey } from '../collab/workspace-identity';
@@ -416,85 +376,21 @@ export function DesignSystemCreationFlow({
   // DS create page_view (v2 doc). Only fires for the standalone
   // /design-systems/create route — the embedded variant lives inside
   // OnboardingView, which owns the `area=design_system` step page_view.
-  const analytics = useAnalytics();
-  const creationPageViewFiredRef = useRef(false);
+    const creationPageViewFiredRef = useRef(false);
   // Resolved create entry source. Consumed once from the pending hint set by
   // the navigate() call site (§3.1); falls back to the onboarding-session /
   // design_systems_page heuristic for direct URL loads. Reused by
   // create_result so the funnel "entry → success" lines up.
-  const createEntryFromRef = useRef<TrackingDesignSystemCreateEntryFrom | null>(null);
-  useEffect(() => {
-    if (embedded) return;
-    if (creationPageViewFiredRef.current) return;
-    creationPageViewFiredRef.current = true;
-    const onboardingSessionId = peekOnboardingSessionId();
-    const resolvedEntry: TrackingDesignSystemCreateEntryFrom =
-      consumeDesignSystemCreateEntry() ??
-      (onboardingSessionId ? 'onboarding' : 'design_systems_page');
-    createEntryFromRef.current = resolvedEntry;
-    trackPageView(analytics.track, {
-      page_name: 'design_systems',
-      area: 'design_system_create',
-      view_type: 'page',
-      entry_from: resolvedEntry,
-    });
-  }, [analytics.track, embedded]);
-
-  // Preset-brand picker impression — fires each time the modal opens from the
-  // standalone create form. Gated on `embedded` to mirror the create page_view
-  // / clicks (onboarding owns its own area).
-  useEffect(() => {
-    if (embedded) return;
-    if (!brandPickerOpen) return;
-    trackDesignSystemsPresetBrandPickerSurfaceView(analytics.track, {
-      page_name: 'design_systems',
-      area: 'preset_brand_picker',
-    });
-  }, [brandPickerOpen, embedded, analytics.track]);
-
-  // `emitDsFileUpload` reports the user-side dropzone batch. `picked`
-  // is the raw FileList; `staged` is what survived the size/count
-  // filters (selectLocalCodeFiles / selectFigmaFiles / selectAssetFiles).
-  // The result is `failed` only when zero files pass the filter (e.g.
-  // every dropped file was over the per-source size cap); cohort math
-  // mirrors the chat-composer + onboarding uploads via
-  // `deriveUploadCohort`. The onboarding variant of this event lives
-  // in EntryShell; this fires from the standalone /design-systems/create
-  // route so the dashboard gets both flows.
   function emitDsFileUpload(
-    sourceType: 'local_code' | 'fig' | 'assets',
-    picked: File[],
-    staged: File[],
-  ) {
-    if (embedded) return;
-    if (picked.length === 0) return;
-    const cohort = deriveUploadCohort(picked);
-    trackFileUploadResult(analytics.track, {
-      page_name: 'design_systems',
-      area: 'design_system_source',
-      source_type: sourceType,
-      ...cohort,
-      result: staged.length > 0 ? 'success' : 'failed',
-      error_code: staged.length === 0 ? 'DS_UPLOAD_ALL_FILTERED' : undefined,
-    });
-  }
+    _sourceType: 'local_code' | 'fig' | 'assets',
+    _picked: File[],
+    _staged: File[],
+  ) {}
 
-  // Form-level intent clicks on the standalone create form. The embedded
-  // onboarding variant is excluded — EntryShell owns its own
-  // area=design_system clicks (same gating as the DS create page_view
-  // and emitDsFileUpload above).
   function emitCreateFormClick(
-    element: DesignSystemsCreateClickProps['element'],
-    methodsExpanded?: boolean,
-  ) {
-    if (embedded) return;
-    trackDesignSystemsCreateClick(analytics.track, {
-      page_name: 'design_systems',
-      area: 'design_system_create',
-      element,
-      ...(methodsExpanded === undefined ? {} : { methods_expanded: methodsExpanded }),
-    });
-  }
+    _element?: string,
+    _methodsExpanded?: boolean,
+  ) {}
 
   const refreshGithubConnector = useCallback(async () => {
     if (!composioConfigured) {
@@ -887,43 +783,12 @@ export function DesignSystemCreationFlow({
     onBeforeGenerate?.(snapshot);
     setGenerationStarting(true);
     setVisibleError(null);
-    const generateStartedAt = performance.now();
-    const onboardingSessionId = peekOnboardingSessionId();
-    const createEntryFrom: TrackingDesignSystemCreateEntryFrom = embedded
-      ? 'onboarding'
-      : (createEntryFromRef.current ??
-        (onboardingSessionId ? 'onboarding' : 'design_systems_page'));
-    const ingestEntryFrom: TrackingDesignSystemSourceIngestEntryFrom = embedded
-      ? 'onboarding'
-      : onboardingSessionId
-        ? 'onboarding'
-        : 'design_systems_page';
-    const designSystemOrigin = deriveDesignSystemOrigin(snapshot);
-    const designSystemOrigins = deriveDesignSystemOrigins(snapshot);
     function emitCreateResult(
-      result: 'success' | 'failed' | 'cancelled',
-      designSystemId: string | undefined,
-      errorCode: string | undefined,
-      projectId: string | undefined,
-    ) {
-      trackDesignSystemCreateResult(analytics.track, {
-        page_name: 'design_systems',
-        area: 'design_system_create',
-        entry_from: createEntryFrom,
-        result,
-        design_system_id: designSystemId,
-        project_id: projectId,
-        design_system_source: designSystemOrigin,
-        ...(designSystemOrigins ? { ds_source_origins: designSystemOrigins } : {}),
-        source_count: snapshot.sourceCount,
-        created_as_project: result === 'success',
-        has_brand_description: snapshot.hasBrandDescription,
-        brand_description_length_bucket: designSystemLengthBucket(state.company),
-        notes_length_bucket: designSystemLengthBucket(state.notes),
-        error_code: errorCode,
-        duration_ms: Math.max(0, Math.round(performance.now() - generateStartedAt)),
-      });
-    }
+      _result: 'success' | 'failed' | 'cancelled',
+      _designSystemId?: string,
+      _errorCode?: string,
+      _projectId?: string,
+    ) {}
     try {
       // Two-phase extraction. The website link (a real site, not a GitHub repo)
       // drives the kickoff. POST /api/brands creates the backing project and
@@ -986,8 +851,6 @@ export function DesignSystemCreationFlow({
             onProjectPrepared?.(preparedProject);
           },
           onSystemsRefresh,
-          analyticsTrack: analytics.track,
-          ingestEntryFrom,
           designSystemId: result.designSystemId ?? project.designSystemId ?? `user:${result.id}`,
         });
       }
@@ -1150,13 +1013,7 @@ export function DesignSystemCreationFlow({
                 onClose={() => setBrandPickerOpen(false)}
                 onPick={(brand) => {
                   if (!embedded) {
-                    trackDesignSystemsPresetBrandPickerClick(analytics.track, {
-                      page_name: 'design_systems',
-                      area: 'preset_brand_picker',
-                      element: 'brand_pick',
-                      preset_brand_category: brand.category,
-                    });
-                  }
+                                      }
                   handlePickBrandReference(brand.domain);
                 }}
                 title={t('dsCreate.startFromBrand')}
@@ -2016,63 +1873,6 @@ export function DesignSystemDetailView({
   const generationActive =
     activeJob?.status === 'queued' || activeJob?.status === 'running';
 
-  // Multi-surface DS page_view (v2 doc). One emission per
-  // (system, generationActive) transition: while generation is
-  // running we surface `area=design_system_generation`; once it
-  // settles we surface `area=design_system_preview`. The fourth
-  // onboarding step (`area=generation_progress`) piggy-backs on the
-  // generation emission when an onboarding session id is present.
-  const analytics = useAnalytics();
-  const designSystemStatus: TrackingDesignSystemStatus = generationActive
-    ? 'generating'
-    : (system?.status as TrackingDesignSystemStatus | undefined) ?? 'unknown';
-  useEffect(() => {
-    if (!system) return;
-    const onboardingSessionId = peekOnboardingSessionId();
-    const entryFrom: TrackingDesignSystemsEntryFrom = onboardingSessionId
-      ? 'onboarding'
-      : 'unknown';
-    if (generationActive) {
-      trackPageView(analytics.track, {
-        page_name: 'design_system_project',
-        area: 'design_system_generation',
-        view_type: 'page',
-        entry_from: entryFrom,
-        design_system_id: system.id,
-        project_id: workspaceProjectId ?? undefined,
-        // Origin is the DS's provenance-style source. We don't yet
-        // have a precise mapping from `system.source` / provenance
-        // metadata to the v2 enum, so we report `unknown` rather
-        // than mis-tag — dashboards still see the funnel via
-        // `entry_from`. A follow-up can derive this honestly.
-        design_system_source: 'unknown',
-        design_system_status: 'generating',
-      });
-      if (onboardingSessionId) {
-        trackPageView(analytics.track, {
-          page_name: 'onboarding',
-          area: 'generation_progress',
-          step_index: 'progress',
-          step_name: 'generation',
-          onboarding_session_id: onboardingSessionId,
-        });
-        // Generation is the last onboarding step; clear so a later
-        // DS visit unrelated to onboarding doesn't re-attribute.
-        clearOnboardingSessionId();
-      }
-    } else {
-      trackPageView(analytics.track, {
-        page_name: 'design_system_project',
-        area: 'design_system_preview',
-        view_type: 'page',
-        entry_from: entryFrom,
-        design_system_id: system.id,
-        project_id: workspaceProjectId ?? undefined,
-        design_system_source: 'unknown',
-        design_system_status: designSystemStatus,
-      });
-    }
-  }, [analytics.track, system?.id, generationActive, designSystemStatus, system, workspaceProjectId]);
   const introChatMessages = useMemo(
     () => buildDesignSystemChatMessages({
       system,
@@ -2130,72 +1930,23 @@ export function DesignSystemDetailView({
   }
 
   async function togglePublished(next: boolean) {
-    const startedAt = performance.now();
-    const action: TrackingDesignSystemStatusAction = next ? 'publish' : 'unpublish';
-    const statusBefore = mapDsStatusToTracking(system?.status);
-    const isDefaultBefore = system?.id === selectedId;
-    let succeeded = false;
-    let errorCode: string | undefined;
     try {
       const updated = await savePatch({ body, status: next ? 'published' : 'draft' });
-      succeeded = Boolean(updated);
-      if (!succeeded) errorCode = 'DS_STATUS_UPDATE_RETURNED_NULL';
       setStatusLine(
         updated
           ? (next ? t('ds.published') : t('dsFlow.movedBackToDraft'))
           : t('dsFlow.statusUpdateFailed'),
       );
     } catch (err) {
-      errorCode = err instanceof Error
-        ? `DS_STATUS_UPDATE_THREW:${err.message.slice(0, 80)}`
-        : 'DS_STATUS_UPDATE_THREW';
       throw err;
-    } finally {
-      if (system?.id) {
-        trackDesignSystemStatusResult(analytics.track, {
-          page_name: 'design_system_project',
-          area: 'design_system_status',
-          action,
-          result: succeeded ? 'success' : 'failed',
-          design_system_id: system.id,
-          project_id: workspaceProjectId ?? undefined,
-          status_before: statusBefore,
-          status_after: succeeded
-            ? next
-              ? 'published'
-              : 'draft'
-            : statusBefore,
-          is_default_before: isDefaultBefore,
-          is_default_after: isDefaultBefore,
-          error_code: errorCode,
-          duration_ms: Math.round(performance.now() - startedAt),
-        });
-      }
     }
   }
 
   function emitReviewResult(
-    section: { title: string },
-    index: number,
-    reviewAction: 'looks_good' | 'needs_work',
-  ) {
-    if (!system) return;
-    const slug = designSystemModuleSlug(section.title);
-    trackDesignSystemReviewResult(analytics.track, {
-      page_name: 'design_system_project',
-      area: 'design_system_preview',
-      review_action: reviewAction,
-      result: 'submitted',
-      design_system_id: system.id,
-      project_id: workspaceProjectId ?? '',
-      module_id: slug,
-      module_type: designSystemModuleType(slug),
-      module_index: index,
-      feedback_length_bucket: designSystemLengthBucket(null),
-      has_custom_feedback: false,
-      duration_ms: 0,
-    });
-  }
+    _section: { title: string },
+    _index: number,
+    _reviewAction: 'looks_good' | 'needs_work',
+  ) {}
 
   async function ensureWorkspaceProject(options?: { suppressInitialConversation?: boolean }) {
     if (!system) return workspaceProjectId;
@@ -2417,23 +2168,6 @@ export function DesignSystemDetailView({
       // text. Without it the funnel can't separate "user picked Needs
       // work but never sent" from "user picked Needs work and sent a
       // revision request".
-      if (feedbackSection && system) {
-        const slug = designSystemModuleSlug(feedbackSection);
-        trackDesignSystemReviewResult(analytics.track, {
-          page_name: 'design_system_project',
-          area: 'design_system_preview',
-          review_action: 'submit_revision',
-          result: 'submitted',
-          design_system_id: system.id,
-          project_id: projectId,
-          module_id: slug,
-          module_type: designSystemModuleType(slug),
-          module_index: 0,
-          feedback_length_bucket: designSystemLengthBucket(rawText),
-          has_custom_feedback: rawText.length > 0,
-          duration_ms: 0,
-        });
-      }
       setFeedbackSection(null);
       const startedAt = Date.now();
       const userMsg: ChatMessage = {
@@ -2508,8 +2242,7 @@ export function DesignSystemDetailView({
       // also flows through this composer); a future split can detect
       // a pending revision and switch entry_from accordingly.
       const wasOnboardingHandoff =
-        Boolean(peekOnboardingSessionId())
-        || sessionStorage.getItem(`od:auto-send-first:${projectId}`) === '1';
+        sessionStorage.getItem(`od:auto-send-first:${projectId}`) === '1';
       void streamViaDaemon({
         agentId: config.agentId,
         history: agentHistory,
@@ -2937,21 +2670,7 @@ export function DesignSystemDetailView({
                   className="compact"
                   title={t('dsFlow.setDefaultTitle')}
                   onClick={() => {
-                    const statusBefore = mapDsStatusToTracking(system.status);
                     onSetDefault(system.id);
-                    trackDesignSystemStatusResult(analytics.track, {
-                      page_name: 'design_system_project',
-                      area: 'design_system_status',
-                      action: 'set_default',
-                      result: 'success',
-                      design_system_id: system.id,
-                      project_id: workspaceProjectId ?? undefined,
-                      status_before: statusBefore,
-                      status_after: statusBefore,
-                      is_default_before: false,
-                      is_default_after: true,
-                      duration_ms: 0,
-                    });
                   }}
                 >
                   {t('dsFlow.setDefaultAction')}
@@ -4408,8 +4127,6 @@ async function prepareCreatedDesignSystemProject({
   workspaceContext,
   onProjectPrepared,
   onSystemsRefresh,
-  analyticsTrack,
-  ingestEntryFrom,
   designSystemId,
 }: {
   project: Project;
@@ -4419,119 +4136,18 @@ async function prepareCreatedDesignSystemProject({
   workspaceContext?: WorkspaceCollabContext | null;
   onProjectPrepared?: (project: Project) => void;
   onSystemsRefresh?: () => Promise<void> | void;
-  analyticsTrack: (
-    event: string,
-    props: Record<string, unknown>,
-    options?: { requestId?: string; insertId?: string },
-  ) => void;
-  ingestEntryFrom: TrackingDesignSystemSourceIngestEntryFrom;
-  designSystemId: string;
+  analyticsTrack?: unknown;
+  ingestEntryFrom?: unknown;
+  designSystemId?: string;
 }): Promise<void> {
   try {
-    const githubUrls = githubUrlsFromState(state);
-    if (githubUrls.length > 0) {
-      const githubStart = performance.now();
-      emitSourceIngestResult(analyticsTrack, {
-        sourceType: 'github_repo',
-        ingestMethod: githubConnector?.status === 'connected'
-          ? 'github_api'
-          : 'git_clone',
-        result: 'success',
-        hasFallback: composioConfigured && githubConnector?.status === 'connected',
-        fallbackType: composioConfigured && githubConnector?.status === 'connected'
-          ? 'native_github_auth'
-          : 'none',
-        repoHost: dominantRepoHost(githubUrls),
-        fileCount: githubUrls.length,
-        totalBytes: null,
-        durationMs: Math.round(performance.now() - githubStart),
-        entryFrom: ingestEntryFrom,
-        projectId: project.id,
-        designSystemId,
-      });
-    }
-    const localStart = performance.now();
     const stagedLocalCode = await stageLocalCodeFiles(project.id, state.codeFileObjects, workspaceContext);
-    if (state.codeFileObjects.length > 0 || state.codeFolders.length > 0) {
-      emitSourceIngestResult(analyticsTrack, {
-        sourceType: 'local_code',
-        ingestMethod: 'local_snapshot',
-        result: stagedLocalCode.uploadedPaths.length > 0
-          ? (stagedLocalCode.skippedCount > 0 ? 'partial_success' : 'success')
-          : 'failed',
-        hasFallback: false,
-        fallbackType: 'none',
-        repoHost: 'unknown',
-        fileCount: stagedLocalCode.uploadedPaths.length,
-        totalBytes: state.codeFileObjects.reduce(
-          (sum, f) => sum + (f.size || 0),
-          0,
-        ),
-        durationMs: Math.round(performance.now() - localStart),
-        errorCode: stagedLocalCode.uploadedPaths.length === 0
-          ? 'DS_LOCAL_INGEST_EMPTY'
-          : undefined,
-        entryFrom: ingestEntryFrom,
-        projectId: project.id,
-        designSystemId,
-      });
-    }
-    const figStart = performance.now();
     const stagedFigma = await stageFigmaFiles(
       project.id,
       state.figFileObjects,
       workspaceContext,
     );
-    if (state.figFileObjects.length > 0) {
-      emitSourceIngestResult(analyticsTrack, {
-        sourceType: 'fig',
-        ingestMethod: 'fig_parse',
-        result: stagedFigma.summaryPaths.length > 0
-          ? (stagedFigma.skippedCount > 0 ? 'partial_success' : 'success')
-          : 'failed',
-        hasFallback: false,
-        fallbackType: 'none',
-        repoHost: 'unknown',
-        fileCount: stagedFigma.summaryPaths.length,
-        totalBytes: state.figFileObjects.reduce(
-          (sum, f) => sum + (f.size || 0),
-          0,
-        ),
-        durationMs: Math.round(performance.now() - figStart),
-        errorCode: stagedFigma.summaryPaths.length === 0
-          ? 'DS_FIG_INGEST_EMPTY'
-          : undefined,
-        entryFrom: ingestEntryFrom,
-        projectId: project.id,
-        designSystemId,
-      });
-    }
-    const assetStart = performance.now();
     const stagedAssets = await stageAssetFiles(project.id, state.assetFileObjects, workspaceContext);
-    if (state.assetFileObjects.length > 0) {
-      emitSourceIngestResult(analyticsTrack, {
-        sourceType: 'assets',
-        ingestMethod: 'asset_upload',
-        result: stagedAssets.uploadedPaths.length > 0
-          ? (stagedAssets.skippedCount > 0 ? 'partial_success' : 'success')
-          : 'failed',
-        hasFallback: false,
-        fallbackType: 'none',
-        repoHost: 'unknown',
-        fileCount: stagedAssets.uploadedPaths.length,
-        totalBytes: state.assetFileObjects.reduce(
-          (sum, f) => sum + (f.size || 0),
-          0,
-        ),
-        durationMs: Math.round(performance.now() - assetStart),
-        errorCode: stagedAssets.uploadedPaths.length === 0
-          ? 'DS_ASSET_INGEST_EMPTY'
-          : undefined,
-        entryFrom: ingestEntryFrom,
-        projectId: project.id,
-        designSystemId,
-      });
-    }
     await writeProjectTextFile(
       project.id,
       SOURCE_CONTEXT_MANIFEST_PATH,
@@ -4574,151 +4190,6 @@ async function prepareCreatedDesignSystemProject({
   } catch (err) {
     console.error('Could not prepare the design system project after opening it.', err);
   }
-}
-
-// Picks the dominant repo host across a batch of GitHub URLs. Mixed
-// batches default to the most-common host; ties go to `'unknown'`.
-function dominantRepoHost(urls: string[]): TrackingDesignSystemRepoHost {
-  if (urls.length === 0) return 'unknown';
-  const counts = new Map<TrackingDesignSystemRepoHost, number>();
-  for (const url of urls) {
-    const host = designSystemRepoHostFromUrl(url);
-    counts.set(host, (counts.get(host) ?? 0) + 1);
-  }
-  let top: TrackingDesignSystemRepoHost = 'unknown';
-  let topCount = 0;
-  let tie = false;
-  for (const [host, count] of counts) {
-    if (count > topCount) {
-      top = host;
-      topCount = count;
-      tie = false;
-    } else if (count === topCount) {
-      tie = true;
-    }
-  }
-  return tie ? 'unknown' : top;
-}
-
-// Maps a generate-time snapshot to the DS origin enum. The dashboard
-// uses this on `design_system_create_result.design_system_source` to
-// split linked sources, files, and manual-only descriptions without
-// inspecting per-source counts.
-function deriveDesignSystemOrigin(snapshot: {
-  sourceCount: number;
-  hasBrandDescription: boolean;
-  hasDesignMd?: boolean;
-  sourceUrlCount: number;
-  githubRepoCount: number;
-  localFolderCount: number;
-  figFileCount: number;
-  assetFileCount: number;
-}): TrackingDesignSystemOrigin {
-  const nonGithubSourceUrlCount = Math.max(0, snapshot.sourceUrlCount - snapshot.githubRepoCount);
-  const filled = [
-    nonGithubSourceUrlCount > 0,
-    snapshot.githubRepoCount > 0,
-    snapshot.localFolderCount > 0,
-    snapshot.figFileCount > 0,
-    snapshot.assetFileCount > 0,
-    snapshot.hasDesignMd === true,
-  ].filter(Boolean).length;
-  if (filled >= 2) return 'mixed';
-  if (snapshot.githubRepoCount > 0) return 'github_repo';
-  if (nonGithubSourceUrlCount > 0) return 'source_url';
-  if (snapshot.localFolderCount > 0) return 'local_code';
-  if (snapshot.figFileCount > 0) return 'fig';
-  if (snapshot.assetFileCount > 0) return 'assets';
-  if (snapshot.hasDesignMd) return 'manual_create';
-  if (snapshot.hasBrandDescription) return 'manual_create';
-  return 'unknown';
-}
-
-// Multi-value companion to deriveDesignSystemOrigin: lists EVERY source used
-// instead of flattening to a single `mixed`, so analytics can read which
-// sources combine (tracking spec comment ②). Returns a comma-joined string
-// (target_platforms/connectors convention) or undefined when nothing is set.
-function deriveDesignSystemOrigins(snapshot: {
-  hasBrandDescription: boolean;
-  hasDesignMd?: boolean;
-  sourceUrlCount: number;
-  githubRepoCount: number;
-  localFolderCount: number;
-  figFileCount: number;
-  assetFileCount: number;
-}): string | undefined {
-  const nonGithubSourceUrlCount = Math.max(0, snapshot.sourceUrlCount - snapshot.githubRepoCount);
-  const origins: TrackingDesignSystemOrigin[] = [];
-  if (snapshot.githubRepoCount > 0) origins.push('github_repo');
-  if (nonGithubSourceUrlCount > 0) origins.push('source_url');
-  if (snapshot.localFolderCount > 0) origins.push('local_code');
-  if (snapshot.figFileCount > 0) origins.push('fig');
-  if (snapshot.assetFileCount > 0) origins.push('assets');
-  if (snapshot.hasDesignMd === true) origins.push('manual_create');
-  // Brand description alone (no concrete source) still reads as manual_create.
-  if (origins.length === 0 && snapshot.hasBrandDescription) origins.push('manual_create');
-  return origins.length > 0 ? origins.join(',') : undefined;
-}
-
-// Mirrors the DesignSystemsTab helper but lives here too so the
-// detail-view's status emissions don't have to import across files.
-function mapDsStatusToTracking(
-  status: string | null | undefined,
-): TrackingDesignSystemStatusValue {
-  switch (status) {
-    case 'draft':
-    case 'published':
-      return status;
-    default:
-      return 'unknown';
-  }
-}
-
-function emitSourceIngestResult(
-  track: (
-    event: string,
-    props: Record<string, unknown>,
-    options?: { requestId?: string; insertId?: string },
-  ) => void,
-  args: {
-    sourceType: TrackingDesignSystemIngestSourceType;
-    ingestMethod: TrackingDesignSystemIngestMethod;
-    result: TrackingDesignSystemSourceIngestResult;
-    hasFallback: boolean;
-    fallbackType:
-      | 'none'
-      | 'native_github_auth'
-      | 'local_git_clone'
-      | 'manual_upload'
-      | 'unknown';
-    repoHost: TrackingDesignSystemRepoHost;
-    fileCount: number;
-    totalBytes: number | null;
-    durationMs: number;
-    errorCode?: string;
-    entryFrom: TrackingDesignSystemSourceIngestEntryFrom;
-    projectId?: string;
-    designSystemId?: string;
-  },
-): void {
-  trackDesignSystemSourceIngestResult(track, {
-    page_name: 'design_systems',
-    area: 'design_system_create',
-    entry_from: args.entryFrom,
-    source_type: args.sourceType,
-    ingest_method: args.ingestMethod,
-    result: args.result,
-    has_fallback: args.hasFallback,
-    fallback_type: args.fallbackType,
-    repo_host: args.repoHost,
-    file_count: args.fileCount,
-    folder_file_count_bucket: designSystemFolderCountBucket(args.fileCount),
-    total_size_bucket: designSystemTotalSizeBucket(args.totalBytes),
-    error_code: args.errorCode,
-    duration_ms: Math.max(0, args.durationMs),
-    project_id: args.projectId,
-    design_system_id: args.designSystemId,
-  });
 }
 
 function humanizeRepositoryName(repo: string): string | undefined {

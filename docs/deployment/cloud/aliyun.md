@@ -99,7 +99,7 @@ Get your personal mirror prefix from the Alibaba Cloud console under **Container
 From this point the flow matches [`docs/install-guide.md`](../../install-guide.md):
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
+git clone https://github.com/Recho-design/Design-box.git
 cd open-design
 bash deploy/scripts/install.sh --non-interactive --port 7456
 ```

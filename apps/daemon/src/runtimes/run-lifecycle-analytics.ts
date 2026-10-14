@@ -1,4 +1,4 @@
-import { projectKindFromMetadataToTracking } from '@open-design/contracts/analytics';
+import { projectKindFromMetadataToTracking } from './run-failure-vocabulary.js';
 import {
   countDesignSystemPreviewModules,
   countNewArtifacts,

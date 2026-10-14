@@ -9,14 +9,7 @@ import type {
   HostEditorId,
   HostEditorsResponse,
 } from '@open-design/contracts';
-import {
-  handoffTargetIdToTracking,
-  type TrackingArtifactKind,
-  type TrackingProjectKind,
-} from '@open-design/contracts/analytics';
 import { fetchHostEditors, openProjectInEditor } from '../providers/registry';
-import { useAnalytics } from '../analytics/provider';
-import { trackHandoffClick } from '../analytics/events';
 import { useT } from '../i18n';
 import { copyToClipboard } from '../lib/copy-to-clipboard';
 import { Icon } from './Icon';
@@ -86,7 +79,7 @@ const FALLBACK_CLI_TARGETS: CliTarget[] = [
 
 interface Props {
   projectId: string;
-  projectKind: TrackingProjectKind;
+  projectKind: string;
   projectName?: string;
   projectDir?: string | null;
   agents?: AgentInfo[];
@@ -94,7 +87,7 @@ interface Props {
   // artifact_kind dimensions as the rest of the artifact_header funnel.
   // Undefined when no artifact tab is active.
   artifactId?: string;
-  artifactKind?: TrackingArtifactKind;
+  artifactKind?: string;
   // Retained on the props contract for the callers that still pass them
   // (FileViewer / ProjectView). No longer read here since the OpenDesign
   // Cloud website link was removed from the CLI tab (acceptance #101).
@@ -323,28 +316,15 @@ export function HandoffButton({
   onRequestRevealInFinder,
 }: Props) {
   const t = useT();
-  const analytics = useAnalytics();
-  const { workspaceContext } = useProjectCollabContext();
+    const { workspaceContext } = useProjectCollabContext();
   // One-liner so every hand-off interaction emits the same
   // `ui_click` / `area=handoff` shape; callers pass only what varies. The
   // active-artifact context is attached to every event so handoff slices line
   // up with the rest of the artifact_header funnel.
   const fireHandoff = (
-    props: Omit<
-      Parameters<typeof trackHandoffClick>[1],
-      'page_name' | 'area' | 'artifact_id' | 'artifact_kind' | 'project_id' | 'project_kind'
-    >,
+    _props: Record<string, unknown>,
   ) => {
-    trackHandoffClick(analytics.track, {
-      page_name: 'artifact',
-      area: 'handoff',
-      artifact_id: artifactId,
-      artifact_kind: artifactKind,
-      project_id: projectId,
-      project_kind: projectKind,
-      ...props,
-    });
-  };
+      };
   const [editors, setEditors] = useState<HostEditor[]>([]);
   const [platform, setPlatform] = useState<HostEditorsResponse['platform']>('unknown');
   const [loaded, setLoaded] = useState(false);
@@ -428,7 +408,7 @@ export function HandoffButton({
   async function launch(editor: HostEditor) {
     fireHandoff({
       element: 'open_editor',
-      target_id: handoffTargetIdToTracking(editor.id),
+      target_id: editor.id,
       target_available: editor.available,
       handoff_tab: 'editor',
     });
@@ -465,7 +445,7 @@ export function HandoffButton({
   async function copyCliPrompt(cli: CliTarget) {
     fireHandoff({
       element: 'copy_cli_prompt',
-      target_id: handoffTargetIdToTracking(cli.id),
+      target_id: cli.id,
       target_available: cli.available,
       handoff_tab: 'cli',
       framework: selectedFramework.id,
@@ -588,7 +568,7 @@ export function HandoffButton({
             // secondary fallback if the daemon spawn fails.
             fireHandoff({
               element: 'open_editor',
-              target_id: handoffTargetIdToTracking(fallbackId),
+              target_id: fallbackId,
               target_available: false,
               handoff_tab: 'editor',
             });
@@ -647,7 +627,7 @@ export function HandoffButton({
               // target launch.
               fireHandoff({
                 element: 'trigger',
-                target_id: handoffTargetIdToTracking(primary.id),
+                target_id: primary.id,
                 target_available: primary.available,
                 handoff_tab: 'editor',
               });

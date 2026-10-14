@@ -19,7 +19,7 @@ Este guia diz exatamente onde olhar para cada tipo de contribuição e qual a ba
 | Adicionar uma feature, corrigir um bug, trazer um padrão de UX do [`open-codesign`][ocod] | código | `apps/web/src/`, `apps/daemon/` | PR normal |
 | Melhorar docs, traduzir uma seção para Français / Deutsch / 中文, corrigir typos | docs | `README.md`, `README.fr.md`, `README.de.md`, `README.zh-CN.md`, `docs/`, `QUICKSTART.md` | um PR |
 
-Se você não tem certeza em qual balde sua ideia se encaixa, [abra primeiro uma discussion / issue](https://github.com/nexu-io/open-design/issues/new) e te apontamos para a superfície certa.
+Se você não tem certeza em qual balde sua ideia se encaixa, [abra primeiro uma discussion / issue](https://github.com/Recho-design/Design-box/issues/new) e te apontamos para a superfície certa.
 
 ---
 
@@ -28,8 +28,8 @@ Se você não tem certeza em qual balde sua ideia se encaixa, [abra primeiro uma
 O setup completo numa página mora em [`QUICKSTART.pt-BR.md`](QUICKSTART.pt-BR.md). O TL;DR para contribuidores:
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
-cd open-design
+git clone https://github.com/Recho-design/Design-box.git
+cd Design-box
 corepack enable           # selects the pinned pnpm from packageManager
 pnpm install
 pnpm tools-dev run web    # daemon + web foreground loop
@@ -230,8 +230,6 @@ A tabela OVERRIDES em `maxTokens.ts` é para o caso raro em que o LiteLLM está 
 
 Alemão usa o formal `Sie` porque o OD fala com uma audiência mista de criadores solo, agências e times de engenharia; até feedback do projeto mostrar que uma voz informal `du` se encaixa melhor, alemão formal é o default menos surpreendente. PRs de locale devem traduzir chrome de UI, docs principais e metadados visuais de galeria em `apps/web/src/i18n/content.ts`, mas não devem traduzir `skills/`, `design-systems/` nem corpos de prompt que os agentes executam. Esses prompts-fonte são mantidos como entradas de workflow, e manter um único idioma de fonte evita multiplicar QA de prompt entre locales. Ao adicionar ou renomear uma skill, design system ou prompt template, atualize os metadados de display em alemão e rode `pnpm typecheck` (o repositório não carrega mais suíte de testes; drift de metadados de display é capturado no typecheck). Erros do daemon, nomes de arquivos exportados e texto de artifact gerado pelo agente são limitações conhecidas, a menos que um PR explicitamente os englobe.
 
-Para instruções passo a passo sobre adicionar um novo locale (dicionário de UI, README, language switcher, terminologia regional), veja [`TRANSLATIONS.md`](../../TRANSLATIONS.md).
-
 ---
 
 ## Estilo de código
@@ -285,8 +283,8 @@ Para bugs da pilha de prompt ("o agente emitiu um hero com gradiente roxo, a bla
 
 ## Fazendo perguntas
 
-- Pergunta de arquitetura, pergunta de design, "isso é bug ou mau uso" → [GitHub Discussions](https://github.com/nexu-io/open-design/discussions) (preferido — pesquisável para o próximo).
-- "Como escrevo uma skill que faz X" → Abra uma discussion. Respondemos e transformamos a resposta em [`docs/skills-protocol.md`](../../docs/skills-protocol.md) se for um padrão faltante.
+- Pergunta de arquitetura, pergunta de design, "isso é bug ou mau uso" → abra uma issue neste repositório descrevendo o que você executou e o que esperava.
+- "Como escrevo uma skill que faz X" → Abra uma issue. Respondemos e transformamos a resposta em [`docs/skills-protocol.md`](../../docs/skills-protocol.md) se for um padrão faltante.
 
 ---
 
@@ -305,21 +303,6 @@ Se não tem certeza se sua ideia se encaixa, abra uma discussion antes de escrev
 ---
 
 <!-- Machine-translated section; native-speaker review welcome via PR. -->
-## Tornando-se um Maintainer
-
-Se você vem contribuindo de forma consistente e quer saber como é o caminho para se tornar um Maintainer, as regras estão em **[`MAINTAINERS.md`](../../MAINTAINERS.md)**. A versão curta:
-
-- Um Maintainer pode revisar, aprovar e fechar issues. O botão de merge continua com o Core Team — sua aprovação ainda conta como a aprovação obrigatória para merge.
-- A barra é **≥ 20 merged PRs** mais uma verificação publicada de qualidade da conta (anti-bot, anti-sock-puppet) mais um julgamento do Core Team sobre a qualidade da contribuição. Não há formulário de inscrição; o Core Team levanta candidatos internamente e entra em contato.
-- **Não há cotas, nem SLAs, nem mandato fixo.** Sair é fácil e reversível (Emeritus → volte quando a vida acalmar).
-- Todos os limiares, o fluxo de nomeação, as regras de step-down e o waiver de projeto inicial estão em [`MAINTAINERS.md`](../../MAINTAINERS.md). Leia esse documento se algo acima te interessar.
-
-O tl;dr: mande bons PRs, revise com cuidado, apareça nas [Discussions][discussions] / no [Discord][discord], e o resto se resolve sozinho.
-
-[discussions]: https://github.com/nexu-io/open-design/discussions
-[discord]: https://discord.gg/mHAjSMV6gz
-
----
 
 ## Licença
 

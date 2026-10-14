@@ -2,14 +2,6 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@open-design/components";
 import type { WorkspaceCollabContext } from "@open-design/contracts";
-import { projectKindFromMetadataToTracking } from "@open-design/contracts/analytics";
-import { useAnalytics } from "../analytics/provider";
-import {
-  trackPageView,
-  trackProjectsListClick,
-  trackProjectsListControlsClick,
-  trackProjectsMorePopoverClick,
-} from "../analytics/events";
 import { useT } from "../i18n";
 import { useWorkspaceContext } from "../collab/useWorkspaceContext";
 import { workspaceIdentityCacheKey } from "../collab/workspace-identity";
@@ -139,19 +131,13 @@ export function DesignsTab({
 	const renameTitleId = useId();
 	const confirmTitleId = useId();
 	const t = useT();
-	const analytics = useAnalytics();
-	const { context: workspaceContext, loading: workspaceContextLoading } = useWorkspaceContext();
+		const { context: workspaceContext, loading: workspaceContextLoading } = useWorkspaceContext();
 	// P0 page_view page_name=projects — fire once when the tab mounts so
 	// `/projects` landings register even before the user clicks anything.
 	// ref-keyed to survive re-renders that flip parent state without
 	// remounting DesignsTab, mirroring the pattern in HomeView.
 	const projectsPageViewFiredRef = useRef(false);
-	useEffect(() => {
-		if (projectsPageViewFiredRef.current) return;
-		projectsPageViewFiredRef.current = true;
-		trackPageView(analytics.track, { page_name: 'projects' });
-	}, [analytics.track]);
-	const [filter, setFilter] = useState("");
+		const [filter, setFilter] = useState("");
 	const [sub, setSub] = useState<SubTab>("recent");
 	const [liveArtifactsByProject, setLiveArtifactsByProject] = useState<
 		Record<string, LiveArtifactSummary[]>
@@ -346,22 +332,14 @@ export function DesignsTab({
 		} catch {}
 	}, [view]);
 
-	useEffect(() => {
-		if (view === "kanban" && selectMode) exitSelectMode();
-	}, [selectMode, view]);
-
+	
 	const refreshProjectsList = useCallback(
 		async (source: "manual" | "auto") => {
 			if (!onRefresh || projectsRefreshInFlightRef.current) return;
 			projectsRefreshInFlightRef.current = true;
 			setProjectsRefreshing(true);
 			if (source === "manual") {
-				trackProjectsListControlsClick(analytics.track, {
-					page_name: "projects",
-					area: "list_controls",
-					element: "refresh",
-				});
-			}
+							}
 			try {
 				await onRefresh();
 			} catch {
@@ -378,14 +356,11 @@ export function DesignsTab({
 				setProjectsRefreshing(false);
 			}
 		},
-		[analytics.track, onRefresh, t],
+		[ onRefresh, t],
 	);
 
 	const refreshProjectsListRef = useRef(refreshProjectsList);
-	useEffect(() => {
-		refreshProjectsListRef.current = refreshProjectsList;
-	}, [refreshProjectsList]);
-
+	
 	const hasProjectsRefresh = Boolean(onRefresh);
 	useEffect(() => {
 		if (!isActive || !hasProjectsRefresh) return;
@@ -606,12 +581,7 @@ export function DesignsTab({
 							aria-pressed={sub === "recent"}
 							className={sub === "recent" ? "active" : ""}
 							onClick={() => {
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "recent",
-								});
-								setSub("recent");
+																setSub("recent");
 							}}
 						>
 							{t("designs.subRecent")}
@@ -620,12 +590,7 @@ export function DesignsTab({
 							aria-pressed={sub === "yours"}
 							className={sub === "yours" ? "active" : ""}
 							onClick={() => {
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "your_designs",
-								});
-								setSub("yours");
+																setSub("yours");
 							}}
 						>
 							{t("designs.subYours")}
@@ -639,12 +604,7 @@ export function DesignsTab({
 							className="designs-new-project-button"
 							data-testid="designs-new-project"
 							onClick={() => {
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "create_project",
-								});
-								onNewProject();
+																onNewProject();
 							}}
 						>
 							<Icon name="plus" size={13} />
@@ -663,12 +623,7 @@ export function DesignsTab({
 								// P0 ui_click area=list_controls element=search_input.
 								// Tracked on focus rather than every keystroke so each
 								// engagement counts once.
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "search_input",
-								});
-							}}
+															}}
 						/>
 					</div>
 					{onRefresh ? (
@@ -726,12 +681,7 @@ export function DesignsTab({
 							type="button"
 							className="designs-select-toggle"
 							onClick={() => {
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "select",
-								});
-								setSelectMode(true);
+																setSelectMode(true);
 							}}
 						>
 							<Icon name="check" size={14} />
@@ -747,12 +697,7 @@ export function DesignsTab({
 							aria-pressed={view === "grid"}
 							className={view === "grid" ? "active" : ""}
 							onClick={() => {
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "grid_view",
-								});
-								setView("grid");
+																setView("grid");
 							}}
 							title={t("designs.viewGrid")}
 							data-testid="designs-view-grid"
@@ -765,12 +710,7 @@ export function DesignsTab({
 							onClick={() => {
 								// Kanban view substitutes for the contract's
 								// list_view element.
-								trackProjectsListControlsClick(analytics.track, {
-									page_name: "projects",
-									area: "list_controls",
-									element: "list_view",
-								});
-								setView("kanban");
+																setView("kanban");
 							}}
 							title={t("designs.viewKanban")}
 							data-testid="designs-view-kanban"
@@ -793,12 +733,7 @@ export function DesignsTab({
 									className="primary designs-empty-cta"
 									data-testid="designs-empty-new-project"
 									onClick={() => {
-										trackProjectsListControlsClick(analytics.track, {
-											page_name: "projects",
-											area: "list_controls",
-											element: "create_project",
-										});
-										onNewProject();
+																				onNewProject();
 									}}
 								>
 									<span>{t("entry.navNewProject")}</span>
@@ -909,15 +844,6 @@ export function DesignsTab({
 									if (selectMode) {
 										toggleSelected(p.id);
 									} else {
-										// P0 ui_click area=list element=project_card.
-										const projectKind = projectKindFromMetadataToTracking(p.metadata);
-										trackProjectsListClick(analytics.track, {
-											page_name: "projects",
-											area: "list",
-											element: "project_card",
-											project_id: p.id,
-											...(projectKind ? { project_kind: projectKind } : {}),
-										});
 										onOpen(p.id);
 									}
 								}}
@@ -952,15 +878,7 @@ export function DesignsTab({
 												setMenuOpenId((cur) => {
 													const nextId = cur === p.id ? null : p.id;
 													if (nextId === p.id) {
-														const projectKind = projectKindFromMetadataToTracking(p.metadata);
-														trackProjectsListClick(analytics.track, {
-															page_name: "projects",
-															area: "list",
-															element: "more",
-															project_id: p.id,
-															...(projectKind ? { project_kind: projectKind } : {}),
-														});
-													}
+																															}
 													return nextId;
 												});
 											}}
@@ -977,15 +895,7 @@ export function DesignsTab({
 												type="button"
 												role="menuitem"
 												onClick={() => {
-													const projectKind = projectKindFromMetadataToTracking(p.metadata);
-													trackProjectsMorePopoverClick(analytics.track, {
-														page_name: "projects",
-														area: "projects_more_popover",
-														element: "rename",
-														project_id: p.id,
-														...(projectKind ? { project_kind: projectKind } : {}),
-													});
-													setMenuOpenId(null);
+																													setMenuOpenId(null);
 													handleRenameProject(p);
 												}}
 											>
@@ -997,15 +907,7 @@ export function DesignsTab({
 													type="button"
 													role="menuitem"
 													onClick={() => {
-														const projectKind = projectKindFromMetadataToTracking(p.metadata);
-														trackProjectsMorePopoverClick(analytics.track, {
-															page_name: "projects",
-															area: "projects_more_popover",
-															element: "duplicate",
-															project_id: p.id,
-															...(projectKind ? { project_kind: projectKind } : {}),
-														});
-														setMenuOpenId(null);
+																																setMenuOpenId(null);
 														handleDuplicateProject(p);
 													}}
 												>
@@ -1018,15 +920,7 @@ export function DesignsTab({
 												role="menuitem"
 												className="danger"
 												onClick={() => {
-													const projectKind = projectKindFromMetadataToTracking(p.metadata);
-													trackProjectsMorePopoverClick(analytics.track, {
-														page_name: "projects",
-														area: "projects_more_popover",
-														element: "delete",
-														project_id: p.id,
-														...(projectKind ? { project_kind: projectKind } : {}),
-													});
-													setMenuOpenId(null);
+																													setMenuOpenId(null);
 													handleDeleteProject(p);
 												}}
 											>

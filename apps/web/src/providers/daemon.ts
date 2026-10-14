@@ -597,10 +597,9 @@ export interface DaemonStreamOptions {
    * 旧 daemon 不带这个字段时**不发**这条回调 —— 证不出是用户按的就不说是。
    */
   onCancelOrigin?: (origin: RunCancelOrigin) => void;
-  // v2 analytics context propagated to run_created / run_finished.
-  // Optional; the daemon only consumes these to shape PostHog props
-  // (page_name / area / entry_from / DS context). Behavior never
-  // depends on them.
+  // v2 context propagated to run_created / run_finished.
+  // Optional metadata (page_name / area / entry_from / DS context).
+  // Behavior never depends on them.
   analyticsHints?: ChatAnalyticsHints;
   /** Daemon-issued continuation handle used only for an explicit task reply. */
   taskExecutionId?: string;

@@ -85,7 +85,7 @@
     reloadedReopen: 'Reloaded - reopen this popup to continue.',
     toolbarDrag: 'Drag to move',
     toolbarDragLabel: 'Drag the OpenDesign bar',
-    toolbarHomeTip: 'OpenDesign - open-design.ai',
+    toolbarHomeTip: 'OpenDesign - project repository',
     toolbarHomeLabel: 'OpenDesign home',
     toolbarCapturePage: 'Capture page -> Library',
     toolbarExtractDesignSystem: 'Extract design system',

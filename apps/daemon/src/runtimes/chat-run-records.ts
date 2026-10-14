@@ -14,7 +14,6 @@ import type {
   ProjectMetadata as ContractProjectMetadata,
   StrategyTaskProjectionV2,
 } from '@open-design/contracts';
-import type { AnalyticsContext } from '../analytics.js';
 import type { RunArtifactBaseline } from '../run-artifact-fs.js';
 import type {
   RunEventForAnalyticsObservability,
@@ -85,7 +84,7 @@ export function pinRunWorkspaceScopeForProject(
 }
 import type { OdNextRolloutDecision } from '../strategies/od-next/rollout.js';
 import type { OdNextTaskInputSnapshotDescriptor } from '../strategies/od-next/task-input-snapshot.js';
-import type { RunTerminalLifecycleV1 } from '../observability/run-terminal-lifecycle.js';
+import type { RunTerminalLifecycleV1 } from './run-terminal-integrity.js';
 
 import { getProject } from '../db.js';
 import {
@@ -249,8 +248,6 @@ export interface ChatRun {
   /** Latest validated prompt-budget projection; unlike events, this is not a tail ring. */
   promptBudgetDiagnostics?: Partial<RunDiagnosticsAnalytics> | null;
   clients: Set<SseClient>;
-  analyticsContext?: AnalyticsContext;
-  analyticsRecovery?: { context?: AnalyticsContext } | null;
   externalPluginAnalytics?: Record<string, unknown> | null;
   cumulativeRetryAttemptCount?: number;
   manualResumeAttemptCount?: number;
@@ -341,7 +338,6 @@ export interface RunArtifactBaselines {
 }
 
 export interface RunCreatedFallbackInput {
-  analyticsContext: AnalyticsContext | null;
   run: ChatRun;
   status: string;
 }

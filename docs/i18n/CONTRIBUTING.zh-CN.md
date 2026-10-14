@@ -19,7 +19,7 @@
 | 加功能、修 bug、从 [`open-codesign`][ocod] 移植一个 UX 模式 | 代码 | `apps/web/src/`、`apps/daemon/` | 普通 PR |
 | 改文档、补法语 / 德语 / 中文翻译、修错别字 | 文档 | `README.md`、`README.fr.md`、`README.de.md`、`README.zh-CN.md`、`docs/`、`QUICKSTART.zh-CN.md` | 一个 PR |
 
-不确定自己想做的属于哪一桶？[先开 issue / discussion](https://github.com/nexu-io/open-design/issues/new)，我们告诉你该改哪个面。
+不确定自己想做的属于哪一桶？[先开 issue / discussion](https://github.com/Recho-design/Design-box/issues/new)，我们告诉你该改哪个面。
 
 ---
 
@@ -28,8 +28,8 @@
 完整的一页式 setup 在 [`QUICKSTART.zh-CN.md`](QUICKSTART.zh-CN.md)。给贡献者的 TL;DR：
 
 ```bash
-git clone https://github.com/nexu-io/open-design.git
-cd open-design
+git clone https://github.com/Recho-design/Design-box.git
+cd Design-box
 corepack enable           # 使用 packageManager 固定的 pnpm
 pnpm install
 pnpm tools-dev run web    # daemon + web 前台闭环
@@ -274,8 +274,8 @@ node --experimental-strip-types scripts/sync-litellm-models.ts
 
 ## 提问
 
-- 架构问题、设计问题、「这是 bug 还是误用」 → 请用 [GitHub Discussions](https://github.com/nexu-io/open-design/discussions)（首选 —— 下一个人能搜到）。
-- 「我想写一个干 X 的 skill 怎么写」 → 开一个 discussion。我们会回答，且如果是缺失的模式，答案会被收进 [`docs/skills-protocol.md`](../../docs/skills-protocol.md)。
+- 架构问题、设计问题、「这是 bug 还是误用」 → 请在本仓库开 issue，说明你运行了什么、期望是什么。
+- 「我想写一个干 X 的 skill 怎么写」 → 开一个 issue。我们会回答，且如果是缺失的模式，答案会被收进 [`docs/skills-protocol.md`](../../docs/skills-protocol.md)。
 
 ---
 
@@ -290,22 +290,6 @@ node --experimental-strip-types scripts/sync-litellm-models.ts
 - **打包二进制** 而没有附 license 文件和原作者归属。
 
 不确定自己的想法合不合适？开个 discussion 再写代码。
-
----
-
-## 想成为 Maintainer
-
-如果你已经在持续贡献并想了解成为 Maintainer 的路径——完整规则在 **[`MAINTAINERS.md`](../../MAINTAINERS.md)**。简版如下：
-
-- Maintainer 可以 review、approve、关闭 issue。Merge 按钮保留在 Core Team——**你的 approve 仍算作 merge 所需的那一个 approve**。
-- 门槛：**≥ 20 个 merged PR** + 公开的账号质量检查（防 bot / 防小号）+ Core Team 对贡献质量的判断。**没有申请表**——Core Team 在内部识别候选人后会主动联系。
-- **没有 quota，没有 SLA，没有固定任期。** 退出很容易也可逆（Emeritus → 生活忙完后回归）。
-- 全部门槛阈值、提名流程、退出规则、早期项目例外条款都在 [`MAINTAINERS.md`](../../MAINTAINERS.md)——上面任何一条勾起兴趣的话，去读那份文档。
-
-tl;dr：好好提 PR、认真 review、在 [Discussions][discussions] / [Discord][discord] 多冒泡，剩下的自然会发生。
-
-[discussions]: https://github.com/nexu-io/open-design/discussions
-[discord]: https://discord.gg/mHAjSMV6gz
 
 ---
 

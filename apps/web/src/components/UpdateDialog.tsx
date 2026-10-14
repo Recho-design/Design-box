@@ -2,13 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OpenDesignHostUpdaterStatusSnapshot } from '@open-design/host';
 
 import { Icon } from './Icon';
-import { useAnalytics } from '../analytics/provider';
-import {
-  trackUpdateCheckResult,
-  trackUpdateIndicatorClick,
-  trackUpdateInstallResult,
-  trackUpdatePromptSurfaceView,
-} from '../analytics/events';
 import { useI18n } from '../i18n';
 import { openExternalUrl } from '../providers/registry';
 import {
@@ -27,7 +20,6 @@ import {
 } from '../lib/updater';
 import styles from './UpdateDialog.module.css';
 
-const RELEASES_URL = 'https://github.com/nexu-io/open-design/releases';
 const MENU_SOURCE = 'mac-app-menu';
 
 function withEllipsis(value: string): string {
@@ -40,9 +32,6 @@ function shouldRunManualCheck(status: OpenDesignHostUpdaterStatusSnapshot): bool
 
 export function UpdateDialog() {
   const { locale, t } = useI18n();
-  const analytics = useAnalytics();
-  const analyticsTrackRef = useRef(analytics.track);
-  analyticsTrackRef.current = analytics.track;
   const statusRef = useRef<OpenDesignHostUpdaterStatusSnapshot | null>(null);
   const statusRevisionRef = useRef(0);
   const laterRef = useRef<HTMLButtonElement | null>(null);
@@ -89,13 +78,7 @@ export function UpdateDialog() {
       setRestartSafety(null);
       setActionError(null);
       setOpen(true);
-      trackUpdateIndicatorClick(analyticsTrackRef.current, {
-        action: 'open_prompt',
-        area: 'mac_app_menu',
-        element: 'check_for_updates',
-        page_name: 'app',
-      });
-      void (async () => {
+            void (async () => {
         let current = statusRef.current;
         if (current == null) {
           const result = await readUpdaterStatus({ payload: { source: requestSource } });
@@ -110,27 +93,9 @@ export function UpdateDialog() {
         if (!mounted) return;
         if (result.ok) {
           applyStatus(result.status);
-          trackUpdateCheckResult(analyticsTrackRef.current, {
-            area: 'update_dialog',
-            page_name: 'app',
-            result: result.status.state === 'not-available'
-              ? 'up_to_date'
-              : result.status.state === 'error'
-                ? 'failed'
-                : 'available',
-            ...(result.status.currentVersion ? { app_version_before: result.status.currentVersion } : {}),
-            ...(result.status.availableVersion ? { app_version_after: result.status.availableVersion } : {}),
-            ...(result.status.error?.code ? { error_code: result.status.error.code } : {}),
-          });
-        } else {
+                  } else {
           setActionError(result.reason);
-          trackUpdateCheckResult(analyticsTrackRef.current, {
-            area: 'update_dialog',
-            error_code: result.reason,
-            page_name: 'app',
-            result: 'failed',
-          });
-        }
+                  }
       })();
     });
     const mountStatusRevision = statusRevisionRef.current;
@@ -146,16 +111,7 @@ export function UpdateDialog() {
 
   const readySurfaceKey = open && model.shouldShowControl ? model.promptKey : null;
   const lastReadySurfaceKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (readySurfaceKey == null || lastReadySurfaceKeyRef.current === readySurfaceKey) return;
-    lastReadySurfaceKeyRef.current = readySurfaceKey;
-    trackUpdatePromptSurfaceView(analytics.track, {
-      area: 'update_dialog',
-      page_name: 'app',
-      ...versionProps,
-    });
-  }, [analytics.track, readySurfaceKey, versionProps]);
-
+  
   useEffect(() => {
     if (restartSafety == null) return;
     laterRef.current?.focus();
@@ -168,17 +124,10 @@ export function UpdateDialog() {
 
   const close = useCallback(() => {
     if (actionBusy) return;
-    trackUpdateIndicatorClick(analytics.track, {
-      action: 'dismiss',
-      area: 'update_dialog',
-      element: 'later',
-      page_name: 'app',
-      ...versionProps,
-    });
-    setOpen(false);
+        setOpen(false);
     setRestartSafety(null);
     setActionError(null);
-  }, [actionBusy, analytics.track, versionProps]);
+  }, [actionBusy, versionProps]);
 
   useEffect(() => {
     if (!open) return;
@@ -197,27 +146,13 @@ export function UpdateDialog() {
       const result = await checkForUpdaterUpdate({ payload: { autoDownload: true, source } });
       if (result.ok) {
         applyStatus(result.status);
-        trackUpdateCheckResult(analytics.track, {
-          area: 'update_dialog',
-          page_name: 'app',
-          result: result.status.state === 'not-available' ? 'up_to_date' : result.status.state === 'error' ? 'failed' : 'available',
-          ...(result.status.currentVersion ? { app_version_before: result.status.currentVersion } : {}),
-          ...(result.status.availableVersion ? { app_version_after: result.status.availableVersion } : {}),
-          ...(result.status.error?.code ? { error_code: result.status.error.code } : {}),
-        });
-      } else {
+              } else {
         setActionError(result.reason);
-        trackUpdateCheckResult(analytics.track, {
-          area: 'update_dialog',
-          error_code: result.reason,
-          page_name: 'app',
-          result: 'failed',
-        });
-      }
+              }
     } finally {
       setActionBusy(false);
     }
-  }, [analytics.track, applyStatus, source]);
+  }, [ applyStatus, source]);
 
   const download = useCallback(async () => {
     setActionBusy(true);
@@ -235,83 +170,32 @@ export function UpdateDialog() {
     setActionBusy(true);
     setActionError(null);
     setRestartSafety(null);
-    trackUpdateIndicatorClick(analytics.track, {
-      action: force ? 'force_restart' : 'install',
-      area: 'update_dialog',
-      element: force ? 'restart_anyway' : 'install_update',
-      page_name: 'app',
-      ...versionProps,
-    });
-    try {
+        try {
       const options = { payload: { force, source } };
       const installResult = await openUpdaterInstaller(options);
       if (!installResult.ok) {
         setActionError(installResult.reason);
-        trackUpdateInstallResult(analytics.track, {
-          area: 'update_dialog',
-          error_code: installResult.reason,
-          page_name: 'app',
-          result: 'failed',
-          ...versionProps,
-        });
-        return;
+                return;
       }
       const safety = restartSafetyFromUpdaterStatus(installResult.status);
       if (safety != null) {
         setRestartSafety(safety);
-        trackUpdateInstallResult(analytics.track, {
-          area: 'update_dialog',
-          error_code: safety.state === 'blocked' ? 'active-runs-blocked' : 'active-runs-unknown',
-          page_name: 'app',
-          result: 'failed',
-          ...versionProps,
-        });
-        return;
+                return;
       }
       applyStatus(installResult.status);
       const quitResult = await quitAfterUpdaterInstallerOpen(options);
       const quitSafety = restartSafetyFromActionResult(quitResult);
       if (quitSafety != null) {
         setRestartSafety(quitSafety);
-        trackUpdateInstallResult(analytics.track, {
-          area: 'update_dialog',
-          error_code: quitSafety.state === 'blocked' ? 'active-runs-blocked' : 'active-runs-unknown',
-          page_name: 'app',
-          result: 'failed',
-          ...versionProps,
-        });
-      } else if (!quitResult.ok) {
+              } else if (!quitResult.ok) {
         setActionError(quitResult.reason);
-        trackUpdateInstallResult(analytics.track, {
-          area: 'update_dialog',
-          error_code: quitResult.reason,
-          page_name: 'app',
-          result: 'failed',
-          ...versionProps,
-        });
-      } else {
-        trackUpdateInstallResult(analytics.track, {
-          area: 'update_dialog',
-          page_name: 'app',
-          result: 'success',
-          ...versionProps,
-        });
-      }
+              } else {
+              }
     } finally {
       setActionBusy(false);
     }
-  }, [analytics.track, applyStatus, source, versionProps]);
+  }, [ applyStatus, source, versionProps]);
 
-  const openReleaseNotes = useCallback(() => {
-    trackUpdateIndicatorClick(analytics.track, {
-      action: 'open_link',
-      area: 'update_dialog',
-      element: 'view_release_notes',
-      page_name: 'app',
-      ...versionProps,
-    });
-    void openExternalUrl(RELEASES_URL);
-  }, [analytics.track, versionProps]);
 
   if (!open) return null;
 
@@ -437,7 +321,6 @@ export function UpdateDialog() {
             ) : (
               <button
                 className={styles.releaseLink}
-                onClick={openReleaseNotes}
                 type="button"
               >
                 {t('updater.viewVersionFeatures')} <Icon name="external-link" size={13} />
@@ -454,7 +337,6 @@ export function UpdateDialog() {
           {model.upToDate ? (
             <button
               className={styles.primaryButton}
-              onClick={openReleaseNotes}
               ref={primaryRef}
               type="button"
             >
@@ -476,7 +358,6 @@ export function UpdateDialog() {
               onClick={() => {
                 if (ready) void installAndQuit(false);
                 else if (available) void download();
-                else if (unsupported) openReleaseNotes();
                 else void checkAgain();
               }}
               ref={primaryRef}

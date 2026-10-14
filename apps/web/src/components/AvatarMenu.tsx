@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { getResolvedDeviceId } from '../analytics/client';
-import { useAnalytics } from '../analytics/provider';
 import { useT } from '../i18n';
 import { AgentIcon } from './AgentIcon';
 import { modelProviderIconSrc } from './modelProviderIcon';
@@ -90,8 +88,7 @@ export function AvatarMenu({
   openSignal,
 }: Props) {
   const t = useT();
-  const analytics = useAnalytics();
-  const {
+    const {
     context: ambientWorkspaceContext,
     loading: ambientWorkspaceContextLoading,
   } = useWorkspaceContext();
