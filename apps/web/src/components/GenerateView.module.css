@@ -46,12 +46,96 @@
   background: var(--bg);
 }
 
-.topBarMeta { display: flex; align-items: center; gap: 12px; }
+.topBarMeta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
 .historyCount {
   font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums;
   color: var(--text-muted); background: var(--bg-subtle); padding: 3px 10px;
   border-radius: var(--radius-pill); border: 1px solid var(--border-soft); user-select: none;
+}
+
+/* View toggle (stream / grid / list) */
+.viewToggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  height: 30px;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  background: var(--bg-subtle);
+}
+
+.viewToggleBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: background 140ms cubic-bezier(0.23, 1, 0.32, 1), color 140ms;
+}
+
+.viewToggleBtn:hover {
+  color: var(--text-strong);
+}
+
+.viewToggleBtn[data-active='true'] {
+  background: var(--bg);
+  color: var(--text-strong);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+.manageBtn {
+  flex: 0 0 auto;
+}
+
+/* Selection action bar */
+.selectBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md, 6px);
+  padding: 4px 10px;
+  animation: barEnter 180ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+@keyframes barEnter {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.selectCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+}
+
+.selectActionBtn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-xs, 4px);
+  transition: background 120ms;
+}
+
+.selectActionBtn:hover {
+  background: var(--accent-subtle, rgba(0, 102, 255, 0.08));
 }
 
 /* ── 2. Card Stream & Empty State ── */
@@ -89,6 +173,49 @@
 }
 
 .card:hover { border-color: var(--border-selected); box-shadow: var(--shadow-sm); }
+
+.cardSelectable {
+  cursor: pointer;
+}
+
+.card[data-selected='true'] {
+  border-color: var(--accent);
+  background: var(--bg-subtle, var(--bg));
+  box-shadow: 0 0 0 1px var(--accent-subtle, rgba(0, 102, 255, 0.2));
+}
+
+.cardCheckboxBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm, 4px);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 140ms cubic-bezier(0.23, 1, 0.32, 1), transform 140ms;
+}
+
+.cardCheckboxBtn:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.cardCheckboxBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.checkboxChecked {
+  color: var(--accent);
+}
+
+.checkboxUnchecked {
+  color: var(--text-muted);
+}
 
 @keyframes cardEnter {
   from { opacity: 0; transform: scale(0.98) translateY(6px); }
@@ -605,6 +732,59 @@
   position: absolute;
   top: 20px;
   right: 20px;
+  z-index: 1010;
+}
+
+.lightboxNavBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1010;
+  transition: background 140ms cubic-bezier(0.23, 1, 0.32, 1), transform 140ms;
+}
+
+.lightboxNavBtn:hover {
+  background: rgba(255, 255, 255, 0.24);
+  transform: translateY(-50%) scale(1.06);
+}
+
+.lightboxNavPrev {
+  left: 24px;
+}
+
+.lightboxNavNext {
+  right: 24px;
+}
+
+.lightboxCounter {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  z-index: 1010;
 }
 
 /* ── 8. Transfer Scratch -> Project Modal ── */

@@ -1,0 +1,236 @@
+.listContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.listItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--bg-panel, var(--bg));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: var(--shadow-xs);
+  transition: border-color 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              background 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              box-shadow 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  min-height: 58px;
+}
+
+.listItem:hover {
+  border-color: var(--border-selected, var(--border));
+  box-shadow: var(--shadow-sm);
+}
+
+.listItem[data-clickable='true'] {
+  cursor: pointer;
+}
+
+.listItem[data-selected='true'] {
+  border-color: var(--accent);
+  background: var(--bg-subtle, rgba(0, 102, 255, 0.04));
+}
+
+/* Section 1: Checkbox & Thumbnail */
+.sectionThumb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.checkboxBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm, 4px);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.checkboxBtn:hover:not(:disabled) {
+  color: var(--text-strong);
+}
+
+.checkboxBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.checkboxChecked {
+  color: var(--accent);
+}
+
+.thumbBox {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-soft);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumbPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.thumbFailed {
+  color: var(--error, #f43f5e);
+}
+
+.thumbBadgeExtra {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 1px 4px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  line-height: 1;
+}
+
+/* Section 2: Prompt and status */
+.sectionPrompt {
+  flex: 1 1 300px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.promptText {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+
+.promptMuted {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.statusRunning {
+  color: var(--accent);
+}
+
+.statusFailed {
+  color: var(--error, #f43f5e);
+}
+
+.pulseDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 0.3; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Section 3: Badges (Model, Aspect, Quality) */
+.sectionBadges {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.modelBadge {
+  color: var(--text-strong);
+  font-weight: 600;
+}
+
+/* Section 4: Time & Actions */
+.sectionActions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.timeText {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.actionButtons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btnDanger {
+  color: var(--error, #f43f5e);
+}
+.btnDanger:hover:not(:disabled) {
+  background: var(--error-subtle, rgba(244, 63, 94, 0.1));
+}

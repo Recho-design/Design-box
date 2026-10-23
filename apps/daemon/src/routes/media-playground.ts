@@ -4,6 +4,8 @@ import path from 'node:path';
 import type { Express, Request, Response } from 'express';
 import multer from 'multer';
 import type {
+  PlaygroundBatchDeleteRequest,
+  PlaygroundBatchDeleteResponse,
   PlaygroundDeleteResponse,
   PlaygroundGenerateRequest,
   PlaygroundGenerationFile,
@@ -47,7 +49,7 @@ import { clampMediaGenerateCount } from './media.js';
  * 有 media_tasks 轮询、late-file 关联与快照，这里一概不建（无 Run 无消息）。
  * 一次请求 = 一次同步批次 = 一张卡片历史。
  *
- * 六个端点全部带同源守卫：本机 UI/CLI 专属，读路径泄露生成历史与图片同样不
+ * 七个端点全部带同源守卫：本机 UI/CLI 专属，读路径泄露生成历史与图片同样不
  * 可接受（B2）。错误一律走嵌套信封 `{error:{code,message}}`（含 catch 分支），
  * 因为 CLI 的退出码分类要靠它拿 `code`。
  */
@@ -55,6 +57,13 @@ import { clampMediaGenerateCount } from './media.js';
 const PLAYGROUND_ROUTE_PREFIX = '/api/media/playground';
 const PLAYGROUND_LIST_DEFAULT_LIMIT = 50;
 const PLAYGROUND_LIST_MAX_LIMIT = 200;
+/**
+ * 一次批删最多处理多少条（计**去重后**的条数）。
+ *
+ * 上限管的是这次请求的同步工作量：批删是"逐条同步删除"的循环，没有后台任务兜
+ * 底，所以无界请求必须在边界上拒掉，而不是让一个超长 `ids` 变成一次长挂起。
+ */
+const PLAYGROUND_BATCH_DELETE_MAX_IDS = 100;
 /**
  * 一次生成的 provider 超时，与既有 generate 端点在同一个量级：长图/大图很慢，
  * 而这里没有 202 + 轮询的退路，超时就是这一行的失败。
@@ -552,23 +561,74 @@ export function registerMediaPlaygroundRoutes(
   });
 
   async function handleDelete(req: Request, res: Response): Promise<void> {
-    const record = getPlaygroundGeneration(db, paramOf(req, 'id'));
+    const generationId = paramOf(req, 'id');
+    const record = getPlaygroundGeneration(db, generationId);
     if (!record) return void sendApiError(res, 404, 'NOT_FOUND', 'generation not found');
     // running 行不可删（C5）：同步批次在 HTTP 请求内 settle，运行窗口就是请求
     // 窗口；删行会让 settle 的更新落空，渲染器却照常写出孤儿文件。
-    if (record.status === 'running') return sendRunningConflict(res, paramOf(req, 'id'));
-    // scratch 产物**一律**删除（无论是否转存过；转存副本在项目里不受影响），
-    // 不留"不在行里也无入口可删"的永久孤儿。项目行的文件是用户项目里的素材，
-    // 删历史行不等于删用户的东西。
+    if (record.status === 'running') return sendRunningConflict(res, generationId);
+    await deleteGenerationRow(record);
+    const payload: PlaygroundDeleteResponse = { ok: true };
+    res.json(payload);
+  }
+
+  // -------------------------------------------------------------------------
+  // POST /generations/batch-delete
+  // -------------------------------------------------------------------------
+
+  app.post(`${PLAYGROUND_ROUTE_PREFIX}/generations/batch-delete`, async (req, res) => {
+    if (!requireSameOrigin(req, res)) return;
+    try {
+      await handleBatchDelete(req, res);
+    } catch (err) {
+      sendApiError(res, 500, 'INTERNAL_ERROR', errorText(err));
+    }
+  });
+
+  async function handleBatchDelete(req: Request, res: Response): Promise<void> {
+    const parsed = parseBatchDeleteIds((req.body ?? {}) as Partial<PlaygroundBatchDeleteRequest>);
+    if (!parsed.ok) return sendFailure(res, parsed.failure);
+    // 逐条独立：一条 running、一条不存在都不影响其余行，判定与单删**同一份实现**
+    // （deleteGenerationRow）。没有跨条事务是如实反映现实——行在 SQLite、产物在
+    // 文件系统，本来就不在一个事务边界里。中途抛错即 500，前面的行已经删掉了；
+    // 重复调用会收敛（已删的落进 notFound），所以重试是安全的。
+    const payload: PlaygroundBatchDeleteResponse = {
+      deleted: [],
+      skippedRunning: [],
+      notFound: [],
+    };
+    for (const id of parsed.ids) {
+      const record = getPlaygroundGeneration(db, id);
+      if (!record) {
+        payload.notFound.push(id);
+        continue;
+      }
+      if (record.status === 'running') {
+        payload.skippedRunning.push(id);
+        continue;
+      }
+      await deleteGenerationRow(record);
+      payload.deleted.push(id);
+    }
+    res.json(payload);
+  }
+
+  /**
+   * 单条的删除动作：单删与批删共用这一份，两条路径才不会各自漂移。
+   *
+   * scratch 产物**一律**删除（无论是否转存过；转存副本在项目里不受影响），不留
+   * "不在行里也无入口可删"的永久孤儿。删文件是 best-effort：`rm` 失败就放过，
+   * 留一个不再被任何行引用的孤儿文件，好过留一张用户再也删不掉的历史行。项目行
+   * 的文件是用户项目里的素材，删历史行不等于删用户的东西。
+   */
+  async function deleteGenerationRow(record: PlaygroundGenerationRecord): Promise<void> {
     if (record.targetProjectId === null) {
       for (const file of record.files) {
         const abs = resolveWithinBase(PLAYGROUND_DIR, file.name);
         if (abs) await fsp.rm(abs, { force: true }).catch(() => undefined);
       }
     }
-    deletePlaygroundGeneration(db, paramOf(req, 'id'));
-    const payload: PlaygroundDeleteResponse = { ok: true };
-    res.json(payload);
+    deletePlaygroundGeneration(db, record.id);
   }
 }
 
@@ -592,6 +652,38 @@ function parseListLimit(raw: unknown): number {
 function parseSlot(raw: unknown): number | null {
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null;
   return Number(raw);
+}
+
+/**
+ * 批删请求体 → 去重后的 id 列表；形状不合法或超限时返回 400 失败。
+ *
+ * 去重保留 id 首次出现的顺序：结果桶按调用方给的顺序回，逐条打印才读得懂。上限
+ * 计在**去重后**的条数上——它管的是这次请求真正要做的工作量，重复的 id 不产生
+ * 额外的删除动作（因此 1000 个重复 id 不是"超限"，而是 1 条）。
+ */
+function parseBatchDeleteIds(
+  body: Partial<PlaygroundBatchDeleteRequest>,
+): { ok: true; ids: string[] } | { ok: false; failure: RequestFailure } {
+  const badRequest = (message: string): { ok: false; failure: RequestFailure } => ({
+    ok: false,
+    failure: { status: 400, code: 'BAD_REQUEST', message },
+  });
+  const raw = body.ids;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return badRequest('ids must be a non-empty array of generation ids');
+  }
+  // 坏的 id 是**调用错误**，不是"跳过这一条"：静默丢弃会让调用方以为自己删了
+  // 它——结果桶里不会有它的痕迹，而它其实还在历史里。
+  if (raw.some((id) => typeof id !== 'string' || !id.trim())) {
+    return badRequest('ids must be an array of non-empty strings');
+  }
+  const ids = [...new Set(raw)];
+  if (ids.length > PLAYGROUND_BATCH_DELETE_MAX_IDS) {
+    return badRequest(
+      `ids must contain at most ${PLAYGROUND_BATCH_DELETE_MAX_IDS} unique generation ids`,
+    );
+  }
+  return { ok: true, ids };
 }
 
 /** 校验生成请求；通过时返回 null。 */

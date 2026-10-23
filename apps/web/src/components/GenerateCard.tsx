@@ -7,6 +7,7 @@ import type {
 import { Button } from '@open-design/components';
 import { useI18n } from '../i18n';
 import { Icon } from './Icon';
+import { RemixIcon } from './RemixIcon';
 import styles from './GenerateView.module.css';
 
 export interface OptimisticCard {
@@ -34,6 +35,9 @@ export interface GenerateCardProps {
   onOpenTransfer: (card: PlaygroundGeneration) => void;
   onDelete: (card: CardItem) => void;
   getFileUrl: (card: CardItem, file: PlaygroundGenerationFile, slotIndex: number) => string;
+  selectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
 
 /**
@@ -50,6 +54,9 @@ export function GenerateCard({
   onOpenTransfer,
   onDelete,
   getFileUrl,
+  selectMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: GenerateCardProps) {
   const { t } = useI18n();
 
@@ -105,12 +112,38 @@ export function GenerateCard({
 
   return (
     <article
-      className={styles.card}
+      className={`${styles.card} ${selectMode && !isOpt ? styles.cardSelectable : ''}`}
       data-testid={`generate-card-${card.id}`}
+      data-selected={isSelected ? 'true' : 'false'}
+      onClick={() => {
+        if (selectMode && !isOpt && !isRunning) {
+          onToggleSelect?.(card.id);
+        }
+      }}
     >
       {/* 头部元信息 */}
       <div className={styles.cardHeader}>
         <div className={styles.cardMeta}>
+          {selectMode && !isOpt && (
+            <button
+              type="button"
+              className={styles.cardCheckboxBtn}
+              disabled={isRunning}
+              title={isRunning ? t('generate.runningCannotDelete') : undefined}
+              aria-label={isSelected ? t('generate.deselectRecord') : t('generate.selectRecord')}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isRunning) onToggleSelect?.(card.id);
+              }}
+            >
+              <RemixIcon
+                name={isSelected ? 'checkbox-line' : 'checkbox-blank-line'}
+                size={16}
+                className={isSelected ? styles.checkboxChecked : styles.checkboxUnchecked}
+              />
+            </button>
+          )}
+
           {modelBadge && (
             <span className={styles.badge} title={modelBadge}>
               {modelBadge}

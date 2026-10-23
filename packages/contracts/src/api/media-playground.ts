@@ -123,3 +123,36 @@ export interface PlaygroundTransferResponse {
 export interface PlaygroundDeleteResponse {
   ok: true;
 }
+
+/**
+ * `POST /api/media/playground/generations/batch-delete` 的请求体。
+ *
+ * 一次请求删多条历史（卡片流的多选删除、`od media playground delete <id>...`）。
+ * `ids` 必须是非空字符串数组；daemon 侧去重后逐条处理，去重后超过 100 条则整个
+ * 请求 400 —— 而不是静默只删前 100 条（调用方会以为剩下的也删了）。
+ */
+export interface PlaygroundBatchDeleteRequest {
+  ids: string[];
+}
+
+/**
+ * `POST /api/media/playground/generations/batch-delete` 的响应。
+ *
+ * 三个桶互斥，并集 = 请求里**去重后**的全部 id，各自保持 id 首次出现的顺序。
+ * 逐条复用单删语义，所以：
+ *
+ * - `deleted`：行已删。scratch 行的产物文件连同行删除（best-effort：文件删不掉
+ *   不回滚行删除）；项目行只删历史行，项目工作区里的素材文件不动。
+ * - `skippedRunning`：`running` 行拒绝删除，与单删的 409 同义（行还在被写，
+ *   删掉会让 settle 的更新落空）。批删把它降级成"这一条没删"，而不是让整批失败。
+ * - `notFound`：id 不存在（含已被删过的）。同样不算整批失败：调用方通常在表达
+ *   "清掉我选的这些"，重复调用即可收敛。
+ *
+ * 因此整批永远是 200 —— 部分失败是**结果**，不是错误信封。调用方按桶决定后续
+ * （CLI 有跳过项时 exit 1，同时把逐条结果打出来）。
+ */
+export interface PlaygroundBatchDeleteResponse {
+  deleted: string[];
+  skippedRunning: string[];
+  notFound: string[];
+}

@@ -1709,7 +1709,8 @@ async function runMediaWait(rawArgs) {
 //
 // Playground 的双轨补齐：UI 能做的（生成 / 传参考图 / 列表 / 下载 / 转存 /
 // 删除）CLI 同形可达。退出码沿用 media 惯例：2 = 用法错误，3 = 连不上 daemon，
-// 4 = daemon 拒绝（stderr 是嵌套 `{error:{code,message,nextStep}}`）。
+// 4 = daemon 拒绝（stderr 是嵌套 `{error:{code,message,nextStep}}`）；只有
+// `delete <id>...` 多一个 1 = 给的 id 里有的没删成（running 被跳过 / 不存在）。
 //
 // `PLAYGROUND_SUBCOMMANDS` / `PLAYGROUND_LOOKUP_MAX_PAGES` 在模块顶部：这个
 // handler 是模块求值期被调用的（见那里的注释）。
@@ -1925,27 +1926,59 @@ async function runPlaygroundTransfer(flags, positional) {
   for (const name of payload.transferredFiles ?? []) console.log(name);
 }
 
+/**
+ * 删除历史行：单 id 走单删端点（响应形状与退出码都不变），多 id 一次批量调用。
+ *
+ * 多 id 时逐条结果打在 stdout（`deleted <id>` / `skipped running <id>` /
+ * `not found <id>`），部分成功仍是可读的**结果**而不是失败：全部删掉才 exit 0，
+ * 有 running 被跳过或 id 不存在则 exit 1 —— 调用方据此知道"我点的那几条里还有
+ * 没删掉的"，再看行就知道是哪一条、为什么。
+ */
 async function runPlaygroundDelete(flags, positional) {
-  const generationId = positional[0];
-  if (!generationId) {
-    console.error('Usage: od media playground delete <generationId>');
+  // 重复 id 不是错误，但没必要为它多发一次删除（daemon 侧同样去重）。
+  const generationIds = [...new Set(positional)];
+  if (generationIds.length === 0) {
+    console.error('Usage: od media playground delete <generationId> [generationId...]');
     process.exit(2);
   }
   const base = (await cliDaemonUrl(flags)).replace(/\/$/, '');
+  if (generationIds.length === 1) {
+    const generationId = generationIds[0];
+    const resp = await playgroundRequest(
+      base,
+      `/api/media/playground/generations/${encodeURIComponent(generationId)}`,
+      { method: 'DELETE' },
+    );
+    const payload = await resp.json();
+    if (flags.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
+    else console.log(`deleted ${generationId}`);
+    return;
+  }
   const resp = await playgroundRequest(
     base,
-    `/api/media/playground/generations/${encodeURIComponent(generationId)}`,
-    { method: 'DELETE' },
+    '/api/media/playground/generations/batch-delete',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: generationIds }),
+    },
   );
   const payload = await resp.json();
-  if (flags.json) process.stdout.write(`${JSON.stringify(payload)}\n`);
-  else console.log(`deleted ${generationId}`);
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(payload)}\n`);
+  } else {
+    for (const id of payload.deleted ?? []) console.log(`deleted ${id}`);
+    for (const id of payload.skippedRunning ?? []) console.log(`skipped running ${id}`);
+    for (const id of payload.notFound ?? []) console.log(`not found ${id}`);
+  }
+  const leftovers = (payload.skippedRunning?.length ?? 0) + (payload.notFound?.length ?? 0);
+  if (leftovers > 0) await flushStreamsAndExit(1);
 }
 
 /**
  * 按 id 找回一行历史。
  *
- * 端点面刻意只有六个（没有 `GET /generations/:id`，而 `/files/:id/:slot` 只服务
+ * 端点面刻意只有七个（没有 `GET /generations/:id`，而 `/files/:id/:slot` 只服务
  * scratch 行），所以这里按复合游标往前翻页查找，翻页上限保证它不会变成一次
  * 无界扫描。行的 id 就是它自己的一页，绝大多数调用在第一页命中。
  */
@@ -2366,7 +2399,7 @@ function printMediaPlaygroundHelp() {
   od media playground list [--json] [--limit n] [--target scratch|<pid>]
   od media playground download <generationId> [--slot n] [--out <path>]
   od media playground transfer <generationId> --project <id>
-  od media playground delete <generationId>
+  od media playground delete <generationId> [generationId...]
 
 Target:
   --project <id>  Omit for the temporary scratch inbox; pass a project id to
@@ -2442,8 +2475,21 @@ transfer:
   collision gets a -1 suffix). Repeating it for the same project is a no-op
   that returns the files already copied there.
 
+delete:
+  One id deletes that history row: a scratch row takes its artifact files with
+  it, a project row is only the history row (the files already in the project
+  stay — deleting history is not deleting the user's material). Several ids are
+  deleted in one batch request, printing one line per id on stdout:
+  'deleted <id>', 'skipped running <id>', or 'not found <id>'. A running row is
+  never deleted (its request is still writing that row), and an unknown id is
+  reported rather than fatal — the batch always answers 200, and it is
+  idempotent, so re-running is safe. At most 100 unique ids per batch; more is
+  rejected with exit 4 (nothing is deleted).
+  --json prints the whole {deleted,skippedRunning,notFound} payload instead.
+
 Exit codes: 2 = usage, 3 = daemon unreachable, 4 = daemon refused (stderr
-carries {"error":{"code","message","nextStep"}}).`);
+carries {"error":{"code","message","nextStep"}}); 'delete' with several ids also
+uses 1 = some ids were skipped or not found (the lines on stdout say which).`);
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,8 @@ import type {
   PlaygroundUploadResponse,
   PlaygroundGenerationListResponse,
   PlaygroundTransferResponse,
+  PlaygroundBatchDeleteRequest,
+  PlaygroundBatchDeleteResponse,
 } from '@open-design/contracts';
 import {
   gptImageQualityFor,
@@ -39,6 +41,16 @@ import type { CustomSelectItem } from './CustomSelect';
 import { Icon } from './Icon';
 import { GenerateToolbarParams } from './GenerateToolbarParams';
 import { GenerateCard, type CardItem, type OptimisticCard } from './GenerateCard';
+import { GenerateHistoryGrid } from './GenerateHistoryGrid';
+import { GenerateHistoryList } from './GenerateHistoryList';
+import {
+  GENERATE_VIEW_STORAGE_KEY,
+  getSelectableIds,
+  isAllSelected,
+  toggleSelectAll,
+  toggleSelection,
+  type GenerateViewMode,
+} from './generate-history-selection';
 import styles from './GenerateView.module.css';
 
 interface Props {
@@ -333,8 +345,84 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
-  // Lightbox preview state
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  // View mode state with localStorage persistence
+  const [viewMode, setViewMode] = useState<GenerateViewMode>(() => {
+    if (typeof window === 'undefined') return 'stream';
+    try {
+      const stored = window.localStorage.getItem(GENERATE_VIEW_STORAGE_KEY);
+      return stored === 'stream' || stored === 'grid' || stored === 'list' ? stored : 'stream';
+    } catch {
+      return 'stream';
+    }
+  });
+
+  const handleSetViewMode = useCallback((mode: GenerateViewMode) => {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem(GENERATE_VIEW_STORAGE_KEY, mode);
+    } catch {
+      // ignore storage quota error
+    }
+  }, []);
+
+  // Selection & batch delete state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+
+  // Clear selection on target switch
+  useEffect(() => {
+    setSelected(new Set());
+    setSelectMode(false);
+  }, [selectedTarget]);
+
+  // Lightbox preview state (gallery with multi-image page navigation)
+  const [lightbox, setLightbox] = useState<{ images: string[]; currentIndex: number } | null>(null);
+
+  const handlePreviewSingle = useCallback((url: string) => {
+    setLightbox({ images: [url], currentIndex: 0 });
+  }, []);
+
+  const handlePreviewGallery = useCallback((images: string[], initialIndex = 0) => {
+    if (!images || images.length === 0) return;
+    const idx = Math.max(0, Math.min(initialIndex, images.length - 1));
+    setLightbox({ images, currentIndex: idx });
+  }, []);
+
+  const handlePrevImage = useCallback(() => {
+    setLightbox((cur) => {
+      if (!cur || cur.images.length <= 1) return cur;
+      const nextIdx = (cur.currentIndex - 1 + cur.images.length) % cur.images.length;
+      return { ...cur, currentIndex: nextIdx };
+    });
+  }, []);
+
+  const handleNextImage = useCallback(() => {
+    setLightbox((cur) => {
+      if (!cur || cur.images.length <= 1) return cur;
+      const nextIdx = (cur.currentIndex + 1) % cur.images.length;
+      return { ...cur, currentIndex: nextIdx };
+    });
+  }, []);
+
+  // Keyboard navigation for lightbox
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handlePrevImage();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNextImage();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setLightbox(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lightbox, handlePrevImage, handleNextImage]);
 
   // Transfer modal state
   const [transferTargetGenId, setTransferTargetGenId] = useState<string | null>(null);
@@ -685,6 +773,75 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     [optimisticCards, generations],
   );
 
+  const selectableIds = useMemo(() => getSelectableIds(allCards), [allCards]);
+  const allSelected = useMemo(
+    () => isAllSelected(selectableIds, selected),
+    [selectableIds, selected],
+  );
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelected((prev) => toggleSelection(prev, id));
+  }, []);
+
+  const handleToggleSelectAll = useCallback(() => {
+    setSelected((prev) => toggleSelectAll(selectableIds, prev));
+  }, [selectableIds]);
+
+  const handleExitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelected(new Set());
+  }, []);
+
+  const handleBatchDelete = useCallback(async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0 || isBatchDeleting) return;
+
+    if (!confirm(t('generate.batchDeleteConfirm', { n: ids.length }))) return;
+
+    setIsBatchDeleting(true);
+    try {
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        chunks.push(ids.slice(i, i + 100));
+      }
+
+      const allDeleted: string[] = [];
+      let totalSkipped = 0;
+
+      for (const chunk of chunks) {
+        const body: PlaygroundBatchDeleteRequest = { ids: chunk };
+        const res = await fetch('/api/media/playground/generations/batch-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          throw new Error(apiErrorMessage(await res.json().catch(() => null), `HTTP ${res.status}`));
+        }
+        const data = (await res.json()) as PlaygroundBatchDeleteResponse;
+        if (Array.isArray(data.deleted)) {
+          allDeleted.push(...data.deleted);
+        }
+        const skipped = (data.skippedRunning?.length ?? 0) + (data.notFound?.length ?? 0);
+        totalSkipped += skipped;
+      }
+
+      const deletedSet = new Set(allDeleted);
+      setGenerations((prev) => prev.filter((g) => !deletedSet.has(g.id)));
+      setSelected(new Set());
+
+      if (totalSkipped > 0) {
+        alert(t('generate.batchDeletePartial', { deleted: allDeleted.length, skipped: totalSkipped }));
+      } else {
+        alert(t('generate.batchDeleteSuccess', { deleted: allDeleted.length }));
+      }
+    } catch (err: any) {
+      alert(err.message || t('generate.batchDeleteFailed'));
+    } finally {
+      setIsBatchDeleting(false);
+    }
+  }, [selected, isBatchDeleting, t]);
+
   const targetItems: CustomSelectItem[] = useMemo(() => {
     const items: CustomSelectItem[] = [
       { value: 'scratch', label: t('generate.targetScratch') },
@@ -713,8 +870,92 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             ariaLabel={t('generate.target')}
           />
         </div>
+
         <div className={styles.topBarMeta}>
-          <span className={styles.historyCount}>{t('generate.historyCount', { count: allCards.length })}</span>
+          {!selectMode && (
+            <span className={styles.historyCount}>{t('generate.historyCount', { count: allCards.length })}</span>
+          )}
+
+          <div className={styles.viewToggle} role="group" aria-label={t('generate.viewMode')}>
+            <button
+              type="button"
+              className={`${styles.viewToggleBtn} od-tooltip`}
+              data-active={viewMode === 'stream' ? 'true' : 'false'}
+              aria-pressed={viewMode === 'stream'}
+              onClick={() => handleSetViewMode('stream')}
+              data-tooltip={t('generate.viewStreamTooltip')}
+              data-tooltip-placement="bottom"
+            >
+              {t('generate.viewStream')}
+            </button>
+            <button
+              type="button"
+              className={`${styles.viewToggleBtn} od-tooltip`}
+              data-active={viewMode === 'grid' ? 'true' : 'false'}
+              aria-pressed={viewMode === 'grid'}
+              onClick={() => handleSetViewMode('grid')}
+              data-tooltip={t('generate.viewGridTooltip')}
+              data-tooltip-placement="bottom"
+            >
+              {t('generate.viewGrid')}
+            </button>
+            <button
+              type="button"
+              className={`${styles.viewToggleBtn} od-tooltip`}
+              data-active={viewMode === 'list' ? 'true' : 'false'}
+              aria-pressed={viewMode === 'list'}
+              onClick={() => handleSetViewMode('list')}
+              data-tooltip={t('generate.viewListTooltip')}
+              data-tooltip-placement="bottom"
+            >
+              {t('generate.viewList')}
+            </button>
+          </div>
+
+          {selectMode ? (
+            <div className={styles.selectBar} role="group">
+              <span className={styles.selectCount}>
+                {t('generate.selectedCount', { n: selected.size })}
+              </span>
+              <button
+                type="button"
+                className={styles.selectActionBtn}
+                onClick={handleToggleSelectAll}
+              >
+                {allSelected
+                  ? t('generate.deselectAll')
+                  : t('generate.selectAll', { m: selectableIds.length })}
+              </button>
+              <Button
+                variant="secondary"
+                size="sm"
+                className={styles.btnDanger}
+                disabled={selected.size === 0 || isBatchDeleting}
+                onClick={() => void handleBatchDelete()}
+              >
+                <Icon name="trash" size={13} />
+                <span>{isBatchDeleting ? t('common.loading') : t('generate.batchDelete')}</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleExitSelectMode}
+              >
+                {t('generate.cancelSelect')}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={styles.manageBtn}
+              disabled={selectableIds.length === 0}
+              onClick={() => setSelectMode(true)}
+            >
+              <Icon name="check" size={13} />
+              <span>{t('generate.manage')}</span>
+            </Button>
+          )}
         </div>
       </header>
 
@@ -733,18 +974,41 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
               <div className={styles.emptyDesc}>{t('generate.emptyDesc')}</div>
             </div>
           </div>
+        ) : viewMode === 'grid' ? (
+          <GenerateHistoryGrid
+            cards={allCards}
+            selectMode={selectMode}
+            selected={selected}
+            onToggleSelect={handleToggleSelect}
+            onPreviewGallery={handlePreviewGallery}
+            getFileUrl={getFileUrl}
+          />
+        ) : viewMode === 'list' ? (
+          <GenerateHistoryList
+            cards={allCards}
+            selectMode={selectMode}
+            selected={selected}
+            onToggleSelect={handleToggleSelect}
+            onPreviewGallery={handlePreviewGallery}
+            onReuse={handleReuse}
+            onDelete={handleDelete}
+            getFileUrl={getFileUrl}
+          />
         ) : (
           allCards.map((card) => (
             <GenerateCard
               key={card.id}
               card={card}
-              onPreview={setPreviewSrc}
+              onPreview={handlePreviewSingle}
               onReuse={handleReuse}
               onAsReference={handleAsReference}
               onDownload={handleDownload}
               onOpenTransfer={handleOpenTransfer}
               onDelete={handleDelete}
               getFileUrl={getFileUrl}
+              selectMode={selectMode}
+              isSelected={selected.has(card.id)}
+              onToggleSelect={handleToggleSelect}
             />
           ))
         )}
@@ -872,19 +1136,58 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
       </footer>
 
       {/* Lightbox Modal */}
-      {previewSrc && (
-        <div className={styles.lightbox} role="dialog" aria-modal="true" onClick={() => setPreviewSrc(null)}>
+      {lightbox && (
+        <div className={styles.lightbox} role="dialog" aria-modal="true" onClick={() => setLightbox(null)}>
           <Button
             variant="subtle"
             size="icon"
             className={styles.lightboxClose}
-            onClick={() => setPreviewSrc(null)}
+            onClick={() => setLightbox(null)}
             aria-label={t('common.close')}
           >
             <Icon name="close" size={18} />
           </Button>
+
+          {lightbox.images.length > 1 && (
+            <>
+              <button
+                type="button"
+                className={`${styles.lightboxNavBtn} ${styles.lightboxNavPrev}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePrevImage();
+                }}
+                aria-label={t('generate.prevImage')}
+                title={t('generate.prevImage')}
+              >
+                <Icon name="chevron-left" size={20} />
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.lightboxNavBtn} ${styles.lightboxNavNext}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNextImage();
+                }}
+                aria-label={t('generate.nextImage')}
+                title={t('generate.nextImage')}
+              >
+                <Icon name="chevron-right" size={20} />
+              </button>
+
+              <div className={styles.lightboxCounter} onClick={(e) => e.stopPropagation()}>
+                {lightbox.currentIndex + 1} / {lightbox.images.length}
+              </div>
+            </>
+          )}
+
           <div className={styles.lightboxStage} onClick={(e) => e.stopPropagation()}>
-            <img src={previewSrc} alt="Preview" className={styles.lightboxImg} />
+            <img
+              src={lightbox.images[lightbox.currentIndex]}
+              alt={`Preview ${lightbox.currentIndex + 1}`}
+              className={styles.lightboxImg}
+            />
           </div>
         </div>
       )}
