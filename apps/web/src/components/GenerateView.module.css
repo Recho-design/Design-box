@@ -353,6 +353,20 @@
 .slotPreviewBtn:hover { background: var(--bg); transform: scale(1.06); }
 .slotPreviewBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+.slotInpaintBtn {
+  position: absolute; top: 8px; right: 42px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm);
+  background: var(--glass-regular); backdrop-filter: var(--glass-backdrop);
+  -webkit-backdrop-filter: var(--glass-backdrop); border: 1px solid var(--border);
+  color: var(--text-strong); opacity: 0; cursor: pointer; box-shadow: var(--shadow-xs);
+  transition: opacity 140ms var(--ease-out), transform 100ms var(--ease-out), background-color 140ms var(--ease-out);
+}
+
+.slotWrapper:hover .slotInpaintBtn,
+.slotInpaintBtn:focus-visible { opacity: 1; }
+.slotInpaintBtn:hover { background: var(--bg); transform: scale(1.06); }
+.slotInpaintBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* Running state with architectural ritual */
 .slotRunning {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -493,7 +507,7 @@
   background: transparent;
   border: none;
   outline: none;
-  padding: 0 36px 0 0;
+  padding: 0 74px 0 0;
   margin: 0;
   box-shadow: none;
   font-family: inherit;
@@ -510,6 +524,79 @@
   border: none;
   outline: none;
   box-shadow: none;
+}
+
+.promptActions {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+
+.promptActions > button {
+  position: relative;
+  top: auto;
+  right: auto;
+}
+
+.promptInspireBtn {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out), border-color 140ms var(--ease-out);
+}
+
+.promptInspireBtn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.promptInspireBtn:hover {
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 10%, var(--bg-panel));
+  border-color: color-mix(in srgb, #f59e0b 40%, var(--border-soft));
+}
+
+.promptInspireBtnActive {
+  color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 15%, var(--bg-panel));
+  border-color: #f59e0b;
+}
+
+.promptInspireBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.promptInspireBadge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 0 0 1.5px var(--bg-panel);
 }
 
 .promptAttachBtn {

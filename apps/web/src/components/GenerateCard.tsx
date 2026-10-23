@@ -5,6 +5,7 @@ import type {
   PlaygroundGenerationParams,
 } from '@open-design/contracts';
 import { Button } from '@open-design/components';
+import { Paintbrush } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { Icon } from './Icon';
 import { RemixIcon } from './RemixIcon';
@@ -31,6 +32,7 @@ export interface GenerateCardProps {
   onPreview: (url: string) => void;
   onReuse: (card: CardItem) => void;
   onAsReference: (card: CardItem, fileName: string) => void;
+  onInpaint?: (card: CardItem, file: PlaygroundGenerationFile, slotIndex: number) => void;
   onDownload: (card: CardItem, file: PlaygroundGenerationFile, slotIndex: number) => void;
   onOpenTransfer: (card: PlaygroundGeneration) => void;
   onDelete: (card: CardItem) => void;
@@ -50,6 +52,7 @@ export function GenerateCard({
   onPreview,
   onReuse,
   onAsReference,
+  onInpaint,
   onDownload,
   onOpenTransfer,
   onDelete,
@@ -278,6 +281,20 @@ export function GenerateCard({
               >
                 <Icon name="eye" size={13} />
               </button>
+              {onInpaint && file.name && !file.error && (
+                <button
+                  type="button"
+                  className={styles.slotInpaintBtn}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onInpaint(card, file, slotIdx);
+                  }}
+                  aria-label="局部重绘"
+                  title="局部重绘"
+                >
+                  <Paintbrush size={13} />
+                </button>
+              )}
             </div>
           );
         })}
@@ -300,6 +317,21 @@ export function GenerateCard({
             if (!file.name || file.error) return null;
             return (
               <React.Fragment key={slotIdx}>
+                {onInpaint && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onInpaint(card, file, slotIdx)}
+                    title={files.length > 1 ? `局部重绘 #${slotIdx + 1}` : '局部重绘'}
+                  >
+                    <Paintbrush size={12} />
+                    <span>
+                      {files.length > 1
+                        ? `局部重绘 #${slotIdx + 1}`
+                        : '局部重绘'}
+                    </span>
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"

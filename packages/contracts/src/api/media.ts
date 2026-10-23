@@ -149,6 +149,12 @@ const MEDIA_FAILURE_NEXT_STEP_BY_CODE: Readonly<Record<string, MediaFailureNextS
   MEDIA_SURFACE_DENIED: 'unsupported',
   // The run allows media but not THIS model — another allowed one exists.
   MEDIA_MODEL_DENIED: 'switch-model',
+  // Paint-mask inpainting (`maskImage`) has no native path on the selected
+  // model. Another model has one, so the answer is the same as a denied model.
+  mask_unsupported: 'switch-model',
+  // The mask itself is unusable (not a PNG, or not the base image's pixel
+  // size). The user can fix it right here by exporting the mask again.
+  mask_invalid: 'revise-request',
   // No renderer is wired for the selected model: a Settings problem, whether
   // the fix is a key or a different provider entry.
   STUB_PROVIDER_DISABLED: 'open-settings',

@@ -111,6 +111,7 @@ const MEDIA_PLAYGROUND_STRING_FLAGS = new Set([
   'moderation',
   'count',
   'image',
+  'mask',
   'target',
   'limit',
   'before',
@@ -124,6 +125,17 @@ const MEDIA_PLAYGROUND_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'transparen
 // runMediaModels，Set 留在文件中部会撞 TDZ。
 const MEDIA_MODELS_STRING_FLAGS = new Set(['daemon-url']);
 const MEDIA_MODELS_BOOLEAN_FLAGS = new Set(['help', 'h', 'json']);
+
+// `od media inspire` 的白名单，TDZ 理由同上：命令在模块求值期就会通过
+// SUBCOMMAND_MAP 跑到 runMediaInspire。--prompt/--prompt-file 组合成基础描述，
+// --ideas 是逗号分隔的素材库 id，--has-image 表示已有参考图。
+const MEDIA_INSPIRE_STRING_FLAGS = new Set([
+  'prompt',
+  'prompt-file',
+  'ideas',
+  'daemon-url',
+]);
+const MEDIA_INSPIRE_BOOLEAN_FLAGS = new Set(['help', 'h', 'json', 'has-image']);
 
 // 同上：子命令白名单在 runMediaPlayground 的**第一个 await 之前**就被读，而那个
 // 函数是模块求值期被调用的。留在文件中部会是一个 `Cannot access ... before
@@ -1393,7 +1405,7 @@ async function runMedia(args) {
     printMediaHelp();
     return;
   }
-  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold' && sub !== 'playground' && sub !== 'models') {
+  if (sub !== 'generate' && sub !== 'wait' && sub !== 'scaffold' && sub !== 'playground' && sub !== 'models' && sub !== 'inspire') {
     console.error(`unknown subcommand: od media ${sub}`);
     printMediaHelp();
     process.exit(1);
@@ -1405,6 +1417,7 @@ async function runMedia(args) {
   if (sub === 'wait') return runMediaWait(subArgs);
   if (sub === 'scaffold') return runMediaScaffold(subArgs);
   if (sub === 'models') return runMediaModels(subArgs);
+  if (sub === 'inspire') return runMediaInspire(subArgs);
   return runMediaGenerate(subArgs);
 }
 
@@ -1507,6 +1520,60 @@ async function runMediaModels(rawArgs) {
   }
   console.log(`providers: ${(catalog?.providers ?? []).map((p) => p?.id).filter(Boolean).join(', ')}`);
   console.log(`aspects: ${(catalog?.aspects ?? []).join(', ')}`);
+}
+
+// `od media inspire`：灵感拓展 —— 把若干条抽象设计思路转译成一条可直接用于
+// 生图的中文提示词，不产出图片。文本 LLM 只在 daemon 侧有凭据，CLI 只是把
+// 请求送到 POST /api/media/inspire。退出码沿用 media 惯例：2 = 用法错误，
+// 连不上 exit 3，daemon 拒绝 exit 4（playgroundRequest 一并处理）。
+async function runMediaInspire(rawArgs) {
+  let flags;
+  try {
+    flags = parseFlags(rawArgs, {
+      string: MEDIA_INSPIRE_STRING_FLAGS,
+      boolean: MEDIA_INSPIRE_BOOLEAN_FLAGS,
+    });
+  } catch (err) {
+    console.error(err.message);
+    printMediaHelp();
+    process.exit(2);
+  }
+  if (flags.help || flags.h) {
+    printMediaHelp();
+    return;
+  }
+
+  // 素材库 id 原样交给 daemon 校验：这里只拆逗号、去空，未知 id 是 daemon
+  // 的 400（列出全部未知 id），CLI 不另立一份素材库副本。
+  const ideaIds = String(flags.ideas ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (ideaIds.length === 0) {
+    console.error('--ideas required (comma-separated ids from the inspire idea catalog)');
+    process.exit(2);
+  }
+
+  const daemonUrl = await cliDaemonUrl(flags);
+  // 基础描述与 media generate 同一套入口：--prompt 优先，否则 --prompt-file <path|->。
+  const prompt = await readPromptFromFlags(flags);
+  const hasImage = flags['has-image'] === true || flags['has-image'] === 'true';
+  const resp = await playgroundRequest(daemonUrl, '/api/media/inspire', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      // 空基础描述不带字段（而不是带空串）：是否依赖参考图由 --has-image 表达。
+      ...(typeof prompt === 'string' && prompt.trim() ? { prompt: prompt.trim() } : {}),
+      ideaIds,
+      hasImage,
+    }),
+  });
+  const result = await resp.json();
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify({ prompt: result?.prompt })}\n`);
+    return;
+  }
+  process.stdout.write(`${result?.prompt ?? ''}\n`);
 }
 
 async function runMediaGenerate(rawArgs) {
@@ -1798,6 +1865,10 @@ async function runPlaygroundGenerate(flags, rawArgs) {
     ...(flags.transparent === true || flags.transparent === 'true' ? { transparent: true } : {}),
     ...(flags.count != null ? { count: Number(flags.count) } : {}),
     ...(images.length > 0 ? { images } : {}),
+    // `--mask` 与 `--image` **同一套引用语义**（目标目录相对路径，先
+    // `playground upload` 落盘），所以这里不做本地文件上传——两个引用形状不一致
+    // 才是真正的坑。见 help。
+    ...(flags.mask ? { maskImage: flags.mask } : {}),
   };
   const resp = await playgroundRequest(daemonUrl, '/api/media/playground/generate', {
     method: 'POST',
@@ -2282,7 +2353,21 @@ function printMediaHelp() {
        od media models [--json] [--daemon-url <url>]
        od media generate --surface <image|video> --model <id> [opts]
        od media playground <generate|upload|list|download|transfer|delete> [opts]
+       od media inspire --ideas <id[,id...]> [--prompt "<text>" | --prompt-file <path|->] [--has-image]
        "$OD_NODE_BIN" "$OD_BIN" media generate --surface <image|video> --model <id> [opts]
+
+Inspire:
+  Turns abstract design-idea ids into one Chinese image prompt the daemon
+  composes with a configured text LLM (no image is generated). --ideas takes
+  comma-separated ids from the inspire idea catalog (unknown ids are rejected
+  with the full list; the web panel POSTs the same ids). --prompt (or
+  --prompt-file <path|->) is the optional base description whose subject,
+  action and scene the result keeps. --has-image means a reference image
+  already exists: the prompt then focuses on style and atmosphere instead of
+  re-describing the composition. Default output is the prompt text itself;
+  --json prints {"prompt":"..."} . 409 when no text LLM is configured —
+  configure an OpenAI entry (with apiKey) under Settings → Media, or set
+  ANTHROPIC_API_KEY / GOOGLE_API_KEY.
 
 Playground:
   Playground 是全局生图工作台（临时 scratch 或某个项目）的命令行一面，
@@ -2451,6 +2536,10 @@ generate:
   --image <ref>      Reference image, repeatable. A target-relative path: the
                      name printed by 'playground upload' ('uploads/x.png' for
                      scratch, 'x.png' for a project), or an artifact file name.
+  --mask <ref>       Paint-mask inpainting (gpt-image family only): a black
+                     PNG with white brush strokes, same pixel size as the
+                     first --image, exported at that exact size (nothing is
+                     scaled). Same reference semantics as --image.
   Output: one JSON line — the full generation row ({id,status,files:[...],…}),
   including outputDir, the absolute path of the base directory the files are
   relative to (join the two to find the bytes on disk).

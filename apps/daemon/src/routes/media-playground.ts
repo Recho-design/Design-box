@@ -18,7 +18,14 @@ import type {
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
 import { resolveDefaultImageModelId } from '../media/default-image-model.js';
 import { errorText, generateMediaBatch } from '../media/generate-media-batch.js';
-import { findMediaModel, modelsForSurface, offeredModelsForSurface } from '../media/models.js';
+import { validateInpaintMask } from '../media/inpaint-mask.js';
+import {
+  findMediaModel,
+  inpaintMaskModelIds,
+  modelSupportsInpaintMask,
+  modelsForSurface,
+  offeredModelsForSurface,
+} from '../media/models.js';
 import {
   PLAYGROUND_UPLOAD_MAX_BYTES,
   detectImageFormat,
@@ -229,6 +236,19 @@ export function registerMediaPlaygroundRoutes(
     const denial = mediaPolicyDenial(defaultMediaExecutionPolicy(), { surface: 'image', model });
     if (denial) return void sendApiError(res, 403, denial.code, denial.message);
 
+    // 画笔局部重绘：能力判定与 mask 预检都落在**落 running 行之前**。这不是
+    // provider 调用失败，而是请求本身不能成立，所以走 400 信封 —— 历史里不留一张
+    // 失败卡，也不花用户的钱去让上游拒绝（或更糟，静默忽略 mask）。
+    const maskImage = typeof body.maskImage === 'string' ? body.maskImage.trim() : '';
+    const primaryImage = Array.isArray(body.images) ? body.images[0] : undefined;
+    if (maskImage) {
+      const maskFailure = maskUnsupportedFailure(model)
+        ?? (primaryImage
+          ? await validateInpaintMask({ baseDir: resolution.target.dir, maskImage, primaryImage })
+          : null);
+      if (maskFailure) return sendFailure(res, maskFailure);
+    }
+
     const generationId = randomUUID();
     const count = clampMediaGenerateCount(body.count);
     const prompt = typeof body.prompt === 'string' ? body.prompt : '';
@@ -259,6 +279,7 @@ export function registerMediaPlaygroundRoutes(
       modelOverride,
       prompt,
       images: Array.isArray(body.images) ? body.images : undefined,
+      maskImage: maskImage || undefined,
       body,
       dir: resolution.target.dir,
     });
@@ -290,6 +311,8 @@ export function registerMediaPlaygroundRoutes(
     modelOverride: string | null;
     prompt: string;
     images: string[] | undefined;
+    /** 画笔 mask 的目标目录相对路径（已通过 {@link maskUnsupportedFailure} 与预检）。 */
+    maskImage: string | undefined;
     body: Partial<PlaygroundGenerateRequest>;
     dir: string;
   }): Promise<BatchOutcome> {
@@ -316,6 +339,7 @@ export function registerMediaPlaygroundRoutes(
       moderation: typeof input.body.moderation === 'string' ? input.body.moderation : undefined,
       transparent: input.body.transparent === true ? true : undefined,
       images: input.images,
+      ...(input.maskImage ? { maskImage: input.maskImage } : {}),
       requestInit: dispatcher.requestInit,
       onProviderRequestSettled: (summary: any) => {
         providerRequestSummary = summary;
@@ -731,7 +755,44 @@ function validateGenerateRequest(body: Partial<PlaygroundGenerateRequest>): Requ
       message: 'images must be an array of non-empty strings',
     };
   }
+  // 画笔 mask：形状错误是**调用错误**，不是缺省——静默当成缺省会让调用方以为
+  // 涂抹区域生效了，实际却做了一次整图编辑。
+  if (body.maskImage !== undefined
+    && (typeof body.maskImage !== 'string' || !body.maskImage.trim())) {
+    return {
+      status: 400,
+      code: 'BAD_REQUEST',
+      message: 'maskImage must be a non-empty string (target-relative path of a mask PNG)',
+    };
+  }
+  // mask 作用于**第一张**参考图：没有参考图就没有可涂抹的底图。这是请求形状
+  // 问题（不是 provider 能力问题），所以在边界上拒绝，而不是让渲染器去猜。
+  if (typeof body.maskImage === 'string' && body.maskImage.trim()
+    && !(Array.isArray(images) && images.length > 0)) {
+    return {
+      status: 400,
+      code: 'BAD_REQUEST',
+      message: 'maskImage requires at least one images entry: the mask edits images[0]',
+    };
+  }
   return null;
+}
+
+/**
+ * 画笔局部重绘的能力判定：只有声明了 `inpaintMask` 的模型（openai 槽位的
+ * gpt-image 族）有原生 mask 通路。少一个能力位就 400 `mask_unsupported`——
+ * 静默丢掉 mask 会得到一张「没按涂抹区域改」的图，而它看起来是成功的。
+ */
+function maskUnsupportedFailure(model: string): RequestFailure | null {
+  if (modelSupportsInpaintMask(model)) return null;
+  const supported = inpaintMaskModelIds().join(', ');
+  return {
+    status: 400,
+    code: 'mask_unsupported',
+    message: `model "${model}" does not support paint-mask inpainting (maskImage). `
+      + `Models with a native mask path: ${supported}. `
+      + 'Drop maskImage to edit the whole image instead, or switch to one of those models.',
+  };
 }
 
 function isImageList(value: unknown): value is string[] {

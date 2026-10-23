@@ -14,8 +14,8 @@
  * lists and the numeric length tables. Any model added here must be added
  * there too.
  *
- * The catalogue is the five providers the daemon actually ships a client
- * for (openai / grok / hyperframes / nanobanana / stub). The audio surface (music / speech / sfx) is gone: `MEDIA_SURFACES`
+ * The catalogue is the six providers the daemon actually ships a client
+ * for (openai / grok / hyperframes / nanobanana / vertex / stub). The audio surface (music / speech / sfx) is gone: `MEDIA_SURFACES`
  * in `@open-design/contracts` is image + video only, `ProjectMetadata` no
  * longer carries the `audio*` fields, and the daemon has no audio
  * dispatcher to honour them.
@@ -33,6 +33,7 @@ export type MediaProviderId =
   | 'grok'
   | 'hyperframes'
   | 'nanobanana'
+  | 'vertex'
   | 'stub';
 
 export interface MediaProvider {
@@ -109,6 +110,16 @@ export const MEDIA_PROVIDERS: MediaProvider[] = [
     supportsModelFetch: true,
   },
   {
+    id: 'vertex',
+    label: 'Vertex Express',
+    hint: 'Google Vertex AI Express mode — Gemini image models with a plain API key.',
+    integrated: true,
+    defaultBaseUrl: 'https://aiplatform.googleapis.com',
+    docsUrl: 'https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start/express-mode/overview',
+    supportsModelFetch: false,
+    supportsCustomModel: true,
+  },
+  {
     id: 'stub',
     label: 'Stub (placeholder)',
     hint: 'Deterministic local placeholder bytes',
@@ -135,6 +146,18 @@ export interface MediaModel {
    * the dispatcher to decide which provider call to make.
    */
   caps?: string[];
+  /**
+   * 原生 mask 局部重绘能力（画笔涂抹区域 + 指令 → 局部重绘）：只有标了它的
+   * 模型能接受 `PlaygroundGenerateRequest.maskImage`，daemon 会把 mask 作为
+   * `/images/edits` 的 multipart `mask` 字段发出去。
+   *
+   * 这个字段跟着 daemon 的实现走，不跟着厂商宣传走：目前只有 gpt-image 族有这条
+   * 通路（openai 槽位）。grok 的 image API 只接了 `/images/generations`，
+   * nanobanana 走 generateContent，两者都没有 mask 通路，因此不标——画笔 UI 据此
+   * 禁用/提示「当前模型不支持画笔局部重绘」，而不是让请求落到 daemon 才拿到
+   * `mask_unsupported`。两侧注册表（`apps/daemon/src/media/models.ts`）必须同步。
+   */
+  inpaintMask?: boolean;
   /** Marks the default-checked card per surface in the picker. */
   default?: boolean;
 }
@@ -148,6 +171,7 @@ export const IMAGE_MODELS: MediaModel[] = [
     hint: 'OpenAI · 4K, native multimodal',
     provider: 'openai',
     caps: ['t2i', 'i2i', 'inpaint'],
+    inpaintMask: true,
     default: true,
   },
   {
@@ -156,6 +180,7 @@ export const IMAGE_MODELS: MediaModel[] = [
     hint: 'OpenAI · 4× faster than gpt-image-1',
     provider: 'openai',
     caps: ['t2i', 'i2i', 'inpaint'],
+    inpaintMask: true,
   },
   {
     id: 'gpt-image-1',
@@ -163,6 +188,7 @@ export const IMAGE_MODELS: MediaModel[] = [
     hint: 'OpenAI · ChatGPT native',
     provider: 'openai',
     caps: ['t2i', 'i2i', 'inpaint'],
+    inpaintMask: true,
   },
   {
     id: 'gpt-image-1-mini',
@@ -203,6 +229,25 @@ export const IMAGE_MODELS: MediaModel[] = [
     hint: 'Nano Banana · text-to-image',
     provider: 'nanobanana',
     caps: ['t2i'],
+  },
+
+  // Vertex Express — API-key-only direct access to Vertex's
+  // generateContent image path (publishers/google/models). Only the two
+  // models verified against the live endpoint are registered;
+  // gemini-3.1-flash-image-preview 404s there and is deliberately absent.
+  {
+    id: 'gemini-2.5-flash-image',
+    label: 'gemini-2.5-flash-image',
+    hint: 'Vertex Express · Gemini 2.5 Flash Image (t2i + i2i)',
+    provider: 'vertex',
+    caps: ['t2i', 'i2i'],
+  },
+  {
+    id: 'gemini-3-pro-image',
+    label: 'gemini-3-pro-image',
+    hint: 'Vertex Express · Gemini 3 Pro Image (t2i + i2i)',
+    provider: 'vertex',
+    caps: ['t2i', 'i2i'],
   },
 ];
 
@@ -289,6 +334,17 @@ export function findProvider(id: MediaProviderId): MediaProvider | null {
  */
 export function mediaModelProviderId(id: string): MediaProviderId | undefined {
   return findMediaModel(id)?.provider;
+}
+
+/**
+ * 该目录模型能否接受画笔 mask（`PlaygroundGenerateRequest.maskImage`）。
+ *
+ * 与 daemon 侧同名函数是同一判定（`inpaintMask === true`）：画笔 UI 用它决定
+ * 是否允许打开局部重绘，daemon 用同一份能力位回答 400 `mask_unsupported`，
+ * 两侧因此不会出现「UI 允许、后端拒绝」。
+ */
+export function modelSupportsInpaintMask(id: string): boolean {
+  return findMediaModel(id)?.inpaintMask === true;
 }
 
 /** All model IDs grouped by surface, used for prompt-side disclosure. */

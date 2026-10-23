@@ -29,6 +29,10 @@
 //                              for grok-imagine-video (t2v + i2v)
 //   * provider 'nanobanana'  → Google Generative Language generateContent
 //                              (Nano Banana image models)
+//   * provider 'vertex'      → Google Vertex Express generateContent
+//                              (API-key-only direct access to
+//                              aiplatform.googleapis.com; Gemini image
+//                              models — same response shape as nanobanana)
 //   * provider 'hyperframes' → local HTML→MP4 renderer (no network)
 //
 // The fallback stub handlers are gated behind OD_MEDIA_ALLOW_STUBS=1; in
@@ -70,6 +74,8 @@ import {
   VIDEO_LENGTHS_SEC,
   findMediaModel,
   findProvider,
+  inpaintMaskModelIds,
+  modelSupportsInpaintMask,
   modelsForSurface,
 } from './models.js';
 import {
@@ -80,6 +86,11 @@ import {
   fetchImageGenerationWithResponseRetry,
   type ImageGenerationRequestSummary,
 } from './image-generation-retry.js';
+import {
+  assertInpaintMaskUsable,
+  buildInpaintEditForm,
+  bytesFromDataUrl,
+} from './inpaint-mask.js';
 import {
   resolveHyperFramesBrowserRuntimePath,
   resolveHyperFramesCliPath,
@@ -157,6 +168,13 @@ type MediaContext = {
   requestInit: MediaRequestInit;
   /** Additional reference images for multi-image i2v / style reference flows. */
   imageRefs: ImageRef[];
+  /**
+   * 画笔局部重绘的 mask（黑底白笔迹 PNG，白 = 待编辑区域）；null = 普通生成 /
+   * 图生图。面具只在 openai 槽位的 gpt-image 族落地（multipart `/images/edits`），
+   * 能力判定在 `models.ts` 的 `inpaintMask`，请求形状与尺寸校验在 Playground
+   * 路由（见 `inpaint-mask.ts`）。
+   */
+  maskRef: ImageRef | null;
   projectRoot: string;
   workspaceId: string | undefined;
   onProviderRequestSettled:
@@ -181,6 +199,9 @@ const NANOBANANA_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 // Verify the current Nano Banana / Gemini image model name against:
 // https://ai.google.dev/gemini-api/docs/models
 const NANOBANANA_DEFAULT_MODEL = 'gemini-3.1-flash-image-preview';
+// vertex（Vertex Express）：API key 直连 Vertex 的 generateContent 面，
+// 默认基址与 nanobanana 的 Generative Language host 不同。
+const VERTEX_EXPRESS_DEFAULT_BASE_URL = 'https://aiplatform.googleapis.com';
 const DEFAULT_OUTPUT_BY_SURFACE = {
   image: 'image.png',
   video: 'video.mp4',
@@ -221,8 +242,15 @@ function stubsAllowed() {
  *
  * 「allowed directory」而不是「project directory」：Playground 把 scratch 目录
  * 也交给这里，报错文案不该再说这是项目（O2）。
+ *
+ * `label` 只影响错误文案：mask 走同一条解析路径，但报错必须说 mask，不能冒充
+ * `--image`（否则「mask 找不到」会显示成「--image not found」）。
  */
-async function resolveProjectImage(rel: unknown, projectDir: string): Promise<ImageRef | null> {
+async function resolveProjectImage(
+  rel: unknown,
+  projectDir: string,
+  label = '--image',
+): Promise<ImageRef | null> {
   if (typeof rel !== 'string' || !rel.trim()) return null;
   const projectRootResolved = path.resolve(projectDir);
   const abs = path.resolve(projectRootResolved, rel.trim());
@@ -231,17 +259,17 @@ async function resolveProjectImage(rel: unknown, projectDir: string): Promise<Im
     !abs.startsWith(projectRootResolved + path.sep)
   ) {
     throw new Error(
-      `--image path "${rel}" resolves outside the allowed directory.`,
+      `${label} path "${rel}" resolves outside the allowed directory.`,
     );
   }
   let info;
   try {
     info = await stat(abs);
   } catch {
-    throw new Error(`--image not found: ${rel}`);
+    throw new Error(`${label} not found: ${rel}`);
   }
   if (!info.isFile()) {
-    throw new Error(`--image is not a regular file: ${rel}`);
+    throw new Error(`${label} is not a regular file: ${rel}`);
   }
   // Cap at 16 MB. Beyond this, base64 inflation alone (≈4/3) starts
   // hitting body-size limits at the upstream APIs and our own express
@@ -250,7 +278,7 @@ async function resolveProjectImage(rel: unknown, projectDir: string): Promise<Im
   const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
   if (info.size > MAX_IMAGE_BYTES) {
     throw new Error(
-      `--image too large (${info.size} bytes; max ${MAX_IMAGE_BYTES}).`,
+      `${label} too large (${info.size} bytes; max ${MAX_IMAGE_BYTES}).`,
     );
   }
   const bytes = await readFile(abs);
@@ -266,7 +294,7 @@ async function resolveProjectImage(rel: unknown, projectDir: string): Promise<Im
   })[ext];
   if (!mime) {
     throw new Error(
-      `--image has unsupported extension "${ext}". Use png, jpg, jpeg, webp, or gif.`,
+      `${label} has unsupported extension "${ext}". Use png, jpg, jpeg, webp, or gif.`,
     );
   }
   return {
@@ -355,6 +383,16 @@ export async function generateMedia(args: {
   modelOverride?: string;
   length?: number;
   compositionDir?: string; image?: string; images?: string[]; onProgress?: ProgressFn; requestInit?: MediaRequestInit;
+  /**
+   * 画笔局部重绘的 mask：**目标目录相对路径**（与 `images` 同一套引用语义），
+   * 黑底白笔迹 PNG，白 = 待编辑区域。
+   *
+   * 只有 Playground 的画笔链路会传它。模型必须声明 `inpaintMask`（openai 槽位的
+   * gpt-image 族），mask 必须是 PNG 且与 `imageRefs[0]` 同像素尺寸——路由层的
+   * 派发前预检已经按这两条拒绝过一次，这里再守一次的是「配置改了但请求没变」，
+   * 宁可报错也不静默丢 mask 出一张没按涂抹区域改的图。
+   */
+  maskImage?: string;
   desktopFrameRenderer?: DesktopFrameRenderer | null;
   workspaceId?: string;
   onProviderRequestSettled?: (summary: ImageGenerationRequestSummary & { providerId: string }) => void;
@@ -396,6 +434,7 @@ export async function generateMedia(args: {
     length,
     compositionDir,
     image,
+    maskImage,
     requestInit,
     workspaceId,
     onProviderRequestSettled,
@@ -468,6 +507,23 @@ export async function generateMedia(args: {
     }
   }
 
+  // 画笔 mask：与参考图同一条解析路径（同一个基目录、同一套越界与 16MB 上限）。
+  // 这里用 `maskImage` 作报错自称，别让「mask 找不到」显示成 `--image not found`。
+  const maskRef = await resolveProjectImage(maskImage, dir, 'maskImage');
+  if (maskRef) {
+    // mask 编辑的第一张参考图是底图，没有它 mask 无处可涂：宁可报错，也不发一次
+    // 注定被上游拒绝（或更糟，被当成无 mask 请求）的调用。
+    if (!modelSupportsInpaintMask(def.id)) {
+      throw new Error(
+        `model "${model}" has no native mask inpainting path; maskImage is supported by: `
+          + `${inpaintMaskModelIds().join(', ')}.`,
+      );
+    }
+    if (imageRefs.length === 0) {
+      throw new Error('maskImage needs a reference image to edit (pass at least one image).');
+    }
+  }
+
   // Resolve any user-configured model alias BEFORE we hand the id to a
   // dispatcher (issue #1277). Catalog lookup + surface validation above
   // resolved product shorthands to `def.id`, so use that canonical id here.
@@ -509,6 +565,7 @@ export async function generateMedia(args: {
     imageRef,
     requestInit: requestInit || {},
     imageRefs,
+    maskRef,
     projectRoot,
     workspaceId,
     onProviderRequestSettled,
@@ -549,6 +606,11 @@ export async function generateMedia(args: {
       suggestedExt = result.suggestedExt;
     } else if (def.provider === 'nanobanana' && surface === 'image') {
       const result = await renderNanoBananaImage(ctx, credentials);
+      bytes = result.bytes;
+      providerNote = result.providerNote;
+      suggestedExt = result.suggestedExt;
+    } else if (def.provider === 'vertex' && surface === 'image') {
+      const result = await renderVertexImage(ctx, credentials);
       bytes = result.bytes;
       providerNote = result.providerNote;
       suggestedExt = result.suggestedExt;
@@ -757,8 +819,11 @@ function effectiveImageWireModel(ctx: MediaContext, credentials: ProviderConfig)
 /**
  * OpenAI Images（gpt-image 族与 dall-e 族）渲染器。
  *
- * 两条分支在这里收口：
- *  * 有参考图 → `/images/edits`（body.images 是 image_url 条目）；否则
+ * 三条分支在这里收口：
+ *  * 有 mask → `/images/edits` 的 **multipart** 形态（原生 mask 局部重绘，见
+ *    {@link renderOpenAIImageWithMask}）；JSON 形态没有 mask 字段，所以这条分支
+ *    必须换发送形态。
+ *  * 只有参考图 → `/images/edits`（body.images 是 image_url 条目）；否则
  *    `/images/generations`。gpt-image 族在 edits 上不接受 `response_format`
  *    （上游回 HTTP 400 Unknown parameter），dall-e 族照旧要 `b64_json`。
  *  * 能力分支看**目录 id**（用户把 `dall-e-3` 别名到自家代理部署、或在工作台
@@ -773,33 +838,29 @@ function effectiveImageWireModel(ctx: MediaContext, credentials: ProviderConfig)
  * {@link buildOpenAIImageBody}。
  */
 async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
-  if (!credentials.apiKey) {
+  const apiKey = credentials.apiKey;
+  if (!apiKey) {
     throw new Error(OPENAI_IMAGE_NO_CREDENTIAL_MESSAGE);
   }
   const rawBase = credentials.baseUrl || 'https://api.openai.com/v1';
   const azure = detectAzureEndpoint(rawBase);
   const effectiveModel = effectiveImageWireModel(ctx, credentials);
   const body = buildOpenAIImageBody(ctx, effectiveModel, azure);
+  const tag = azure ? 'azure-openai' : 'openai';
+
+  // 画笔局部重绘：有 mask 就必须走 multipart，否则 mask 无处安放。没有 mask 的
+  // 调用方继续走下面的 JSON 路径，行为逐字节不变。
+  if (ctx.maskRef) {
+    return renderOpenAIImageWithMask(ctx, { apiKey, rawBase, azure, effectiveModel, body, tag });
+  }
+
   const url = ctx.imageRefs.length > 0
     ? buildOpenAIImageEditUrl(rawBase, azure)
     : buildOpenAIImageUrl(rawBase, azure);
 
-  const headers: Record<string, string> = {
-    'authorization': `Bearer ${credentials.apiKey}`,
-    'content-type': 'application/json',
-  };
-  if (azure) {
-    // Azure's canonical auth header. Some deployments accept Bearer
-    // (the curl example we tested against does) but api-key is what
-    // their docs document, so send both. OpenAI ignores unknown
-    // headers, so this is harmless on the standard endpoint too.
-    headers['api-key'] = credentials.apiKey;
-  }
-
-  const tag = azure ? 'azure-openai' : 'openai';
   const resp = await fetch(url, withMediaRequestInit(ctx, {
     method: 'POST',
-    headers,
+    headers: openAIImageHeaders(apiKey, azure, 'application/json'),
     body: JSON.stringify(body),
     dispatcher: ctx.requestInit.dispatcher
       ?? openAIImageDispatcher as unknown as NonNullable<RequestInit['dispatcher']>,
@@ -811,6 +872,108 @@ async function renderOpenAIImage(ctx: MediaContext, credentials: ProviderConfig)
   return {
     bytes,
     providerNote: openAIImageProviderNote(tag, effectiveModel, ctx.aspect, body, bytes.length),
+    suggestedExt: sniffImageExt(bytes),
+  };
+}
+
+/**
+ * 鉴权头。Azure 额外带 `api-key`（它的文档写的头；Bearer 也收，两个都发最省事，
+ * OpenAI 忽略未知头）。
+ *
+ * `contentType` 只在 JSON 分支显式给：multipart 必须由 fetch 自己写带 boundary 的
+ * content-type，手写一个就等于让上游解不开表单。
+ */
+function openAIImageHeaders(
+  apiKey: string,
+  azure: boolean,
+  contentType: string | null,
+): Record<string, string> {
+  const headers: Record<string, string> = { 'authorization': `Bearer ${apiKey}` };
+  if (contentType) headers['content-type'] = contentType;
+  if (azure) headers['api-key'] = apiKey;
+  return headers;
+}
+
+/**
+ * 原生 mask 局部重绘：`POST /images/edits` + `multipart/form-data`。
+ *
+ * 官方只在 multipart 形态里接受 `mask`（JSON 形态的 `images` 没有 mask 字段），
+ * 所以这一发把 JSON 路径那份档位映射（{@link buildOpenAIImageBody}）原样搬成
+ * 表单字段，再补上文件 part：`image[]` × N（底图在前，官方规定 mask 作用于第一张）
+ * + `mask`。组装细节与「为什么是 `image[]`」见 `inpaint-mask.ts`。
+ *
+ * 与 JSON 路径的三点差异，都是刻意的：
+ *  * `content-type` 交给 fetch（它要写 boundary），所以请求头里不设它；
+ *  * 走 `fetchImageGenerationWithResponseRetry`：这是一次计费的生成 POST，
+ *    429/503 值得重试一次（JSON 路径保持现状不动，见 {@link renderOpenAIImage}）；
+ *  * mask 与底图不合格在**发出去之前**就报错（{@link assertInpaintMaskUsable}），
+ *    绝不静默缩放或丢掉 mask。
+ */
+async function renderOpenAIImageWithMask(
+  ctx: MediaContext,
+  input: {
+    apiKey: string;
+    rawBase: string;
+    azure: boolean;
+    effectiveModel: string;
+    body: Record<string, unknown>;
+    tag: string;
+  },
+): Promise<RenderResult> {
+  const mask = ctx.maskRef;
+  const primary = ctx.imageRefs[0];
+  if (!mask || !primary) {
+    throw new Error('maskImage needs a reference image to edit (pass at least one image).');
+  }
+  assertInpaintMaskUsable(
+    { label: `mask image "${mask.path}"`, bytes: bytesFromDataUrl(mask.dataUrl) },
+    { label: `image "${primary.path}"`, bytes: bytesFromDataUrl(primary.dataUrl) },
+  );
+  // edits 端点没有 `moderation` 参数：先摘掉，否则表单里会发一个上游不认识的
+  // 字段，而 providerNote 又会声称发过它。
+  const fields = { ...input.body };
+  delete fields.moderation;
+
+  const url = buildOpenAIImageEditUrl(input.rawBase, input.azure);
+  const resp = await fetchImageGenerationWithResponseRetry(
+    () => fetch(url, withMediaRequestInit(ctx, {
+      method: 'POST',
+      headers: openAIImageHeaders(input.apiKey, input.azure, null),
+      body: buildInpaintEditForm({
+        fields,
+        images: ctx.imageRefs.map((ref) => ({
+          fileName: path.basename(ref.abs),
+          mime: ref.mime,
+          bytes: bytesFromDataUrl(ref.dataUrl),
+        })),
+        mask: {
+          fileName: path.basename(mask.abs),
+          mime: mask.mime,
+          bytes: bytesFromDataUrl(mask.dataUrl),
+        },
+      }),
+      dispatcher: ctx.requestInit.dispatcher
+        ?? openAIImageDispatcher as unknown as NonNullable<RequestInit['dispatcher']>,
+      signal: AbortSignal.timeout(Math.max(OPENAI_IMAGE_HEADERS_TIMEOUT_MS, OPENAI_IMAGE_BODY_TIMEOUT_MS)),
+    })),
+    (summary) => ctx.onProviderRequestSettled?.({
+      providerId: ctx.modelDef.provider,
+      ...summary,
+    }),
+  );
+  const data = await parseOpenAICompatibleJson(resp, input.tag);
+  const bytes = await bytesFromOpenAICompatibleData(data, input.tag, ctx.requestInit);
+
+  return {
+    bytes,
+    providerNote: openAIImageProviderNote(
+      input.tag,
+      input.effectiveModel,
+      ctx.aspect,
+      fields,
+      bytes.length,
+      true,
+    ),
     suggestedExt: sniffImageExt(bytes),
   };
 }
@@ -905,6 +1068,7 @@ function openAIImageProviderNote(
   aspect: string | undefined,
   body: Record<string, unknown>,
   byteLength: number,
+  maskApplied = false,
 ): string {
   const parts: string[] = [
     aspect ?? 'aspect:auto',
@@ -913,6 +1077,8 @@ function openAIImageProviderNote(
   if (typeof body.quality === 'string') parts.push(`quality:${body.quality}`);
   if (body.moderation === 'low') parts.push('moderation:low');
   if (body.background === 'transparent') parts.push('background:transparent');
+  // 有 mask 时这一行是唯一能证明「走的是 edits multipart」的现场证据（不用抓包）。
+  if (maskApplied) parts.push('mask:inpaint');
   return `${tag}/${model} · ${parts.join(' · ')} · ${byteLength} bytes`;
 }
 
@@ -1147,19 +1313,116 @@ async function renderGrokImage(ctx: MediaContext, credentials: ProviderConfig): 
   };
 }
 
+// ---------------------------------------------------------------------------
+// Provider: Google generateContent 系（nanobanana / vertex）。
+//
+// 两个 provider 走同一条「generateContent + responseModalities:['IMAGE']」
+// 通路，响应都是 candidates[].content.parts[].inlineData，差异只有三处：
+// URL 拼接、鉴权头、contents 形状（vertex 要求 role:'user'，参考图作为
+// inlineData parts 追加）。因此「发请求 + 错误分类 + 解响应」抽成共享骨架
+// renderGoogleGenerateContentImage，两个渲染器只组装各自的差异部分。
+// ---------------------------------------------------------------------------
+
 /**
- * Nano Banana (Gemini image 模型族) 的生图渲染器。
+ * Google 系生图共用的 imageConfig 组装（nanobanana / vertex 同一份）。
  *
  * 比例与分辨率都经 contracts 的收口函数翻成上游 wire 值，**undefined 的语义是
- * "请求体里不要出现这个字段"**，不是"用某个默认档顶上"：
+ * “请求体里不要出现这个字段”**，不是“用某个默认档顶上”：
  *   * `aspectRatio` 缺席 → 模型自选画幅；
  *   * `imageSize` 缺席 → 用 Google 文档写明的默认 1K。
  * 这是刻意的：档位差价由用户承担，宿主不替他挑档。旧调用方（agent / CLI 生图
  * 没有 resolution 概念，比例也只发 5 档老词表）行为不变 —— 老词表的值都在新表
- * 内，收口原样通过；缺省的比例仍旧只是"不发 aspectRatio"，而不是被改写成 1:1。
+ * 内，收口原样通过；缺省的比例仍旧只是“不发 aspectRatio”，而不是被改写成 1:1。
  *
- * `imageConfig` 本身也要按需组装：两个值都缺席时整个字段不发，因为不支持该配置
- * 的模型（老 gemini 族、部分自建网关）收到一个空配置对象会直接报错。
+ * 两个 provider 的 imageConfig 用的是同一套 Gemini 词汇，所以共用
+ * media-nano-banana 的词表与收敛函数，不另立一套。`imageConfig` 本身也要按需
+ * 组装：两个值都缺席时整个字段不发（由共享骨架判断），因为不支持该配置的
+ * 模型（老 gemini 族、部分自建网关）收到一个空配置对象会直接报错。
+ */
+function googleImageConfigFor(ctx: MediaContext): Record<string, string> {
+  const aspectRatio = nanoBananaAspectRatioFor(ctx.aspect);
+  const imageSize = nanoBananaImageSizeFor(ctx.resolution);
+  // 只有确实要发的键才出现：`{ aspectRatio: undefined }` 会被 JSON.stringify 丢掉，
+  // 但显式组装能让“空 imageConfig 不发”这条规则一眼可读，也是上游报错的那条边界。
+  const imageConfig: Record<string, string> = {};
+  if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
+  if (imageSize) imageConfig.imageSize = imageSize;
+  return imageConfig;
+}
+
+/**
+ * Google 系 generateContent 生图的共享骨架：发请求（带 429/503 重试与
+ * requestInit 代理注入，与现有渲染器同一套模式）→ 错误分类 → inlineData
+ * 响应解析 → providerNote / 扩展名。
+ *
+ * provider 之间的差异全部由 `request` 带进来；这里不关心 provider 是谁
+ * （`tag` 只进错误文案与 providerNote 前缀，`providerId` 只用于
+ * onProviderRequestSettled 的事件归属）。
+ */
+async function renderGoogleGenerateContentImage(
+  ctx: MediaContext,
+  request: {
+    /** 错误文案与 providerNote 的前缀（'nano-banana' / 'vertex'）。 */
+    tag: string;
+    /** 请求归属事件的 provider id（onProviderRequestSettled）。 */
+    providerId: string;
+    /** 完整端点（含模型名），由各 provider 自行拼接。 */
+    url: string;
+    /** 鉴权头（content-type + 该 provider 的 key 头）。 */
+    headers: Record<string, string>;
+    /** contents 原样进请求体（vertex 要求 role:'user'）。 */
+    contents: Array<Record<string, unknown>>;
+    /** imageConfig（googleImageConfigFor 的产物）；空对象 = 不发该字段。 */
+    imageConfig: Record<string, string>;
+    /** 真正发出去的模型名（providerNote 用）。 */
+    wireModel: string;
+  },
+): Promise<RenderResult> {
+  const body = {
+    contents: request.contents,
+    generationConfig: {
+      responseModalities: ['IMAGE'],
+      ...(Object.keys(request.imageConfig).length > 0 ? { imageConfig: request.imageConfig } : {}),
+    },
+  };
+
+  const resp = await fetchImageGenerationWithResponseRetry(
+    () => fetch(request.url, withMediaRequestInit(ctx, {
+      method: 'POST',
+      headers: request.headers,
+      body: JSON.stringify(body),
+    })),
+    (summary) => ctx.onProviderRequestSettled?.({
+      providerId: request.providerId,
+      ...summary,
+    }),
+  );
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`${request.tag} image ${resp.status}: ${truncate(text, 240)}`);
+  }
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`${request.tag} image non-JSON: ${truncate(text, 200)}`);
+  }
+  const bytes = inlineImageBytesFromGenerateContent(data, request.tag);
+  // imageConfig 里只有确实要发的键，缺席即 'auto'：档位语义见 googleImageConfigFor。
+  const { aspectRatio, imageSize } = request.imageConfig;
+  return {
+    bytes,
+    providerNote: `${request.tag}/${request.wireModel} · ${aspectRatio ?? 'aspect:auto'} · ${imageSize ?? 'size:auto'} · ${bytes.length} bytes`,
+    suggestedExt: sniffImageExt(bytes),
+  };
+}
+
+/**
+ * Nano Banana (Gemini image 模型族) 的生图渲染器：Generative Language 面，
+ * 官方 host 用 `x-goog-api-key`，自建网关回退 Bearer（见 nanoBananaHeaders）。
+ *
+ * 档位语义与请求骨架见 googleImageConfigFor / renderGoogleGenerateContentImage；
+ * 这里只剩本 provider 的差异：URL 拼接、鉴权头、contents 形状。
  */
 async function renderNanoBananaImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
   const apiKey = credentials.apiKey;
@@ -1179,52 +1442,19 @@ async function renderNanoBananaImage(ctx: MediaContext, credentials: ProviderCon
     || ctx.wireModel
     || NANOBANANA_DEFAULT_MODEL
   ).trim();
-  const aspectRatio = nanoBananaAspectRatioFor(ctx.aspect);
-  const imageSize = nanoBananaImageSizeFor(ctx.resolution);
-  // 只有确实要发的键才出现：`{ aspectRatio: undefined }` 会被 JSON.stringify 丢掉，
-  // 但显式组装能让"空 imageConfig 不发"这条规则一眼可读，也是上游报错的那条边界。
-  const imageConfig: Record<string, string> = {};
-  if (aspectRatio) imageConfig.aspectRatio = aspectRatio;
-  if (imageSize) imageConfig.imageSize = imageSize;
-  const body = {
+  return renderGoogleGenerateContentImage(ctx, {
+    tag: 'nano-banana',
+    providerId: 'nanobanana',
+    url: `${baseUrl}/v1beta/models/${encodeURIComponent(wireModel)}:generateContent`,
+    headers: nanoBananaHeaders(baseUrl, apiKey),
     contents: [{
       parts: [{
         text: ctx.prompt || 'A high-quality reference image.',
       }],
     }],
-    generationConfig: {
-      responseModalities: ['IMAGE'],
-      ...(Object.keys(imageConfig).length > 0 ? { imageConfig } : {}),
-    },
-  };
-
-  const resp = await fetchImageGenerationWithResponseRetry(
-    () => fetch(`${baseUrl}/v1beta/models/${encodeURIComponent(wireModel)}:generateContent`, withMediaRequestInit(ctx, {
-      method: 'POST',
-      headers: nanoBananaHeaders(baseUrl, apiKey),
-      body: JSON.stringify(body),
-    })),
-    (summary) => ctx.onProviderRequestSettled?.({
-      providerId: 'nanobanana',
-      ...summary,
-    }),
-  );
-  const text = await resp.text();
-  if (!resp.ok) {
-    throw new Error(`nano-banana image ${resp.status}: ${truncate(text, 240)}`);
-  }
-  let data: any;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`nano-banana image non-JSON: ${truncate(text, 200)}`);
-  }
-  const bytes = inlineImageBytesFromGenerateContent(data);
-  return {
-    bytes,
-    providerNote: `nano-banana/${wireModel} · ${aspectRatio ?? 'aspect:auto'} · ${imageSize ?? 'size:auto'} · ${bytes.length} bytes`,
-    suggestedExt: sniffImageExt(bytes),
-  };
+    imageConfig: googleImageConfigFor(ctx),
+    wireModel,
+  });
 }
 
 function nanoBananaHeaders(baseUrl: string, apiKey: string): Record<string, string> {
@@ -1248,7 +1478,14 @@ function usesOfficialGoogleApiKeyHeader(baseUrl: string): boolean {
   }
 }
 
-function inlineImageBytesFromGenerateContent(data: any): Buffer {
+/**
+ * Google 系 generateContent 生图响应的共用解析：candidates[].content.parts[]
+ * 里的第一段 inlineData 即图像字节（nanobanana / vertex 同构）。
+ *
+ * `providerTag` 只进报错文案，让「哪个 provider 没回图」一眼可辨，错误分类
+ * 模式与各渲染器的 `${tag} image ${status}` 一致。
+ */
+function inlineImageBytesFromGenerateContent(data: any, providerTag: string): Buffer {
   const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
   for (const candidate of candidates) {
     const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
@@ -1259,7 +1496,69 @@ function inlineImageBytesFromGenerateContent(data: any): Buffer {
       }
     }
   }
-  throw new Error('nano-banana image response missing candidates[].content.parts[].inlineData.data');
+  throw new Error(`${providerTag} image response missing candidates[].content.parts[].inlineData.data`);
+}
+
+/**
+ * Vertex Express（provider 'vertex'）的生图渲染器：API key 直连 Vertex 的
+ * generateContent 面，不需要 OAuth / gcloud 凭据。
+ *
+ * 实测形状（真 key 验证）：
+ *   * `POST {baseUrl}/v1/publishers/google/models/<model>:generateContent`，
+ *     默认 baseUrl `https://aiplatform.googleapis.com`；
+ *   * 鉴权头固定 `x-goog-api-key`（key 形如 `AQ.` 开头）。与 nanobanana 的
+ *     「官方 host 才用 x-goog-api-key，自建网关回退 Bearer」不同——Express
+ *     mode 就是 Google 官方端点，没有自建网关一说，也就不按 host 分派；
+ *   * `contents` 必须带 `role:'user'`；主参考图与其余 imageRefs 全部依次作为
+ *     `inlineData` parts 追加（ctx.imageRefs 的顺序即 generateMedia 的解析
+ *     顺序，主参考图在前）；
+ *   * 响应与 nanobanana 同构，走同一个 inlineImageBytesFromGenerateContent。
+ *
+ * 模型目录只登记实测可用的两个（gemini-2.5-flash-image、gemini-3-pro-image）；
+ * gemini-3.1-flash-image-preview 在这条端点上 404，有意不登记。比例/分辨率
+ * 与 nanobanana 共用 contracts 的 media-nano-banana 词表与收敛函数。
+ */
+async function renderVertexImage(ctx: MediaContext, credentials: ProviderConfig): Promise<RenderResult> {
+  const apiKey = credentials.apiKey;
+  if (!apiKey) {
+    throw new Error(
+      `no Vertex Express API key — configure it in ${SETTINGS_MEDIA_PROVIDERS_PATH} or set OD_VERTEX_API_KEY`,
+    );
+  }
+
+  const baseUrl = (credentials.baseUrl || VERTEX_EXPRESS_DEFAULT_BASE_URL).replace(/\/$/, '');
+  // 与 nanobanana 同一条链：请求级 override > Settings 配置的自定义模型 >
+  // 别名/目录 id。vertex 的目录里没有内置兜底模型——wireModel 恒有值（目录 id
+  // 本身就是可用模型名），不需要 NANOBANANA_DEFAULT_MODEL 那样的最后一环。
+  const wireModel = (
+    ctx.modelOverride
+    || credentials.model
+    || ctx.wireModel
+  ).trim();
+  // Vertex Express 要求 contents 带 role:'user'；文本 part 在前，参考图（主
+  // 参考图 + 其余 imageRefs）依次作为 inlineData parts 追加。
+  const parts: Array<Record<string, unknown>> = [
+    { text: ctx.prompt || 'A high-quality reference image.' },
+    ...ctx.imageRefs.map((ref) => ({
+      inlineData: {
+        mimeType: ref.mime,
+        // dataUrl 形如 `data:image/png;base64,…`；inlineData 要的是裸 base64。
+        data: ref.dataUrl.slice(ref.dataUrl.indexOf(',') + 1),
+      },
+    })),
+  ];
+  return renderGoogleGenerateContentImage(ctx, {
+    tag: 'vertex',
+    providerId: 'vertex',
+    url: `${baseUrl}/v1/publishers/google/models/${encodeURIComponent(wireModel)}:generateContent`,
+    headers: {
+      'content-type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    contents: [{ role: 'user', parts }],
+    imageConfig: googleImageConfigFor(ctx),
+    wireModel,
+  });
 }
 
 function sniffImageExt(bytes: Buffer): string {

@@ -86,6 +86,11 @@ const ENV_KEYS: Record<string, string[]> = {
   // it for the official SDK don't have to re-paste into Settings.
   grok: ['OD_GROK_API_KEY', 'XAI_API_KEY'],
   nanobanana: ['OD_NANOBANANA_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY'],
+  // vertex（Vertex Express：API key 直连 aiplatform.googleapis.com）。同一条链
+  // 模式：OD_* 项目保留名最优先，后面接 Google 官方文档里 Vertex 用户最常见的
+  // 两个环境名（VERTEX_API_KEY / GOOGLE_VERTEX_API_KEY），已经在用它们的人不
+  // 用再往 Settings 里粘一次。
+  vertex: ['OD_VERTEX_API_KEY', 'VERTEX_API_KEY', 'GOOGLE_VERTEX_API_KEY'],
 };
 
 // Resolve an `OD_*_DIR` env override using the same semantics as

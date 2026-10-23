@@ -6,6 +6,7 @@ import type {
   MediaExecutionPolicy,
   ProjectFile,
   ProjectMediaTaskFile,
+  InspireTranslateRequest,
 } from '@open-design/contracts';
 import { defaultMediaExecutionPolicy, mediaPolicyDenial } from '../media/policy.js';
 import { formatMediaTaskDiagnostic } from '../media/diagnostics.js';
@@ -31,6 +32,7 @@ import {
 import { associateLateRunProducedFile } from '../runtimes/run-produced-files.js';
 import { scaffoldHyperFramesComposition } from '../media/hyperframes-scaffold.js';
 import { assignMediaTaskBatches } from '../media/task-batches.js';
+import { runInspireTranslate, classifyInspireError } from '../media/inspire.js';
 import { generateMediaBatch } from '../media/generate-media-batch.js';
 import { mediaTaskErrorFromFailure } from '../media/task-error.js';
 import { normalizePersistedAutomationWorkspaceScope } from '../automations/workspace-scope.js';
@@ -631,6 +633,33 @@ export function registerMediaRoutes(app: Express, ctx: RegisterMediaRoutesDeps) 
     });
     return res.status(201).json(result);
   };
+
+  // 灵感拓展：抽象思路 → 可执行中文提示词。文本 LLM 只在 daemon 侧有凭据，
+  // 前端面板与 od media inspire 都指向这同一个 HTTP 面。
+  app.post('/api/media/inspire', async (req, res) => {
+    if (!isLocalSameOrigin(req, getResolvedPort())) {
+      return res.status(403).json({ error: 'cross-origin request rejected' });
+    }
+    try {
+      const input = (req.body ?? {}) as Partial<InspireTranslateRequest>;
+      const result = await runInspireTranslate(input as InspireTranslateRequest, PROJECT_ROOT);
+      res.json(result);
+    } catch (err: any) {
+      const flags = classifyInspireError(err);
+      if (flags.isInspireRequestError) {
+        // 契约校验失败：ideaIds 缺失或包含素材库查不到的 id。属调用方错误。
+        return sendApiError(res, 400, 'BAD_REQUEST', String(err.message));
+      }
+      if (flags.isInspireUnavailableError) {
+        // 没有任何文本模型凭据：是配置缺口，不是故障，409 让前端引导去设置。
+        return sendApiError(res, 409, 'INSPIRE_LLM_UNAVAILABLE', String(err.message));
+      }
+      // 其余视为上游 LLM 失败（非 2xx / 网络 / 空输出），带上游状态原文。
+      // 必须走 sendApiError 信封：CLI 的 exitWithMediaHttpFailure 只认
+      // {code,message} 对象，裸字符串会被它降级成 MEDIA_DISPATCH_FAILED。
+      return sendApiError(res, 502, 'UPSTREAM_UNAVAILABLE', String(err && err.message ? err.message : err));
+    }
+  });
 
   app.get('/api/media/models', (_req, res) => {
     // 阶段1：不再指向 vela 云的媒体模型/ provider 不进入目录，前端选择器

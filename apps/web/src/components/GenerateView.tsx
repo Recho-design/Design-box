@@ -41,8 +41,18 @@ import type { CustomSelectItem } from './CustomSelect';
 import { Icon } from './Icon';
 import { GenerateToolbarParams } from './GenerateToolbarParams';
 import { GenerateCard, type CardItem, type OptimisticCard } from './GenerateCard';
+import { GenerateInpaintCanvas } from './GenerateInpaintCanvas';
 import { GenerateHistoryGrid } from './GenerateHistoryGrid';
 import { GenerateHistoryList } from './GenerateHistoryList';
+import { Lightbulb } from 'lucide-react';
+import { GenerateInspirePopover } from './GenerateInspirePopover';
+
+interface InpaintSession {
+  card: CardItem;
+  file: PlaygroundGenerationFile;
+  slotIndex: number;
+  imageUrl: string;
+}
 import {
   GENERATE_VIEW_STORAGE_KEY,
   getSelectableIds,
@@ -345,6 +355,36 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // 灵感拓展相关状态与回调
+  const [isInspireOpen, setIsInspireOpen] = useState(false);
+  const [selectedIdeaIds, setSelectedIdeaIds] = useState<Set<string>>(() => new Set());
+  const inspireTriggerRef = useRef<HTMLButtonElement>(null);
+  const previousPromptRef = useRef<string | null>(null);
+
+  const handleToggleIdea = useCallback((id: string) => {
+    setSelectedIdeaIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearIdeas = useCallback(() => {
+    setSelectedIdeaIds(new Set());
+  }, []);
+
+  const handleApplyInspirePrompt = useCallback((newPrompt: string) => {
+    previousPromptRef.current = prompt;
+    setPrompt(newPrompt);
+    setTimeout(() => {
+      promptTextareaRef.current?.focus();
+    }, 0);
+  }, [prompt]);
+
   // View mode state with localStorage persistence
   const [viewMode, setViewMode] = useState<GenerateViewMode>(() => {
     if (typeof window === 'undefined') return 'stream';
@@ -428,6 +468,10 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
   const [transferTargetGenId, setTransferTargetGenId] = useState<string | null>(null);
   const [transferDestinationPid, setTransferDestinationPid] = useState<string>('');
   const [transferring, setTransferring] = useState(false);
+
+  // Inpaint modal state
+  const [inpaintSession, setInpaintSession] = useState<InpaintSession | null>(null);
+  const [isSubmittingInpaint, setIsSubmittingInpaint] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -629,7 +673,16 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
-        throw new Error(apiErrorMessage(errJson, 'Generation failed'));
+        const isMaskUnsupported =
+          errJson?.code === 'mask_unsupported' ||
+          errJson?.error === 'mask_unsupported' ||
+          errJson?.error?.code === 'mask_unsupported' ||
+          (typeof errJson?.error === 'string' && errJson.error.includes('mask_unsupported')) ||
+          (typeof errJson?.error?.message === 'string' && errJson.error.message.includes('mask_unsupported'));
+        const errMsg = isMaskUnsupported
+          ? '当前模型不支持画笔局部重绘，请切换到 OpenAI 系模型'
+          : apiErrorMessage(errJson, 'Generation failed');
+        throw new Error(errMsg);
       }
 
       const settled: PlaygroundGeneration = await res.json();
@@ -701,6 +754,186 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
     }
     return `/api/media/playground/files/${encodeURIComponent(card.id)}/${slotIndex}`;
   }, []);
+
+  // Card action: Inpaint repaint
+  const handleInpaint = useCallback((card: CardItem, file: PlaygroundGenerationFile, slotIndex: number) => {
+    const url = getFileUrl(card, file, slotIndex);
+    setInpaintSession({ card, file, slotIndex, imageUrl: url });
+  }, [getFileUrl]);
+
+  // Submit inpaint request
+  const handleInpaintSubmit = async (maskFile: File, inpaintPrompt: string) => {
+    if (!inpaintSession || isSubmittingInpaint) return;
+    const trimmedPrompt = inpaintPrompt.trim();
+    if (!trimmedPrompt) return;
+
+    setIsSubmittingInpaint(true);
+    const targetProjectId = selectedTarget === 'scratch' ? undefined : selectedTarget;
+    const originalFileName = inpaintSession.file.name;
+    const optimisticId = `opt-${Date.now()}`;
+    const { model: dispatchModel, modelOverride: dispatchOverride } = dispatch;
+
+    try {
+      // 1. 上传 mask 文件至 /api/media/playground/uploads (与 handleUploadFile 完全同链路)
+      const formData = new FormData();
+      formData.append('file', maskFile);
+      if (selectedTarget !== 'scratch') {
+        formData.append('targetProjectId', selectedTarget);
+      }
+
+      const uploadRes = await fetch('/api/media/playground/uploads', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const errorJson = await uploadRes.json().catch(() => null);
+        throw new Error(apiErrorMessage(errorJson, '上传蒙版失败'));
+      }
+
+      const uploadData: PlaygroundUploadResponse = await uploadRes.json();
+      const maskImageName = uploadData?.name;
+      if (!maskImageName) {
+        throw new Error('上传蒙版未返回有效文件名');
+      }
+
+      // 2. 构造重绘请求体与生成参数
+      const originalAspect = inpaintSession.card.params?.aspect;
+      const targetAspect = originalAspect && originalAspect !== 'auto'
+        ? originalAspect
+        : (aspect !== 'auto' ? aspect : undefined);
+
+      let genParams: PlaygroundGenerationParams;
+      let reqBody: PlaygroundGenerateRequest & { image?: string; maskImage?: string };
+
+      if (selectedSource === 'openai') {
+        const finalQuality = submitQualityFor(dispatchModel, quality);
+        const finalModeration = moderation !== 'auto' ? moderation : undefined;
+        const finalTransparent = transparent ? true : undefined;
+
+        genParams = {
+          aspect: targetAspect,
+          resolution,
+          quality: finalQuality,
+          moderation: finalModeration,
+          transparent: finalTransparent,
+          count: 1,
+        };
+
+        reqBody = {
+          targetProjectId,
+          surface: 'image',
+          model: dispatchModel,
+          modelOverride: dispatchOverride ?? undefined,
+          prompt: trimmedPrompt,
+          ...(targetAspect ? { aspect: targetAspect } : {}),
+          resolution,
+          ...(finalQuality ? { quality: finalQuality } : {}),
+          ...(finalModeration ? { moderation: finalModeration } : {}),
+          ...(finalTransparent ? { transparent: finalTransparent } : {}),
+          count: 1,
+          image: originalFileName,
+          images: [originalFileName],
+          maskImage: maskImageName,
+        };
+      } else if (selectedSource === 'nanobanana') {
+        const finalAspect = nanoBananaAspectRatioFor(targetAspect ?? '');
+        const finalResolution = nanoBananaImageSizeFor(resolution);
+        genParams = { aspect: finalAspect, resolution: finalResolution, count: 1 };
+        reqBody = {
+          targetProjectId,
+          surface: 'image',
+          model: dispatchModel,
+          modelOverride: dispatchOverride ?? undefined,
+          prompt: trimmedPrompt,
+          ...(finalAspect ? { aspect: finalAspect } : {}),
+          ...(finalResolution ? { resolution: finalResolution } : {}),
+          count: 1,
+          image: originalFileName,
+          images: [originalFileName],
+          maskImage: maskImageName,
+        };
+      } else {
+        const finalAspect = targetAspect ? submitAspectForNonOpenAI(targetAspect) : undefined;
+        genParams = { aspect: finalAspect, count: 1 };
+        reqBody = {
+          targetProjectId,
+          surface: 'image',
+          model: dispatchModel,
+          modelOverride: dispatchOverride ?? undefined,
+          prompt: trimmedPrompt,
+          ...(finalAspect ? { aspect: finalAspect } : {}),
+          count: 1,
+          image: originalFileName,
+          images: [originalFileName],
+          maskImage: maskImageName,
+        };
+      }
+
+      // 3. 创建乐观卡片并关闭弹窗（返回列表看到生成进度）
+      const optCard: OptimisticCard = {
+        isOptimistic: true,
+        id: optimisticId,
+        targetProjectId: targetProjectId ?? null,
+        surface: 'image',
+        model: dispatchModel,
+        modelOverride: dispatchOverride,
+        prompt: trimmedPrompt,
+        params: genParams,
+        status: 'running',
+        files: [{ name: '' }],
+        createdAt: Date.now(),
+      };
+
+      setOptimisticCards((prev) => [optCard, ...prev]);
+      setInpaintSession(null);
+
+      // 4. 发起生成
+      try {
+        const res = await fetch('/api/media/playground/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqBody),
+        });
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => null);
+          const isMaskUnsupported =
+            errJson?.code === 'mask_unsupported' ||
+            errJson?.error === 'mask_unsupported' ||
+            errJson?.error?.code === 'mask_unsupported' ||
+            (typeof errJson?.error === 'string' && errJson.error.includes('mask_unsupported')) ||
+            (typeof errJson?.error?.message === 'string' && errJson.error.message.includes('mask_unsupported'));
+
+          const errMsg = isMaskUnsupported
+            ? '当前模型不支持画笔局部重绘，请切换到 OpenAI 系模型'
+            : apiErrorMessage(errJson, '局部重绘失败');
+          throw new Error(errMsg);
+        }
+
+        const settled: PlaygroundGeneration = await res.json();
+        setOptimisticCards((prev) => prev.filter((c) => c.id !== optimisticId));
+        setGenerations((prev) => [settled, ...prev]);
+
+        if (settled.targetProjectId) {
+          invalidateProjectFilesCache(settled.targetProjectId);
+        }
+      } catch (err: any) {
+        console.error('Inpaint generation error:', err);
+        setOptimisticCards((prev) =>
+          prev.map((c) =>
+            c.id === optimisticId
+              ? { ...c, status: 'failed', files: [{ name: '', error: err.message || '局部重绘失败' }] }
+              : c,
+          ),
+        );
+      }
+    } catch (err: any) {
+      alert(err.message || '局部重绘准备失败');
+    } finally {
+      setIsSubmittingInpaint(false);
+    }
+  };
 
   // Card action: Download image
   const handleDownload = useCallback((card: CardItem, file: PlaygroundGenerationFile, slotIndex: number) => {
@@ -1002,6 +1235,7 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
               onPreview={handlePreviewSingle}
               onReuse={handleReuse}
               onAsReference={handleAsReference}
+              onInpaint={handleInpaint}
               onDownload={handleDownload}
               onOpenTransfer={handleOpenTransfer}
               onDelete={handleDelete}
@@ -1076,20 +1310,52 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
                 e.target.value = '';
               }}
             />
-            {/* 漂浮于输入框内的附件按钮 */}
-            <button
-              type="button"
-              className={styles.promptAttachBtn}
-              onClick={(e) => {
-                e.stopPropagation();
-                fileInputRef.current?.click();
-              }}
-              disabled={uploadingImage}
-              title={t('generate.addReference')}
-              aria-label={t('generate.addReference')}
-            >
-              <Icon name="attach" size={15} />
-            </button>
+            {/* 漂浮于输入框内的操作按钮组 */}
+            <div className={styles.promptActions}>
+              <button
+                type="button"
+                ref={inspireTriggerRef}
+                className={`${styles.promptInspireBtn} ${isInspireOpen ? styles.promptInspireBtnActive : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsInspireOpen((prev) => !prev);
+                }}
+                title="灵感拓展"
+                aria-label="灵感拓展"
+                aria-expanded={isInspireOpen}
+              >
+                <Lightbulb size={15} />
+                {selectedIdeaIds.size > 0 && (
+                  <span className={styles.promptInspireBadge}>{selectedIdeaIds.size}</span>
+                )}
+              </button>
+              <button
+                type="button"
+                className={styles.promptAttachBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                disabled={uploadingImage}
+                title={t('generate.addReference')}
+                aria-label={t('generate.addReference')}
+              >
+                <Icon name="attach" size={15} />
+              </button>
+            </div>
+
+            {/* 灵感思路拓展面板 */}
+            <GenerateInspirePopover
+              isOpen={isInspireOpen}
+              onClose={() => setIsInspireOpen(false)}
+              currentPrompt={prompt}
+              hasImage={referenceChips.length > 0}
+              selectedIdeaIds={selectedIdeaIds}
+              onToggleIdea={handleToggleIdea}
+              onClearIdeas={handleClearIdeas}
+              onApplyPrompt={handleApplyInspirePrompt}
+              triggerRef={inspireTriggerRef}
+            />
           </div>
 
           <div className={styles.composerToolbar}>
@@ -1220,6 +1486,19 @@ export function GenerateView({ initialProjectId, projects = [], mediaProviders }
             </div>
           </div>
         </div>
+      )}
+
+      {/* 局部重绘面板 */}
+      {inpaintSession && (
+        <GenerateInpaintCanvas
+          imageUrl={inpaintSession.imageUrl}
+          originalPrompt={inpaintSession.card.prompt}
+          isSubmitting={isSubmittingInpaint}
+          onClose={() => {
+            if (!isSubmittingInpaint) setInpaintSession(null);
+          }}
+          onSubmit={handleInpaintSubmit}
+        />
       )}
     </div>
   );

@@ -1,0 +1,342 @@
+/* 灵感拓展 Popover 面板样式 */
+
+@keyframes inspireEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes inspireExit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.popoverContainer {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: min(540px, calc(100vh - 200px));
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  overflow: hidden;
+  transform-origin: bottom right;
+  animation: inspireEnter 200ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+.popoverContainer.exiting {
+  animation: inspireExit 140ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+/* 顶部 Header */
+.popoverHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.headerIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, #f59e0b 16%, var(--bg-panel));
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.selectedBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel));
+  color: var(--accent);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clearBtn {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 4px);
+  transition: color 140ms cubic-bezier(0.23, 1, 0.32, 1), background-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.clearBtn:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover, var(--bg-subtle));
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm, 4px);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 140ms cubic-bezier(0.23, 1, 0.32, 1), background-color 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.closeBtn:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover, var(--bg-subtle));
+}
+
+.closeBtn:focus-visible,
+.clearBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 中间滚动思路区 */
+.popoverBody {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.groupBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.groupIndicator {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border-strong, var(--border));
+}
+
+.groupIndicatorActive {
+  background: var(--accent);
+}
+
+.groupCount {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.chipGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ideaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 9999px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-subtle);
+  color: var(--text-soft, var(--text));
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              border-color 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              color 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.ideaChip:hover {
+  background: var(--bg-hover, color-mix(in srgb, var(--accent) 8%, var(--bg-subtle)));
+  border-color: var(--border-strong);
+  color: var(--text-strong);
+}
+
+.ideaChip:active {
+  transform: scale(0.98);
+}
+
+.ideaChip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ideaChipSelected {
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-panel));
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.ideaChipSelected:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-panel));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chipCheckIcon {
+  flex-shrink: 0;
+  margin-inline-start: -2px;
+}
+
+/* 底部操作区 */
+.popoverFooter {
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--bg-subtle) 40%, var(--bg-panel));
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 错误通知栏 */
+.errorBar {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--red, #ef4444) 10%, var(--bg-panel));
+  border: 1px solid color-mix(in srgb, var(--red, #ef4444) 30%, transparent);
+  color: var(--red, #ef4444);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.errorIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.errorText {
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+
+/* 底部操作条 */
+.footerActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.footerHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.submitBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: var(--accent-contrast, #ffffff);
+  cursor: pointer;
+  transition: opacity 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              filter 140ms cubic-bezier(0.23, 1, 0.32, 1),
+              transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
+  margin-inline-start: auto;
+}
+
+.submitBtn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.submitBtn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.submitBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.submitBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}

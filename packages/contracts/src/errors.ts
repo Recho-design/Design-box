@@ -117,6 +117,15 @@ export const API_ERROR_CODES = [
   // 「删行之后 settle 更新落空 + 渲染器照常写出孤儿文件」同时发生。客户端
   // 应当等这一行进入终态再重试删除，而不是重试同一次请求。
   'GENERATION_RUNNING',
+  // Media Playground 画笔局部重绘（`maskImage`）的两条闸门。刻意用 media 域既有的
+  // snake_case 词表（同 `safety_rejection`），因为这条能力的消费方（工作台的局部
+  // 重绘弹窗、外部 CLI/代理）已经按这两个字面量判定提示语：`mask_unsupported`
+  // 换个支持 mask 的模型就能出图，请求本身没错，重试同一请求不会变好。
+  'mask_unsupported',
+  // mask 文件本身不可用：不是 PNG、读不到、越界，或与底图（`images[0]`）尺寸
+  // 不一致。daemon 刻意**不做静默缩放**——缩放会让用户拿到一张「改错区域」的图，
+  // 比明确失败难排查得多。用户重新导出 mask 即可修好。
+  'mask_invalid',
   // Live artifact validation, storage, preview, and refresh failures.
   'LIVE_ARTIFACT_NOT_FOUND',
   'LIVE_ARTIFACT_INVALID',
@@ -194,6 +203,12 @@ export const API_ERROR_CODES = [
   // composer instead of waiting on a stalled create. Retryable: the same
   // client-minted project id may be resubmitted.
   'PROJECT_CREATE_PREPARATION_TIMEOUT',
+  // 灵感拓展（POST /api/media/inspire）：daemon 找不到任何可用的**文本**模型凭据
+  // 时返回 HTTP 409 + 此码。生图凭据（nano-banana / gpt-image 等）帮不上这条
+  // 通道——它只做「多选思路 → 文本 LLM 融合转译」，不碰图像端点。这不是请求
+  // 错误：重试同一请求不会变好，客户端应当引导用户先在 Settings → Media 配置
+  // OpenAI 兼容端点，或为 daemon 设置 ANTHROPIC_API_KEY / GOOGLE_API_KEY 环境变量。
+  'INSPIRE_LLM_UNAVAILABLE',
   'INTERNAL_ERROR',
 ] as const;
 

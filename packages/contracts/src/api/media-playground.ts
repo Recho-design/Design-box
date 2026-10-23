@@ -98,6 +98,21 @@ export interface PlaygroundGenerateRequest {
   count?: number;
   /** 目标基目录相对路径（scratch：`uploads/x.png` 或产物 basename）。 */
   images?: string[];
+  /**
+   * 画笔局部重绘的 mask：**黑底白笔迹 PNG** 的目标基目录相对路径，白 = 待编辑
+   * 区域。前端把画布导出成 PNG 后经 `POST /api/media/playground/uploads` 上传，
+   * 拿到相对路径再传进来（与 `images` 同一套引用语义）。
+   *
+   * 三条硬约束（daemon 逐条判定，缺一不可）：
+   * - 必须是 PNG，且与 `images[0]`（mask 作用的底图）**同像素尺寸**——不缩放，
+   *   不一致直接 400 `mask_invalid`，「缩放了却改错区域」比明确失败更难排查；
+   * - 至少带一张 `images`：mask 编辑的第一张参考图是底图；
+   * - 只有 **OpenAI 系**支持原生 mask（`/images/edits` 的 multipart `mask` 字段，
+   *   目录模型上的 `inpaintMask` 能力位，目前是 gpt-image 族）。其他 provider
+   *   （nanobanana、grok 等）没有这条通路，daemon 返回 400 `mask_unsupported`
+   *   而不是静默忽略 mask 出一张「没按涂抹区域改」的图。
+   */
+  maskImage?: string;
 }
 
 /** `GET /api/media/playground/generations` 的响应。 */
