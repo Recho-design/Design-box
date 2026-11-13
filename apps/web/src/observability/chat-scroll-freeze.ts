@@ -31,11 +31,14 @@
 // symptom is fully observable: a downward wheel, room left according to
 // layout, and a `scrollTop` that does not move. That is the whole design.
 //
-// What is deliberately absent: any repair. Toggling `display` clears the
-// frozen ceiling, and doing that automatically would cost the user a flash
-// plus their scroll position AND — the reason that actually decides it —
-// destroy the evidence for the trigger we are trying to find. This module
-// observes. Healing is a product decision, not an observability one.
+// What is deliberately absent: any repair. This module observes; it writes
+// no DOM and moves no scroller. Healing is a product decision, not an
+// observability one, and it lives in `runtime/chat-scroll-takeover.ts`,
+// which subscribes to the verdict below and acts AFTER the report has gone
+// out — a one-frame compositor kick, then, if that did not help, driving
+// the wheel and keyboard from JavaScript. The `display` toggle that was
+// considered first was rejected for costing a flash, the scroll position and
+// the evidence; nothing that subscribes here may do that.
 //
 // Cost discipline
 // ---------------
@@ -83,9 +86,14 @@
 //     probe that leaves a frame, an idle callback, an observer or a
 //     listener in flight after its element is gone is a probe that runs
 //     inside somebody else's work.
-//   - One report per chat log element. There is no session-level cap; see
-//     the note beside `SCROLL_SAMPLE_MIN_INTERVAL_MS` for why the one that
-//     used to live there was removed.
+//   - One report per SURFACE. A surface is one chat log element from
+//     attach to release, and it is released on remount, on teardown, and
+//     when the host says the conversation changed
+//     (`releaseChatScrollFreezeSurface`) — the node is reused across
+//     conversations, so without that call a report about one conversation
+//     would silence the next. There is no session-level cap; see the note
+//     beside `SCROLL_SAMPLE_MIN_INTERVAL_MS` for why the one that used to
+//     live there was removed.
 //
 // Parallel activity
 // -----------------
@@ -434,10 +442,11 @@ export function installChatScrollFreezeObserver(): () => void {
 // promise is SAY what it decided and name the element it decided about.
 //
 // That split is the whole point. Anything that wants to act on a freeze — the
-// wheel takeover in `runtime/chat-scroll-takeover.ts` is the first, and it is
-// off by default — subscribes here and owns its own behaviour entirely. So a
-// product decision can never migrate into this file by accident, and the
-// report can never be shaped by what somebody wanted to do about it.
+// self-heal in `runtime/chat-scroll-takeover.ts`, off by default unless
+// `open-design:chat-scroll-takeover = '1'` is set — subscribes
+// here and owns its own behaviour entirely. So a product decision can never
+// migrate into this file by accident, and the report can never be shaped by
+// what somebody wanted to do about it.
 //
 // Two edges, one channel:
 //
@@ -446,7 +455,9 @@ export function installChatScrollFreezeObserver(): () => void {
 //   * `surface_released` is the moment the probe lets go of an element —
 //     remount, conversation switch, teardown. It is the only reliable signal a
 //     consumer has that whatever it attached to that element must come off,
-//     and it fires whether or not that surface ever froze.
+//     and it fires whether or not that surface ever froze. A conversation
+//     switch reuses the node, so the host announces it through
+//     `releaseChatScrollFreezeSurface()` rather than the probe inferring it.
 
 export type ChatScrollFreezeSignal =
   | {
@@ -490,6 +501,26 @@ export function subscribeChatScrollFreeze(
  */
 export function chatScrollFreezeListenerCount(): number {
   return freezeListeners.size;
+}
+
+/**
+ * Let go of the current surface on the host's say-so.
+ *
+ * The chat log's node is reused across conversations, so the probe cannot
+ * see a conversation switch on its own: the element stays connected, keeps
+ * scrolling, and a report sent about the previous conversation would silence
+ * the next one on the same node. `ChatPane` calls this when
+ * `activeConversationId` changes; the self-heal calls it after a successful
+ * kick, for the same reason (a healed surface must be able to report again).
+ *
+ * Exactly what `detach()` already does on a remount — `surface_released` goes
+ * out to every subscriber, wheel discovery is re-armed, and the next scroll
+ * out of the log attaches a fresh surface with a fresh probe id. Nothing about
+ * the verdict changes; only where one surface ends and the next begins.
+ */
+export function releaseChatScrollFreezeSurface(): void {
+  if (!installed) return;
+  detach();
 }
 
 function notifyFreezeListeners(signal: ChatScrollFreezeSignal): void {
@@ -1820,9 +1851,9 @@ function report(
 
   // reportSafetyEvent removed
 
-  // After the report, deliberately. Whatever a consumer does about this — and
-  // the only consumer today is an off-by-default wheel takeover — must not be
-  // able to change what was reported or whether it was sent.
+  // After the report, deliberately. Whatever a consumer does about this — the
+  // self-heal's kick and takeover, the forensics capture — must not be able to
+  // change what was reported or whether it was sent.
   notifyFreezeListeners({
     kind: 'frozen',
     element: active.element,
