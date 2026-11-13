@@ -281,17 +281,16 @@ async function registerOne(args: {
   // NOW and did not require in the manifest that row was registered from.
   // A fresh install has no prior row, so it takes the resolved set as-is.
   //
-  // Known limit, stated here so it is not mistaken for an oversight: a row
-  // written by a PRE-FIX daemon already carries the bare `prompt:inject` floor
-  // for an unchanged manifest, so `newlyRequiredCapabilities` reports nothing
-  // and that row keeps its gap. Healing it would mean deciding, without any
-  // recorded evidence, whether the missing entry was never granted or was
-  // revoked by the user — and guessing wrong either resurrects a revocation
-  // (#7597) or leaves a real one silently overwritten. Existing snapshots are
-  // also unaffected by design: they are immutable records of what a run was
-  // granted. Builds that add a *new* requirement heal on the next boot, and
-  // re-installing the plugin (uninstall + boot, or a version bump) takes the
-  // fresh-registration path.
+  // The known limit this branch used to carry — a row written by a PRE-FIX
+  // daemon keeps its bare `prompt:inject` floor forever, because an unchanged
+  // manifest produces an empty diff — is repaired once by
+  // `legacy-grant-backfill.ts`, which server.ts runs immediately before this
+  // walker on startup. That pass owns the "was it never granted or was it
+  // revoked?" decision exactly once, for the pre-fix population only; from then
+  // on, preservation here is what keeps a revocation durable. Do not turn this
+  // branch into a re-resolve: that would re-grant revoked capabilities on every
+  // restart. Existing snapshots are unaffected either way by design — they are
+  // immutable records of what a run was granted.
   if (existing) {
     const carried = new Set([
       ...(existing.capabilitiesGranted ?? []),

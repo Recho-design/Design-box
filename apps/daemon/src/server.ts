@@ -402,6 +402,7 @@ import {
   resolvePluginSnapshot,
   runPipelineForRun,
   isSafePluginId,
+  runBundledCapabilityGrantBackfill,
   runStageWithRegistry,
   startSnapshotGc,
   uninstallPlugin,
@@ -3005,6 +3006,31 @@ export async function startServer({
 
   if (process.env.OD_CODEX_DISABLE_PLUGINS === '1') {
     console.log('[od] Codex plugins disabled via OD_CODEX_DISABLE_PLUGINS=1');
+  }
+
+  // One-shot repair of bundled rows whose `capabilities_granted` was persisted
+  // on the pre-fix restricted floor (see plugins/legacy-grant-backfill.ts).
+  // Marked complete through `daemon_maintenance_passes`, so every boot after
+  // the first is a no-op and a revocation made afterwards is never re-granted.
+  //
+  // Ordered BEFORE the boot walker on purpose. The two are compatible in
+  // either order — the walker's preserve branch (bundled.ts) reads the
+  // persisted set and unions in only the capabilities the manifest newly
+  // requires, so it carries a healed row forward verbatim instead of
+  // overwriting it — but running first means this pass sees exactly the
+  // pre-existing population it targets, never the rows the walker is about to
+  // insert or prune on this same boot. It also runs in its own try/catch, so a
+  // bundled-root problem later in startup cannot cost us the repair.
+  try {
+    const backfill = runBundledCapabilityGrantBackfill({ db });
+    if (backfill.healed > 0) {
+      console.log(
+        `[plugins] capability-grant backfill healed ${backfill.healed} bundled row(s)`
+        + ` (unchanged ${backfill.unchanged}, skipped ${backfill.skippedNoManifest + backfill.skippedInvalidManifest})`,
+      );
+    }
+  } catch (err) {
+    console.warn(`[plugins] capability-grant backfill failed: ${(err)?.message ?? err}`);
   }
 
   let bundledMarketplaceEntries = [];
