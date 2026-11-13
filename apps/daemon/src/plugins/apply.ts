@@ -145,6 +145,18 @@ export function applyPlugin(input: ApplyInput): ApplyComputed {
     resolveConnectorBindings(manifest, input.connectorProbe);
   const required = requiredCapabilities(manifest);
   // Persisted grants are authoritative; recomputing defaults here would undo revocations.
+  //
+  // This depends on the WRITER side being correct, because nothing re-derives
+  // grants at apply time: `resolveCapabilitiesGranted` (trust.ts) is the only
+  // place bundled/trusted manifests become a persisted capability set, and
+  // `bundled.ts` is the only writer for `source_kind='bundled'`. If either of
+  // those stops covering the manifest's required set, every snapshot of that
+  // plugin silently inherits the gap — `capabilitiesGranted` is exported into
+  // portable manifests (export.ts) and reported by the trust API, so the
+  // recorded contract would disagree with what the run actually does. A
+  // capability that is genuinely missing surfaces as a `capabilities-required`
+  // 409 in resolve-snapshot.ts for restricted plugins only, which is exactly
+  // why a silent floor on a bundled plugin can go unnoticed.
   const granted = Array.from(new Set([...(input.plugin.capabilitiesGranted ?? []), 'prompt:inject']));
   const taskKind = (manifest.od?.taskKind ?? 'new-generation') as AppliedPluginSnapshot['taskKind'];
 

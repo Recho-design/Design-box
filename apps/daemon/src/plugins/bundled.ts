@@ -33,6 +33,7 @@ import {
 } from './registry.js';
 import type { InstalledPluginRecord, MarketplaceTrust } from '@open-design/contracts';
 import { inspectBundledStrategyProvenanceV2 } from './strategy-provenance.js';
+import { newlyRequiredCapabilities } from './trust.js';
 
 type SqliteDb = Database.Database;
 
@@ -268,6 +269,38 @@ async function registerOne(args: {
   const existingDigest = existing ? getBundledContentDigest(args.input.db, record.id) : null;
   if (existing && existingDigest === contentDigest) {
     record = { ...record, installedAt: existing.installedAt, updatedAt: existing.updatedAt };
+  }
+  // The walker upserts unconditionally on every boot, so the freshly resolved
+  // grant set would overwrite user decisions each time the daemon restarts.
+  // `resolveCapabilitiesGranted` now derives bundled grants from the manifest,
+  // and revocation is stored by REMOVING entries from `capabilities_granted`
+  // (there is no tombstone column), so "absent from the row" is ambiguous
+  // between "never had it" and "user took it away". Resolve that ambiguity in
+  // the only direction that cannot resurrect a revocation: keep the persisted
+  // row verbatim and widen it only with capabilities the manifest requires
+  // NOW and did not require in the manifest that row was registered from.
+  // A fresh install has no prior row, so it takes the resolved set as-is.
+  //
+  // Known limit, stated here so it is not mistaken for an oversight: a row
+  // written by a PRE-FIX daemon already carries the bare `prompt:inject` floor
+  // for an unchanged manifest, so `newlyRequiredCapabilities` reports nothing
+  // and that row keeps its gap. Healing it would mean deciding, without any
+  // recorded evidence, whether the missing entry was never granted or was
+  // revoked by the user — and guessing wrong either resurrects a revocation
+  // (#7597) or leaves a real one silently overwritten. Existing snapshots are
+  // also unaffected by design: they are immutable records of what a run was
+  // granted. Builds that add a *new* requirement heal on the next boot, and
+  // re-installing the plugin (uninstall + boot, or a version bump) takes the
+  // fresh-registration path.
+  if (existing) {
+    const carried = new Set([
+      ...(existing.capabilitiesGranted ?? []),
+      'prompt:inject',
+    ]);
+    for (const cap of newlyRequiredCapabilities(existing.manifest, record.manifest)) {
+      carried.add(cap);
+    }
+    record = { ...record, capabilitiesGranted: Array.from(carried).sort() };
   }
   upsertInstalledPlugin(args.input.db, record);
   setBundledContentDigest(args.input.db, record.id, contentDigest);
