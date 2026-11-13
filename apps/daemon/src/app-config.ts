@@ -209,7 +209,7 @@ const AGENT_CLI_ENV_KEYS: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ['claude', new Set(['CLAUDE_CONFIG_DIR', 'CLAUDE_BIN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'MMD_MODEL_ROUTES_FILE'])],
   ['codex', new Set(['CODEX_HOME', 'CODEX_BIN', 'OPENAI_BASE_URL', 'CODEX_API_KEY', 'OPENAI_API_KEY'])],
   ['deepseek', new Set(['DEEPSEEK_BIN'])],
-  ['opencode', new Set(['OPENCODE_BIN'])],
+  ['opencode', new Set(['OPENCODE_BIN', 'TMPDIR', 'TMP', 'TEMP'])],
 ]);
 
 const AGENT_CLI_AUTH_ENV_KEYS: ReadonlyMap<string, {
