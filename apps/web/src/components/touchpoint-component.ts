@@ -568,7 +568,7 @@ export function resolveWebTouchpointLocale(
 ): string | undefined {
 	const normalized = requestedLocale.replace(/_/g, "-");
 	const baseLanguage = normalized.split("-")[0] ?? normalized;
-	const candidates = [normalized, baseLanguage, "en-US"];
+	const candidates = [normalized, baseLanguage, "en", "en-US"];
 	return candidates.find((candidate) => placementLocales.includes(candidate));
 }
 
@@ -654,34 +654,103 @@ function composedActiveElement(): Element | null {
 	return active;
 }
 
-const modalScrollLocks = new WeakMap<
-	HTMLElement,
-	{ count: number; overflow: string }
->();
+export { lockWebModalScroll as lockWebTouchpointModalScroll } from "./modal-scroll-lock";
 
-/** Keeps a concurrent CMS modal from releasing the host scroll lock owned by another modal. */
-export function lockWebTouchpointModalScroll(
-	body: HTMLElement = document.body,
-): () => void {
-	const existing = modalScrollLocks.get(body);
-	if (existing) {
-		existing.count += 1;
-	} else {
-		modalScrollLocks.set(body, { count: 1, overflow: body.style.overflow });
-		body.style.overflow = "hidden";
-	}
-	let released = false;
-	return () => {
-		if (released) return;
-		released = true;
-		const lock = modalScrollLocks.get(body);
-		if (!lock) return;
-		lock.count -= 1;
-		if (lock.count === 0) {
-			body.style.overflow = lock.overflow;
-			modalScrollLocks.delete(body);
+const modalSelector = '[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]';
+type StackEntry = { element: HTMLElement; level: number };
+type StyleReader = (element: HTMLElement) => CSSStyleDeclaration;
+
+function createsStackingContext(element: HTMLElement, style: CSSStyleDeclaration, readStyle: StyleReader): boolean {
+	const positioned = style.position === 'absolute' || style.position === 'relative';
+	const parentDisplay = element.parentElement ? readStyle(element.parentElement).display : '';
+	return style.position === 'fixed' || style.position === 'sticky'
+		|| (style.zIndex !== '' && style.zIndex !== 'auto'
+			&& (positioned || /^(inline-)?(flex|grid)$/.test(parentDisplay)))
+		|| Number.parseFloat(style.opacity) < 1
+		|| ['transform', 'translate', 'rotate', 'scale', 'perspective', 'filter', 'backdrop-filter', 'clip-path', 'mask-image', 'mask-border-source']
+			.some((property) => {
+				const value = style.getPropertyValue(property);
+				return value !== '' && value !== 'none';
+			})
+		|| style.isolation === 'isolate'
+		|| (style.mixBlendMode !== '' && style.mixBlendMode !== 'normal')
+		|| /\b(layout|paint|strict|content)\b/.test(style.contain)
+		|| /\b(transform|opacity|filter|perspective|contain)\b/.test(style.willChange)
+		|| ['size', 'inline-size'].includes(style.getPropertyValue('container-type'));
+}
+
+function stackingPath(element: HTMLElement, readStyle: StyleReader): StackEntry[] {
+	const ancestors: HTMLElement[] = [];
+	for (let current: HTMLElement | null = element; current; current = current.parentElement) ancestors.unshift(current);
+	return ancestors.flatMap((ancestor) => {
+		const style = readStyle(ancestor);
+		const isContext = ancestor === element.ownerDocument.documentElement
+			|| createsStackingContext(ancestor, style, readStyle);
+		if (ancestor !== element && !isContext) return [];
+		const level = isContext ? Number.parseInt(style.zIndex, 10) : 0;
+		return [{ element: ancestor, level: Number.isFinite(level) ? level : 0 }];
+	});
+}
+
+function compareStackPaths(left: StackEntry[], right: StackEntry[]): number {
+	let index = 0;
+	while (index < left.length && index < right.length && left[index]!.element === right[index]!.element) index += 1;
+	if (index === left.length && index === right.length) return 0;
+	if (index === left.length) return right[index]!.level < 0 ? 1 : -1;
+	if (index === right.length) return left[index]!.level < 0 ? -1 : 1;
+	const a = left[index]!;
+	const b = right[index]!;
+	if (a.level !== b.level) return a.level - b.level;
+	return a.element.compareDocumentPosition(b.element) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+}
+
+function getTopModalDialog(doc: Document): HTMLElement | null {
+	const styles = new Map<HTMLElement, CSSStyleDeclaration>();
+	const readStyle: StyleReader = (element) => {
+		let style = styles.get(element);
+		if (!style) {
+			style = doc.defaultView!.getComputedStyle(element);
+			styles.set(element, style);
 		}
+		return style;
 	};
+	const panels = [...doc.querySelectorAll<HTMLElement>(modalSelector)]
+		.filter((panel) => {
+			if (!panel.isConnected || panel.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+			for (let element: HTMLElement | null = panel; element; element = element.parentElement) {
+				const style = readStyle(element);
+				if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+			}
+			return true;
+		})
+		.map((panel) => ({ panel, path: stackingPath(panel, readStyle) }))
+		.sort((left, right) => compareStackPaths(left.path, right.path))
+		.map((entry) => entry.panel);
+	return panels.at(-1) ?? null;
+}
+
+/** Share keyboard ownership with Dialog, including its CSS stacking order. */
+export function ownsWebTouchpointModalKeyboard(modal: HTMLElement | null): boolean {
+	if (!modal) return false;
+	const top = getTopModalDialog(modal.ownerDocument);
+	return !top || top === modal || top.contains(modal);
+}
+
+/**
+ * Gives a host-owned modal its initial focus in composed-tree order, so the
+ * first control inside the component's ShadowRoot (a light-DOM query cannot
+ * reach it) receives focus. The container itself is focused only when the
+ * content offers no control at all.
+ */
+export function focusWebTouchpointModal(modal: HTMLElement | null) {
+	if (!modal || !ownsWebTouchpointModalKeyboard(modal)) return;
+	// A control can still refuse focus (a style this check cannot see); the
+	// next one is tried, and the container keeps focus inside the modal last.
+	for (const candidate of composedFocusableElements(modal)) {
+		candidate.focus({ preventScroll: true });
+		if (composedActiveElement() === candidate) return;
+	}
+	modal.focus({ preventScroll: true });
 }
 
 /** Keeps keyboard focus inside a host-owned modal without exposing host DOM to content. */
@@ -689,7 +758,7 @@ export function trapWebTouchpointModalFocus(
 	event: KeyboardEvent,
 	modal: HTMLElement | null,
 ) {
-	if (event.key !== "Tab" || !modal) return;
+	if (event.key !== "Tab" || !modal || !ownsWebTouchpointModalKeyboard(modal)) return;
 	const focusable = composedFocusableElements(modal);
 	if (focusable.length === 0) {
 		event.preventDefault();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { getOpenDesignHost } from "@open-design/host";
 import { openExternalUrl } from "../providers/registry";
@@ -8,9 +8,11 @@ import {
 } from "./touchpoint-static-actions";
 import {
 	emitWebTouchpointDiagnostic,
+	focusWebTouchpointModal,
 	ensureWebTouchpointElement,
 	readWebTouchpointHostContext,
 	lockWebTouchpointModalScroll,
+	ownsWebTouchpointModalKeyboard,
 	supportsWebTouchpointCapabilities,
 	trapWebTouchpointModalFocus,
 	verifyWebTouchpoint,
@@ -531,28 +533,29 @@ export function ProductionCampaignModal({
 			container.replaceChildren();
 		};
 	}, [authenticated, closeProductionModal, decision, generation, isCurrent, sessionSubject]);
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!decision) return;
+		const modal = modalRef.current;
 		restoreFocus.current =
 			document.activeElement instanceof HTMLElement
 				? document.activeElement
 				: null;
 		const releaseScrollLock = lockWebTouchpointModalScroll();
 		const key = (event: KeyboardEvent) => {
-			if (event.key === "Escape") closeProductionModal();
-			else trapWebTouchpointModalFocus(event, modalRef.current);
+			if (event.defaultPrevented) return;
+			if (event.key === "Escape") {
+				if (!ownsWebTouchpointModalKeyboard(modalRef.current)) return;
+				event.preventDefault();
+				closeProductionModal();
+			} else trapWebTouchpointModalFocus(event, modalRef.current);
 		};
 		document.addEventListener("keydown", key);
-		queueMicrotask(() =>
-			(
-				modalRef.current?.querySelector<HTMLElement>("button") ??
-				modalRef.current
-			)?.focus(),
-		);
+		queueMicrotask(() => focusWebTouchpointModal(modalRef.current));
 		return () => {
 			document.removeEventListener("keydown", key);
 			releaseScrollLock();
-			restoreFocus.current?.focus();
+			if (ownsWebTouchpointModalKeyboard(modal))
+				restoreFocus.current?.focus({ preventScroll: true });
 		};
 	}, [closeProductionModal, decision]);
 	useEffect(() => {
@@ -561,28 +564,29 @@ export function ProductionCampaignModal({
 		clear();
 		setClosed(false);
 	}, [clear, clearOpenPresentation, closed, decision, sessionSubject]);
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!testDecision || testClosed || !authenticated) return;
+		const modal = modalRef.current;
 		const previous =
 			document.activeElement instanceof HTMLElement
 				? document.activeElement
 				: null;
 		const releaseScrollLock = lockWebTouchpointModalScroll();
 		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") closeTestModal();
-			else trapWebTouchpointModalFocus(event, modalRef.current);
+			if (event.defaultPrevented) return;
+			if (event.key === "Escape") {
+				if (!ownsWebTouchpointModalKeyboard(modalRef.current)) return;
+				event.preventDefault();
+				closeTestModal();
+			} else trapWebTouchpointModalFocus(event, modalRef.current);
 		};
 		document.addEventListener("keydown", onKeyDown);
-		queueMicrotask(() =>
-			(
-				modalRef.current?.querySelector<HTMLElement>("button") ??
-				modalRef.current
-			)?.focus(),
-		);
+		queueMicrotask(() => focusWebTouchpointModal(modalRef.current));
 		return () => {
 			document.removeEventListener("keydown", onKeyDown);
 			releaseScrollLock();
-			previous?.focus();
+			if (ownsWebTouchpointModalKeyboard(modal))
+				previous?.focus({ preventScroll: true });
 		};
 	}, [authenticated, testClosed, testDecision, closeTestModal]);
 	const onTestVisible = useCallback(
