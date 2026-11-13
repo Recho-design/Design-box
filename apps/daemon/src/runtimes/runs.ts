@@ -2094,6 +2094,17 @@ export function createChatRunService({
     return true;
   };
 
+  /** Like signalProcessGroup, but true only when the signal was delivered. */
+  const deliverProcessGroupSignal = (processGroupId, signal) => {
+    if (process.platform === 'win32' || !Number.isInteger(processGroupId)) return false;
+    try {
+      process.kill(-processGroupId, signal);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const processGroupIsAlive = (processGroupId) => {
     if (process.platform === 'win32' || !Number.isInteger(processGroupId)) return false;
     try {
@@ -2123,12 +2134,18 @@ export function createChatRunService({
    * bounded SIGTERM/SIGKILL escalation while the direct child is still alive.
    * The captured child/pgid key makes repeated verdict/close callbacks
    * idempotent and prevents a retry generation from targeting its successor.
+   *
+   * `onChildSignal` runs once, after the first signal was actually delivered
+   * to a direct child that was still alive, i.e. only when the daemon, not
+   * the child itself, ends it. A child that exits during `gracefulWaitMs`, a
+   * child already gone when signalled, and a failed dispatch never trigger it.
    */
   const terminateProcessTree = (run, child, processGroupId, {
     gracefulWaitMs = 0,
     termGraceMs = cancelGraceMs(),
     killGraceMs = forceWaitMs(),
     reason = 'run_terminal',
+    onChildSignal = undefined as (() => void) | undefined,
   } = {}) => {
     const key = child ?? processGroupId;
     run.processTreeTerminations ??= new Map();
@@ -2137,6 +2154,12 @@ export function createChatRunService({
     }
 
     run.processTreeTerminationPending = (run.processTreeTerminationPending ?? 0) + 1;
+    let childSignalReported = false;
+    const reportChildSignal = () => {
+      if (childSignalReported) return;
+      childSignalReported = true;
+      onChildSignal?.();
+    };
     const task = (async () => {
       if (process.platform !== 'win32' && Number.isInteger(processGroupId)) {
         if (!processGroupIsAlive(processGroupId)) {
@@ -2149,11 +2172,13 @@ export function createChatRunService({
           return { quiescent: true, forced: false, remainingPids: [] };
         }
         if (gracefulWaitMs > 0) closeRunStdin(run);
-        signalProcessGroup(processGroupId, 'SIGTERM');
+        const childAliveBeforeTerm = !childHasExited(child);
+        if (deliverProcessGroupSignal(processGroupId, 'SIGTERM') && childAliveBeforeTerm) reportChildSignal();
         if (await waitForProcessGroupExit(processGroupId, termGraceMs)) {
           return { quiescent: true, forced: false, remainingPids: [] };
         }
-        signalProcessGroup(processGroupId, 'SIGKILL');
+        const childAliveBeforeKill = !childHasExited(child);
+        if (deliverProcessGroupSignal(processGroupId, 'SIGKILL') && childAliveBeforeKill) reportChildSignal();
         const quiescent = await waitForProcessGroupExit(processGroupId, killGraceMs);
         return {
           quiescent,
@@ -2170,11 +2195,11 @@ export function createChatRunService({
           return { quiescent: true, forced: false, remainingPids: [] };
         }
         if (gracefulWaitMs > 0) closeRunStdin(run);
-        signalChildProcess(child, null, 'SIGTERM');
+        if (signalChildProcess(child, null, 'SIGTERM')) reportChildSignal();
         if (await waitForChildExit(child, termGraceMs)) {
           return { quiescent: true, forced: false, remainingPids: [] };
         }
-        signalChildProcess(child, null, 'SIGKILL');
+        if (signalChildProcess(child, null, 'SIGKILL')) reportChildSignal();
         const quiescent = await waitForChildExit(child, killGraceMs);
         return {
           quiescent,
@@ -2198,7 +2223,9 @@ export function createChatRunService({
       const terminationPids = pids.length > 0 || childExitedDuringGrace
         ? pids
         : [child.pid];
-      const result = await stopProcesses(terminationPids, { termGraceMs, killGraceMs });
+      const childStillOwned = !childExitedDuringGrace && !childHasExited(child);
+      const onSignal = (pid) => { if (childStillOwned && pid === child.pid) reportChildSignal(); };
+      const result = await stopProcesses(terminationPids, { termGraceMs, killGraceMs, onSignal });
 
       const verificationSnapshots = await listProcessSnapshots();
       enumerationVerified &&= verificationSnapshots.length > 0;
@@ -2216,6 +2243,7 @@ export function createChatRunService({
         const followUp = await stopProcesses(remainingPids, {
           termGraceMs: 0,
           killGraceMs,
+          onSignal,
         });
         forcedPids = [...new Set([...forcedPids, ...followUp.forcedPids])];
         const finalSnapshots = await listProcessSnapshots();

@@ -55,6 +55,7 @@ import {
 } from '@open-design/contracts';
 import {
   loadOdNextTaskResourcesForSnapshot,
+  loadOdNextTaskAssetsForSnapshot,
   materializeOdNextDeviceFrames,
   observeOdNextDeviceShell,
   observeOdNextLayoutPrimitives,
@@ -158,6 +159,7 @@ import {
 // Shared with `POST /api/runs/:id/steer` so the opening prompt and a B11
 // mid-turn steering frame are encoded by the same writer.
 import { encodeStreamJsonUserMessage } from './runtimes/run-steering.js';
+import { openCodeSystemTempDirectories } from './runtimes/opencode-permissions.js';
 import { assertOdNextSemanticRequestFactProducerCoverage } from './runtimes/od-next-exact-input.js';
 import {
   normalizeRunContextSelection,
@@ -488,6 +490,7 @@ import { readOpenCodeServiceFailure } from './runtimes/opencode-log.js';
 import { applyOpenCodeEventPlugin } from './runtimes/opencode-event-plugin.js';
 
 import { createAgyStreamHandler, encodeAgyUserMessage } from './runtimes/agy-stream.js';
+import { resolveOpenCodeEditBaseDirs } from './runtimes/opencode-permissions.js';
 import { subscribe as subscribeFileEvents } from './project-watchers.js';
 import { importFigmaFromBytes } from './figma/figma-import.js';
 import { renderDesignSystemPreview } from './design-systems/preview.js';
@@ -2328,9 +2331,18 @@ const pluginShareTaskStore = createPluginShareTaskStore({
 // files live under metadata.baseDir.
 let projectMetadataLookup: ((id: string) => Record<string, unknown> | null) | null = null;
 
+/** Reserve names in multipart order, even when directory preparation finishes out of order. */
+function queueProjectUploadNaming(req) {
+  const previous = req._uploadNamingTail ?? Promise.resolve();
+  let release: () => void;
+  req._uploadNamingTail = new Promise<void>((resolve) => { release = resolve; });
+  return { previous, release: () => release() };
+}
+
 const projectUpload = multer({
   storage: multer.diskStorage({
     destination: async (req, _file, cb) => {
+      const naming = queueProjectUploadNaming(req);
       try {
         // Route uploads into the project's actual root: for folder-imported
         // projects (metadata.baseDir set) attachments need to land alongside
@@ -2351,11 +2363,17 @@ const projectUpload = multer({
           subdir,
           meta,
         );
+        // Multer invokes filename synchronously from this callback. Keep
+        // directory I/O concurrent, but let earlier file parts reserve first.
+        await naming.previous;
         (req as any)._uploadRelDir = relDir;
         (req as any)._uploadAbsDir = absDir;
         cb(null, absDir);
       } catch (err) {
+        await naming.previous;
         cb(err, '');
+      } finally {
+        naming.release();
       }
     },
     filename: (req, file, cb) => {
@@ -6280,6 +6298,25 @@ export async function startServer({
         cwd,
       });
     }
+    // Frozen tasks bypass ordinary prompt composition. Resolve access from the
+    // verified applied package here, alongside the resources every run consumes.
+    let strategyTaskAssets: Awaited<ReturnType<typeof loadOdNextTaskAssetsForSnapshot>> = {
+      taskProfileRoot: null,
+      resources: [],
+    };
+    try {
+      strategyTaskAssets = await loadOdNextTaskAssetsForSnapshot({
+        bundledPluginsDir: BUNDLED_PLUGINS_DIR,
+        snapshot: typeof run.appliedPluginSnapshotId === 'string'
+          ? getSnapshot(db, run.appliedPluginSnapshotId)
+          : null,
+      });
+    } catch (err) {
+      // Unverified assets grant no access, but must not block a frozen run.
+      console.warn(
+        `[od-next-task-assets] loading skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     // OD Next task-profile resources (the handheld shells for prototype
     // tasks) are staged beside the frozen Skills on every strategy run, so the
     // rule card's `.od-frames/<shell>.html` paths resolve even when no platform
@@ -6289,10 +6326,7 @@ export async function startServer({
       try {
         const staging = await materializeOdNextDeviceFrames({
           cwd,
-          resources: await loadOdNextTaskResourcesForSnapshot({
-            bundledPluginsDir: BUNDLED_PLUGINS_DIR,
-            snapshot: getSnapshot(db, run.appliedPluginSnapshotId),
-          }),
+          resources: strategyTaskAssets.resources,
         });
         if (staging.staged.length > 0) run.odNextStagedDeviceFrames = staging.staged;
         if (staging.skipped.length > 0) {
@@ -6587,12 +6621,19 @@ export async function startServer({
         resolveRunArtifactOutcomeBeforeFinish();
       }
     };
+    const isOpenCodeContent = def.externalMcpInjection === 'opencode-env-content';
     const extraAllowedDirs = [
       ...resolveChatExtraAllowedDirs({
         agentId,
         skillsDir: SKILLS_DIR,
         designSystemsDir: DESIGN_SYSTEMS_DIR,
         linkedDirs,
+        activeSkillDirs,
+        // OpenCode grants this root only after its read-only edit boundary is
+        // resolved below. A generic grant would bypass that failure boundary.
+        strategyResourceDirs: !isOpenCodeContent && strategyTaskAssets.taskProfileRoot
+          ? [strategyTaskAssets.taskProfileRoot]
+          : [],
       }),
       ...(odNextTaskInputSnapshot
         ? [odNextTaskInputSnapshot.projectionAccessRoot]
@@ -7592,6 +7633,39 @@ export async function startServer({
       if (typeof code === 'number') return code === 0 ? 'exit_0' : 'exit_nonzero';
       return 'unknown';
     };
+    // The protocol withholds any text that might still turn out to be a
+    // reserved `<open-design-…>` block, including a reply's last line until
+    // its newline arrives; `finish()` is what finally rules that out, so the
+    // tail it returns is the first moment those bytes are user-visible. Every
+    // way a Run ends must release it, not only success: a Run that fails or is
+    // stopped right after an unterminated line would otherwise drop text the
+    // agent already produced from the conversation.
+    let strategyProtocolFinished = null;
+    const finishStrategyProtocol = () => {
+      if (strategyProtocolFinished) return strategyProtocolFinished;
+      strategyProtocolFinished = strategyProtocol.finish();
+      const tail = strategyProtocolFinished.visibleTail;
+      if (tail) {
+        const tailEvent = def.streamFormat === 'plain' ? 'stdout' : 'agent';
+        const tailData = tailEvent === 'stdout'
+          ? { chunk: tail }
+          : { type: 'text_delta', delta: tail };
+        // It cannot go back through `send`, which would hold it again, so it
+        // applies the same visible output rule here. For a reply whose visible
+        // text was withheld in its entirety this is the ONLY thing the run ever
+        // puts on screen; without the mark the run reports no visible output at
+        // all and the analytics fallback collapses a real close-time wait back
+        // to `firstTokenAt`.
+        recordRunTelemetry('strategy close-time tail', () => {
+          applyVisibleOutputMarks(
+            runLifecycleMarkersForStreamEvent(tailEvent, tailData),
+          );
+        });
+        persistRunEventToAssistantMessage(db, run, tailEvent, tailData);
+        design.runs.emit(run, tailEvent, tailData);
+      }
+      return strategyProtocolFinished;
+    };
     const finishStrategyAwarePhysicalRun = (status, code = null, signal = null) => {
       const finished = finishRun(status, code, signal);
       return finished;
@@ -7603,6 +7677,13 @@ export async function startServer({
       { allowRetry = true } = {},
     ) => {
       lifecycle.mark('finalize_start');
+      // Success releases the held tail itself, before it reads the verdict.
+      if (
+        strategyProtocol && status !== 'succeeded'
+        && !design.runs.isTerminal(run.status)
+      ) {
+        finishStrategyProtocol();
+      }
       // The Run records how the process ended; the strategy task records its
       // own verdict. A task blocked at any stage keeps a cleanly exited Run
       // succeeded: the task projection on the terminal event carries the
@@ -7953,36 +8034,19 @@ export async function startServer({
       const acpExternal = buildAcpMcpServers(enabledExternalMcp);
       mcpServers.push(...acpExternal);
     }
-    // OpenCode: serialise enabled MCP servers into its `mcp` config schema
-    // and hand the JSON to the child via `OPENCODE_CONFIG_CONTENT`. The env
-    // var is *merged* with the user's saved `~/.config/opencode/opencode
-    // .json` (per OpenCode's documented config layering), so adding a
-    // server here does not erase whatever the user already has in their
-    // global config. We deliberately leave the env unset when no servers
-    // are enabled — overwriting with `{}` would wipe the user's saved
-    // mcp section for this single invocation, which is exactly the kind
-    // of surprise the previous silent-failure UX taught us to avoid.
-    let opencodeConfigContent: string | null = null;
-    const isOpenCodeContent = def.externalMcpInjection === 'opencode-env-content';
-    if (isOpenCodeContent) {
-      try {
-        opencodeConfigContent = buildOpenCodeMcpConfigContent(
-          enabledExternalMcp,
-          oauthTokensForSpawn,
-          {
-            allowedDirectories: [effectiveCwd, ...extraAllowedDirs],
-            ...(byokOpenCodeProvider
-              ? { extraConfig: byokOpenCodeProvider.config }
-              : {}),
-          },
-        );
-      } catch (err) {
-        console.warn(
-          '[mcp-config] failed to build OPENCODE_CONFIG_CONTENT:',
-          err && err.message ? err.message : err,
-        );
-      }
-    }
+    // OpenCode: serialise enabled MCP servers into its `mcp` config schema and
+    // hand the JSON to the child via `OPENCODE_CONFIG_CONTENT`. The env var is
+    // *merged* with the user's saved `~/.config/opencode/opencode.json` (per
+    // OpenCode's documented config layering), so adding a server here does not
+    // erase whatever the user already has in their global config. We
+    // deliberately leave the env unset when no servers are enabled —
+    // overwriting with `{}` would wipe the user's saved mcp section for this
+    // single invocation, which is exactly the kind of surprise the previous
+    // silent-failure UX taught us to avoid.
+    //
+    // The config is built further below, after `configuredAgentEnv` expansion
+    // and the launch overrides, so the granted temp root matches the
+    // environment the child actually receives.
 
     // Pre-flight the composed prompt against any argv-byte budget the
     // adapter declared (only DeepSeek TUI today — its CLI doesn't accept
@@ -8457,9 +8521,10 @@ export async function startServer({
     };
     let forcedChildShutdownTimers = [];
     let acpAttemptTermination = null;
+    let acpCompletionShutdownRequested = false;
     const beginAcpAttemptTermination = (
       reason = 'acp_terminal',
-      { gracefulWaitMs = 0 } = {},
+      { gracefulWaitMs = 0, onChildSignal = undefined as (() => void) | undefined } = {},
     ) => {
       if (acpAttemptTermination) return acpAttemptTermination;
       acpAttemptTermination = design.runs.terminateProcessTree(
@@ -8471,6 +8536,7 @@ export async function startServer({
           termGraceMs: inactivityKillGraceMs,
           killGraceMs: inactivityKillGraceMs,
           reason,
+          onChildSignal,
         },
       );
       return acpAttemptTermination;
@@ -8848,20 +8914,6 @@ export async function startServer({
         ...(mmdRouteLaunchEnv || {}),
         ...odMediaEnv,
         ...(byokOpenCodeProvider ? byokOpenCodeProvider.env : {}),
-
-        // OpenCode external-MCP injection (issue #2142). Layered AFTER
-        // spawnEnvForAgent / odMediaEnv / configuredAgentEnv so the
-        // daemon-built MCP config wins over a stale value the user
-        // might have exported in their shell — that would let an
-        // outdated content string suppress the user's freshly-saved
-        // MCP servers, which is exactly the bug we are fixing.
-        // `opencodeConfigContent === null` means "no enabled servers";
-        // we deliberately leave the env unset in that case so the
-        // user's saved `~/.config/opencode/opencode.json` continues
-        // to apply as-is.
-        ...(opencodeConfigContent
-          ? { OPENCODE_CONFIG_CONTENT: opencodeConfigContent }
-          : {}),
         // Daemon-owned resolver for task-input: references. Keep this last so
         // configured/BYOK/runtime env cannot redirect the Agent from the
         // verified Run projection back to mutable or canonical bytes.
@@ -8869,6 +8921,59 @@ export async function startServer({
           ? { OD_TASK_INPUT_DIR: odNextTaskInputSnapshot.projectionDir }
           : {}),
       }, agentLaunch);
+      // Build the OpenCode permission/config payload after configured env
+      // expansion and launch overrides, so the granted temp root matches the
+      // environment the child process actually receives, and so the config wins
+      // over a stale value the user exported in their shell.
+      if (isOpenCodeContent) {
+        try {
+          let readOnlyDirectories: string[] = [];
+          let readOnlyEditBaseDirs: string[] = [];
+          if (strategyTaskAssets.taskProfileRoot) {
+            try {
+              const editBase = await resolveOpenCodeEditBaseDirs(effectiveCwd);
+              readOnlyEditBaseDirs = editBase.dirs;
+              readOnlyDirectories = [strategyTaskAssets.taskProfileRoot];
+              if (editBase.gitProbe === 'failed') {
+                console.warn(`[opencode-resource-permissions] git probe failed; denying resource edits against every candidate worktree ${JSON.stringify({
+                  reason: editBase.gitProbeError, candidates: editBase.dirs,
+                })}`);
+              }
+            } catch (err) {
+              // Withhold only this resource grant; MCP, provider and ordinary
+              // project permissions must still reach the child process.
+              console.warn(`[opencode-resource-permissions] grant skipped: edit base unconfirmed ${JSON.stringify({
+                reason: err instanceof Error ? err.message : String(err),
+              })}`);
+            }
+          }
+          const opencodeConfigContent = buildOpenCodeMcpConfigContent(
+            enabledExternalMcp,
+            oauthTokensForSpawn,
+            {
+              allowedDirectories: [effectiveCwd, ...extraAllowedDirs, ...openCodeSystemTempDirectories(env)],
+              // Only the verified loader result may authorize rule cards.
+              readOnlyDirectories,
+              readOnlyEditBaseDirs,
+              ...(byokOpenCodeProvider
+                ? { extraConfig: byokOpenCodeProvider.config }
+                : {}),
+            },
+          );
+          // `opencodeConfigContent === null` means "no enabled servers"; we
+          // deliberately leave the env unset in that case so the user's saved
+          // `~/.config/opencode/opencode.json` continues to apply as-is.
+          if (opencodeConfigContent) {
+            env.OPENCODE_CONFIG_CONTENT = opencodeConfigContent;
+          }
+        } catch (err) {
+          console.warn(
+            '[mcp-config] failed to build OPENCODE_CONFIG_CONTENT:',
+            err && err.message ? err.message : err,
+          );
+        }
+      }
+
       if (def.id === 'opencode' || def.id === 'byok-opencode') {
         try {
           const versions = await ensureDetectedRuntimeVersions('opencode', configuredAgentEnv);
@@ -10089,7 +10194,15 @@ export async function startServer({
         onPromptComplete: () => clearFirstOutputWatchdog(),
         onTerminal: (kind) => beginAcpAttemptTermination(
           `acp_${kind}`,
-          { gracefulWaitMs: kind === 'completed' ? 500 : 0 },
+          kind === 'completed'
+            ? {
+              gracefulWaitMs: 500,
+              // Only an exit the daemon causes speaks for the completed
+              // turn; vela exiting non-zero on its own during the grace
+              // wait is still its own failure.
+              onChildSignal: () => { acpCompletionShutdownRequested = true; },
+            }
+            : { gracefulWaitMs: 0 },
         ),
         send: (event, data, meta) => {
           if (event === 'error') {
@@ -10799,12 +10912,12 @@ export async function startServer({
       // signal exit). `completedSuccessfully()` reports whether the ACP
       // session resolved without a fatal error or abort.
       //
-      // Scope the override narrowly to the exact forced-shutdown shape this
-      // PR introduces: code is null AND signal is SIGTERM AND the ACP
-      // session reported clean completion. Any other post-response failure
-      // (non-zero exit code, SIGKILL, SIGSEGV, etc.) still propagates as
-      // `failed`, preserving the existing close-status behavior for genuine
-      // post-response process problems.
+      // The override covers SIGTERM (or vela's code 130) after clean
+      // completion, and any exit after the daemon itself signalled the
+      // completed attempt (`acpCompletionShutdownRequested`; Windows reports
+      // that kill as code 1 with no signal). Other post-response failures,
+      // including a non-zero exit during the grace wait, still propagate as
+      // `failed`.
       const acpCleanCompletion =
         typeof acpSession?.completedSuccessfully === 'function' &&
         acpSession.completedSuccessfully();
@@ -10814,6 +10927,7 @@ export async function startServer({
         code,
         signal,
         acpCleanCompletion,
+        acpCompletionShutdownRequested,
         artifactQuietShutdownRequested,
         turnCompletedCleanly: !!run.turnCompletedCleanly,
         artifactProducedThisRun:
@@ -11056,31 +11170,10 @@ export async function startServer({
       }
       if (status === 'succeeded') {
         if (strategyProtocol && !strategyProtocolResult) {
-          const finishedProtocol = strategyProtocol.finish();
+          const finishedProtocol = finishStrategyProtocol();
           strategyProtocolResult = finishedProtocol.parsed;
           const tail = finishedProtocol.visibleTail;
           if (tail) {
-            const tailEvent = def.streamFormat === 'plain' ? 'stdout' : 'agent';
-            const tailData = tailEvent === 'stdout'
-              ? { chunk: tail }
-              : { type: 'text_delta', delta: tail };
-            // The protocol withholds any text that might still turn out to be
-            // a reserved `<open-design-…>` block; `finish()` is what finally
-            // rules that out, so this tail is the first moment those bytes are
-            // user-visible. It cannot go back through `send` — `push` throws
-            // once the protocol is finished — so it applies the same visible
-            // output rule here. For a reply whose visible text was withheld in
-            // its entirety this is the ONLY thing the run ever puts on screen;
-            // without the mark the run reports no visible output at all and
-            // the analytics fallback collapses a real close-time wait back to
-            // `firstTokenAt`.
-            recordRunTelemetry('strategy close-time tail', () => {
-              applyVisibleOutputMarks(
-                runLifecycleMarkersForStreamEvent(tailEvent, tailData),
-              );
-            });
-            persistRunEventToAssistantMessage(db, run, tailEvent, tailData);
-            design.runs.emit(run, tailEvent, tailData);
             // The frozen Harness prompt currently does not receive the nonce,
             // so its authoritative completion signal remains the verified
             // strategy verdict. Still fold a marker if a future frozen bundle
