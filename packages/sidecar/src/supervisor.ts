@@ -204,7 +204,19 @@ function observeTarget(): void {
     }
     try {
       process.kill(process.pid, disposition.signal);
-    } catch {}
+    } catch (error) {
+      // A failed self-signal must not degrade silently. Without this line the
+      // owner (`sidecarExitDisposition` consumers, launcher, diagnostics) sees
+      // `code=1, signal=null` — indistinguishable from a target that crashed on
+      // its own, which is exactly the case this branch exists to tell apart.
+      // Keep the numeric fallback above and do not change control flow: the
+      // supervisor has already lost the signal channel at this point, so an
+      // exit code is the only remaining way out.
+      console.warn(`[sidecar-supervisor] self-signal re-raise failed; reporting exit code 1 instead ${JSON.stringify({
+        signal: disposition.signal,
+        reason: error instanceof Error ? error.message : String(error),
+      })}`);
+    }
   });
 }
 

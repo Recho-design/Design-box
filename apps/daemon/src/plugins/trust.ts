@@ -67,7 +67,21 @@ export function resolveCapabilitiesGranted(args: {
   trust: TrustTier;
 }): string[] {
   const out = new Set(defaultCapabilities(args.trust));
-  if (args.trust === 'trusted') {
+  // `bundled` means "bytes shipped inside the daemon image by us", which is a
+  // stronger provenance than `trusted` — yet this function used to leave it on
+  // the restricted capability floor. Nothing enforced that floor (`apply.ts`
+  // coerces bundled to `trusted` for the snapshot contract, and the connector
+  // gates admit every non-`restricted` tier), so the only effect was a
+  // desynchronized persisted record: a bundled manifest requiring `pipeline:*`
+  // was registered as `['prompt:inject']`, and every applied snapshot inherited
+  // the gap, exporting and reporting a capability set the plugin does not
+  // actually run under. Include the manifest's required set so registration
+  // persists what the tier already grants at run time.
+  //
+  // This is the ONLY place bundled capabilities are widened. `apply.ts` keeps
+  // reading the persisted row so a user revocation still wins — see the note
+  // there, and the preservation branch in `bundled.ts`.
+  if (args.trust === 'trusted' || args.trust === 'bundled') {
     for (const cap of requiredCapabilities(args.manifest)) {
       out.add(stripOptionalSuffix(cap));
     }
@@ -77,6 +91,29 @@ export function resolveCapabilitiesGranted(args: {
 
 function stripOptionalSuffix(cap: string): string {
   return cap.endsWith('?') ? cap.slice(0, -1) : cap;
+}
+
+// Capabilities that `next` requires but `previous` did not.
+//
+// Callers that re-register an ALREADY-INSTALLED plugin need this instead of a
+// fresh `resolveCapabilitiesGranted` call. The bundled boot walker runs on
+// every daemon boot and upserts unconditionally, so handing it the freshly
+// resolved set would silently re-grant whatever the user revoked — revocation
+// only removes entries from `capabilities_granted`, and there is no separate
+// tombstone column to tell "never granted" from "explicitly revoked".
+// A manifest-level diff is the only signal available that is unambiguous: a
+// capability absent from both the persisted row and the previous manifest's
+// required set is a rejected/never-granted capability, while one that appears
+// because the manifest now requires it is a legitimate widening.
+export function newlyRequiredCapabilities(
+  previous: PluginManifest,
+  next: PluginManifest,
+): string[] {
+  const before = new Set(requiredCapabilities(previous).map(stripOptionalSuffix));
+  return requiredCapabilities(next)
+    .map(stripOptionalSuffix)
+    .filter((cap) => !before.has(cap))
+    .sort();
 }
 
 // Plan §3.A2 / spec §9.1. The capability vocabulary that a `restricted`
