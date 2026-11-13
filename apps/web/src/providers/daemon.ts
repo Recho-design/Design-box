@@ -568,6 +568,8 @@ export interface DaemonStreamOptions {
   byokMediaDefaults?: ChatRequest['byokMediaDefaults'];
   context?: RunContextSelection;
   appliedPluginSnapshotId?: string | null;
+  pluginId?: string;
+  pluginInputs?: Record<string, unknown>;
   mediaExecution?: MediaExecutionPolicy;
   titleGeneration?: { enabled?: boolean };
   locale?: string;
@@ -1043,6 +1045,8 @@ export async function streamViaDaemon({
   byokMediaDefaults,
   context,
   appliedPluginSnapshotId,
+  pluginId,
+  pluginInputs,
   mediaExecution,
   titleGeneration,
   locale,
@@ -1088,7 +1092,11 @@ export async function streamViaDaemon({
     ...(byokProvider ? { byokProvider } : {}),
     ...(byokMediaDefaults ? { byokMediaDefaults } : {}),
     locale,
-    ...(appliedPluginSnapshotId ? { appliedPluginSnapshotId } : {}),
+    ...(appliedPluginSnapshotId
+      ? { appliedPluginSnapshotId }
+      : pluginId
+        ? { pluginId, ...(pluginInputs ? { pluginInputs } : {}) }
+        : {}),
     ...(context ? { context } : {}),
     ...(mediaExecution ? { mediaExecution } : {}),
     ...(titleGeneration?.enabled ? { titleGeneration: { enabled: true } } : {}),
