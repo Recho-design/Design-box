@@ -429,7 +429,6 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   const isDock = variant === 'dock';
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mentionTab, setMentionTab] = useState<HomeMentionTab>('all');
-  const [hoveredPlugin, setHoveredPlugin] = useState<InstalledPluginRecord | null>(null);
   const [dragActive, setDragActive] = useState(false);
   // Border beam on the prompt card (styles/home/composer-beam.css). Mirrors
   // border-beam's own active/fading contract so blur fades the light out over
@@ -917,8 +916,6 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
     '--home-hero-prompt-max-height': `${promptMaxHeight}px`,
   } as CSSProperties;
 
-  
-  
   useEffect(() => {
     if (!pickerOpen) return;
     const isInsideMentionSurface = (target: EventTarget | null) => {
@@ -1192,7 +1189,6 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
   function dismissMentionPicker() {
     setMentionTrigger(null);
     setMentionTab('all');
-    setHoveredPlugin(null);
     setSelectedIndex(0);
   }
 
@@ -1989,10 +1985,7 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                         className={`home-hero__plugin-option${
                           optionIndex === selectedIndex ? ' is-active' : ''
                         }`}
-                        onMouseEnter={() => {
-                          setSelectedIndex(optionIndex);
-                          setHoveredPlugin(item.pluginRecord ?? null);
-                        }}
+                        onMouseEnter={() => setSelectedIndex(optionIndex)}
                         onMouseDown={(event) => {
                           event.preventDefault();
                           if (!item.disabled) item.onPick();
@@ -2014,36 +2007,6 @@ export const HomeHero = forwardRef<HomeHeroHandle, Props>(function HomeHero(
                   })}
                 </div>
               ))}
-              {hoveredPlugin ? (
-                <div
-                  className="home-hero__plugin-hover-card"
-                  data-testid="home-hero-plugin-hover-card"
-                >
-                  <div>
-                    <span className="home-hero__plugin-hover-kicker">
-                      {getPluginSourceLabel(hoveredPlugin)}
-                    </span>
-                    <strong>{localizePluginTitle(locale, hoveredPlugin)}</strong>
-                    <p>{localizePluginDescription(locale, hoveredPlugin) || hoveredPlugin.id}</p>
-                  </div>
-                  <div className="home-hero__plugin-hover-meta">
-                    <span>{t('homeHero.parameters', { n: (hoveredPlugin.manifest?.od?.inputs ?? []).length })}</span>
-                    {getPluginQueryPreview(hoveredPlugin) ? (
-                      <span>{getPluginQueryPreview(hoveredPlugin)}</span>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => {
-                      dismissMentionPicker();
-                      onOpenPluginDetails(hoveredPlugin);
-                    }}
-                  >
-                    {t('homeHero.details')}
-                  </button>
-                </div>
-              ) : null}
             </div>
           </div>
         </CaretFloatingLayer>
@@ -3469,20 +3432,6 @@ function escapeRegExp(value: string): string {
 
 function getPluginSourceLabel(plugin: InstalledPluginRecord): string {
   return plugin.sourceKind === 'bundled' ? 'Official' : 'My plugin';
-}
-
-function getPluginQueryPreview(plugin: InstalledPluginRecord): string {
-  const raw = plugin.manifest?.od?.useCase?.query;
-  const value =
-    typeof raw === 'string'
-      ? raw
-      : raw && typeof raw === 'object' && !Array.isArray(raw)
-        ? raw.en ?? raw['zh-CN'] ?? Object.values(raw).find((entry): entry is string => (
-            typeof entry === 'string' && entry.length > 0
-          )) ?? ''
-        : '';
-  const trimmed = value.replace(/\s+/g, ' ').trim();
-  return trimmed.length > 96 ? `${trimmed.slice(0, 96)}…` : trimmed;
 }
 
 interface RailGroupProps {
