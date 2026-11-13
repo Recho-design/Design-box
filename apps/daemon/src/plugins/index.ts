@@ -85,6 +85,7 @@ export * from './atoms/registry.js';
 export * from './atoms/rewrite-plan.js';
 export * from './atoms/token-map.js';
 export * from './bundled.js';
+export * from './legacy-grant-backfill.js';
 export * from './connector-gate.js';
 export * from './connector-probe.js';
 export * from './export.js';
