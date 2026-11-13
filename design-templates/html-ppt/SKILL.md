@@ -35,6 +35,9 @@ od:
     entry: index.html
   design_system:
     requires: false
+  craft:
+    requires:
+      - typographic-treatments
   speaker_notes: true
   animations: true
   scenario: "strategy"

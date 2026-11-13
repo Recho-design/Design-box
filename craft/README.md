@@ -90,6 +90,11 @@ A purely behavioral craft file (state-coverage, animation-discipline) is guidanc
 | `rtl-and-bidi.md` | `rtl-and-bidi` | Any skill that ships localized text or layout: blogs, docs, financial tables, mobile apps, anything that may render Arabic / Hebrew / Persian |
 | `form-validation.md` | `form-validation` | Any skill whose primary artifact contains an interactive form: lead capture, sign-in, signup, settings, multi-step intake |
 | `laws-of-ux.md` | `laws-of-ux` | Any skill whose composition decisions hit named cognitive limits: pricing pages (Hick's, Choice Overload, Von Restorff), dashboards (Pareto, Selective Attention, Working Memory), onboarding (Goal-Gradient, Zeigarnik, Peak-End), modals (Fitts's, Tesler's). Sibling axis to the rendering-rule files above — covers what to compose, not how to render. |
+| `composition.md` | `composition` | Any skill generating graphic posters, hero key art, social cards, or structured marketing layouts requiring an intentional visual armature. |
+| `typographic-treatments.md` | `typographic-treatments` | Skills producing expressive display typography, poster headlines, covers, or editorial lockups requiring decorative typographic techniques. Compose with `typography` and `typography-hierarchy`. |
+| `figure-ratio.md` | `figure-ratio` | Any skill composing image-led or image-assisted surfaces (posters, social media cards, hero banners, editorial spreads) where image-to-canvas ratio and cropping dictate tone. |
+| `creative-variants.md` | `creative-variants` | Skills driving concept ideation, art direction, campaign exploration, or brainstorming where candidate options must differ along orthogonal structural dimensions rather than cosmetic tweaks. |
+| `review-checklist.md` | `review-checklist` | Any skill producing visual artifacts that requires build-time structural defense: luminance contrast, single-entry hierarchy, mandatory safe-zone elements, and redundancy reduction. |
 
 **Partial-stateful skills.** A skill that's mostly static but contains an embedded form, data table, or query surface should opt in. State-coverage rules apply to the stateful component, not the whole page.
 

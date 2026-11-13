@@ -27,6 +27,12 @@ od:
   design_system:
     requires: true
     sections: [color, typography, layout, components]
+  craft:
+    requires:
+      - composition
+      - typographic-treatments
+      - figure-ratio
+      - review-checklist
   example_prompt: "Design a 3-card cinematic social carousel — ‘onwards.’, ‘to the next one.’, ‘looking ahead.’. 1080×1080 squares, drop-into-Instagram ready."
 ---
 

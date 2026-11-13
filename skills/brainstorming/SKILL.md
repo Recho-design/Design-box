@@ -12,6 +12,9 @@ od:
   mode: design-system
   category: creative-direction
   upstream: "https://github.com/obra/superpowers"
+  craft:
+    requires:
+      - creative-variants
 ---
 
 # brainstorming

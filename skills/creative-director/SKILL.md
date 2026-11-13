@@ -12,6 +12,9 @@ od:
   mode: design-system
   category: creative-direction
   upstream: "https://github.com/smixs/creative-director-skill"
+  craft:
+    requires:
+      - creative-variants
 ---
 
 # creative-director

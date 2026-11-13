@@ -23,6 +23,12 @@ od:
     entry: example.html
   design_system:
     requires: false
+  craft:
+    requires:
+      - composition
+      - typographic-treatments
+      - figure-ratio
+      - review-checklist
   example_prompt: |
     Editorial poster for an indie film festival — one bold abstract
     silhouette over a warm, slightly grainy paper background; hand-set

@@ -28,6 +28,12 @@ od:
   design_system:
     requires: true
     sections: [color, typography, layout, components]
+  craft:
+    requires:
+      - composition
+      - typographic-treatments
+      - figure-ratio
+      - review-checklist
   example_prompt: "Design an editorial magazine-style poster — ‘You don't need a designer to ship your first draft anymore.’ Newsprint paper, six numbered sections."
 ---
 
