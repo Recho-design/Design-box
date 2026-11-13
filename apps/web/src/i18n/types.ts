@@ -1115,6 +1115,7 @@ export interface Dict {
   'entry.navDashboard': string;
   'entry.blankDraftsTitle': string;
   'entry.blankDraftsDescription': string;
+  'entry.projectsLoadFailed': string;
   'entry.blankAllProjectsTitle': string;
   'entry.blankAllProjectsDescription': string;
   'entry.blankCreate': string;
