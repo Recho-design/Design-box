@@ -300,7 +300,7 @@ export function composeChatAgentTextPayload({
 }
 
 /**
- * Read-only directories the run may reach outside its project cwd.
+ * Resource directories the run may reach outside its project cwd.
  *
  * The invariant: every absolute path the composed prompt advertises to the
  * agent has to appear here. `withSkillRootPreamble()` names the skill's own
@@ -312,7 +312,10 @@ export function composeChatAgentTextPayload({
  * directory: OpenCode raises `permission.external_directory`, which a headless
  * run surfaces as a rejected tool call rather than as the staging gap it is.
  * Passing `activeSkillDirs` keeps the allowlist keyed on the roots actually in
- * play for this turn instead of on a fixed subset of them.
+ * play for this turn instead of on a fixed subset of them. Strategy resources
+ * are separate because frozen task prompts bypass ordinary skill composition;
+ * their roots come from the verified applied strategy package. Directory access
+ * itself does not impose read-only tool permissions.
  *
  * Codex is excluded wholesale because it treats allowlisted directories as
  * writable, and skill roots are shipped read-only resources (PR #622).
@@ -323,6 +326,7 @@ export function resolveChatExtraAllowedDirs({
   designSystemsDir,
   linkedDirs = [],
   activeSkillDirs = [],
+  strategyResourceDirs = [],
   existsSync = fs.existsSync,
 }: {
   agentId?: string | null;
@@ -330,6 +334,7 @@ export function resolveChatExtraAllowedDirs({
   designSystemsDir?: string | null;
   linkedDirs?: Array<string | null | undefined>;
   activeSkillDirs?: Array<string | null | undefined>;
+  strategyResourceDirs?: Array<string | null | undefined>;
   existsSync?: (path: string) => boolean;
 }): string[] {
   const isCodex =
@@ -341,6 +346,7 @@ export function resolveChatExtraAllowedDirs({
         designSystemsDir,
         ...(Array.isArray(linkedDirs) ? linkedDirs : []),
         ...(Array.isArray(activeSkillDirs) ? activeSkillDirs : []),
+        ...strategyResourceDirs,
       ];
   return Array.from(
     new Set(
