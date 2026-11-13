@@ -20,6 +20,7 @@ import { useT } from '../i18n';
 import type { Dict } from '../i18n/types';
 import { projectFileUrl } from '../providers/registry';
 import { useProjectCollabContext } from '../collab/collab-context';
+import { workspaceResourceUrl } from '../collab/workspace-identity';
 import { artifactKind, type ArtifactKind } from '../runtime/chat/format';
 import {
   countArtifactFileOps,
@@ -574,13 +575,14 @@ function ArtifactCard({
   // the card.
   const [failedCoverUrl, setFailedCoverUrl] = useState<string | null>(null);
   const src = projectFileUrl(projectId, item.name, workspaceContext);
+  const coverUrl = item.coverUrl ? workspaceResourceUrl(item.coverUrl, workspaceContext) : undefined;
   const pending = item.pending === true;
   /*
    * 图片:这一轮那张**不可变快照**才是这张卡的正文 —— 卡面、点击、导出三处都读它。
    * 没有快照(旧会话)就回落到工作区当前同名文件,而且**什么都不加**:不出占位、
    * 不写「历史图片不可用」(产品 2026-09-02 推翻了设计文档 §8 里那条占位文案)。
    */
-  const mediaSrc = item.snapshotUrl ?? src;
+  const mediaSrc = item.snapshotUrl ? workspaceResourceUrl(item.snapshotUrl, workspaceContext) : src;
   // Publish is an HTML-only affordance, so a `.png` card carries one button and
   // an `.html` card carries two. The row is flex/end aligned precisely so that
   // unevenness stays right-aligned instead of shifting the export button.
@@ -604,7 +606,7 @@ function ArtifactCard({
           <span className="artifact-card-mini is-loading">
             <PixelLiquid />
           </span>
-        ) : item.coverUrl && item.kind !== 'video' && failedCoverUrl !== item.coverUrl ? (
+        ) : coverUrl && item.kind !== 'video' && failedCoverUrl !== coverUrl ? (
           /*
            * **当轮的静态首屏截图**(HTML / 原型 / slide / 文档)。
            *
@@ -622,10 +624,10 @@ function ArtifactCard({
            */
           <img
             className="artifact-card-media"
-            src={item.coverUrl}
+            src={coverUrl}
             alt=""
             loading="lazy"
-            onError={() => setFailedCoverUrl(item.coverUrl ?? null)}
+            onError={() => setFailedCoverUrl(coverUrl ?? null)}
           />
         ) : item.kind === 'html' ? (
           /*
@@ -670,7 +672,7 @@ function ArtifactCard({
           <video
             className="artifact-card-media"
             src={mediaSrc}
-            poster={item.coverUrl}
+            poster={coverUrl}
             muted
             preload="metadata"
             playsInline
